@@ -1,0 +1,8 @@
+# Default: normalize line endings to LF in the repo, convert to platform on checkout
+* text=auto
+
+# Test fixture data must never have line endings touched — the .age files are
+# binary and the plaintext references must exactly match the bytes that were
+# encrypted, regardless of platform.
+age-recipient-pq/tests/data/**  binary
+age-hpke-pq/tests/data/**       binary

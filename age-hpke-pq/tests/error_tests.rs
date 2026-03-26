@@ -203,8 +203,8 @@ fn test_random_invalid_keys() {
 
     let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
     for _ in 0..10 {
-        let random_length = rng.random_range(0..2000);
-        let random_bytes: Vec<u8> = (0..random_length).map(|_| rng.random()).collect();
+        let random_length = rng.random_range(0usize..2000usize);
+        let random_bytes: Vec<u8> = (0..random_length).map(|_| rng.random::<u8>()).collect();
         let result_x25519_768 = X25519PK::try_from(random_bytes.as_slice());
         // let result_x25519_1024 = X25519PK1024::try_from(random_bytes.as_slice());
         // let result_x448 = X448PK::try_from(random_bytes.as_slice());

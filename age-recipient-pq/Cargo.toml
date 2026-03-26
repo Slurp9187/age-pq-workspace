@@ -14,7 +14,7 @@ include.workspace = true
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(fuzzing)'] }
 
 [dependencies]
-age-hpke-pq = { git = "https://github.com/Slurp9187/age-hpke-pq", tag = "v0.0.5" }
+age-hpke-pq = { path = "../age-hpke-pq" }
 age = "0.11"
 age-core = "0.11"
 base64 = "0.22"
