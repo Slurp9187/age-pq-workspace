@@ -1,20 +1,40 @@
 [workspace]
-members  = ["age-hpke-pq", "age-recipient-pq", "age-plugin-pq"]
-resolver = "2"   # matches MSRV 1.70; upgrade to "3" when MSRV rises to 1.85+
+members = ["age-hpke-pq", "age-recipient-pq", "age-plugin-pq"]
+resolver = "2"   # MSRV 1.70 → resolver 2 is required; upgrade to 3 only when you bump to 1.85+
 
-# Redirect age-recipient-pq's git dep to the local crate — no crate Cargo.toml changes needed.
+# Shared package metadata (inherited by every member)
+[workspace.package]
+rust-version = "1.70"
+edition = "2021"          # or whatever your crates already use
+license = "MIT OR Apache-2.0"   # adjust to your actual license
+repository = "https://github.com/Slurp9187/age-pq-workspace"  # or wherever you host the monorepo
+homepage = "https://github.com/Slurp9187/age-pq-workspace"
+authors = ["Slurp9187"]
+description = "Post-quantum age/rage crates"
+keywords = ["age", "rage", "hpke", "post-quantum", "plugin"]
+categories = ["cryptography"]
+include = [
+    "examples/**/*.rs",
+    "src/**/*.rs",
+    "CHANGELOG.md",
+    "LICENSE*",
+    "README.md",
+]
+
+# Redirect the git dependency in age-recipient-pq (and any other cross-crate git deps)
+# to the local path so you can develop everything together.
 [patch."https://github.com/Slurp9187/age-hpke-pq"]
 age-hpke-pq = { path = "age-hpke-pq" }
 
-# Crypto math is unusably slow without O2 in debug mode
+# Optional: if any other crate depends on one of the others via git, add more patches here.
+
 [profile.dev]
-opt-level = 2
+opt-level = 2   # crypto math is painfully slow in unoptimized debug builds
 
-# Keep debug symbols for profiling/flamegraphs
 [profile.bench]
-debug = true
+debug = true    # keep symbols for flamegraphs / profiling
 
-# Shared lint governance (from RustCrypto/KEMs model)
+# Shared lint governance (RustCrypto/KEMs style)
 [workspace.lints.rust]
 missing_docs                  = "warn"
 missing_debug_implementations = "warn"
@@ -34,6 +54,19 @@ missing_errors_doc       = "warn"
 missing_panics_doc       = "warn"
 std_instead_of_core      = "warn"
 
-
 [workspace.dependencies]
+secure-gate = { version = "=0.8.0-rc.4", features = ["rand", "ct-eq"] }
+
+clap = { version = "=4.4.18", features = ["derive"] }
+
+# half 2.5.0+ requires rustc 1.81 (transitive via secure-gate); cap to stay at 1.70 MSRV.
+half = { version = ">=2.0, <2.5", default-features = false }
+
+# unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
+unicode-ident = ">=1.0, <1.0.23"
+
+[workspace.dev-dependencies]
+proptest = "=1.5.0"
+tempfile = "=3.10.1"
+time = { version = "=0.3.40", features = ["formatting", "parsing"] }
 clap = { version = "=4.4.18", features = ["derive"] }
