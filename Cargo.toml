@@ -1,0 +1,42 @@
+[package]
+name = "age-hpke-pq"
+version = "0.0.5"
+repository = "https://github.com/Slurp9187/age-hpke-pq"
+description = "Post-quantum hybrid X-Wing KEM (ML-KEM-768 + X25519) with HPKE support."
+keywords = ["post-quantum", "cryptography", "hybrid", "ML-KEM", "X25519"]
+categories = ["cryptography"]
+
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+include.workspace = true
+
+[dependencies]
+# Cryptographic dependencies - pinned to specific versions for security and reproducibility
+# default-features off: upstream `std` enables `tls_codec/std` while `tls_codec` is optional (`codec`),
+# which older Cargo rejects when resolving default features.
+libcrux-ml-kem = { version = "0.0.8", default-features = false, features = ["mlkem768", "rand"] }
+sha3 = { version = "0.10", default-features = false }
+
+x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize", "static_secrets"] }
+
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
+thiserror = "2.0"
+rand = "0.9"
+rand_core = { version = "0.9", features = ["os_rng"] }
+chacha20poly1305 = "0.10"
+aead = { version = "0.5", default-features = false }
+byteorder = "1.5"
+hkdf = "0.12"
+sha2 = "0.10"
+
+secure-gate = { workspace = true }
+unicode-ident = { workspace = true }
+half = { workspace = true   }
+
+[dev-dependencies]
+rand = "0.9"
+rand_chacha = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "=1.0.132"
