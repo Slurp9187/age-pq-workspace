@@ -1,0 +1,15 @@
+/target
+/temp
+/.zed
+/examples
+
+*.bak
+*.del
+*.errors
+*.exe
+*.results
+
+docs/hpke_chat.txt
+
+# # Cargo.lock
+code_packages/

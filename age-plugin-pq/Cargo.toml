@@ -1,0 +1,30 @@
+[package]
+name = "age-plugin-pq"
+version = "0.0.1"
+description = "age plugin for post-quantum hybrid ML-KEM-768 + X25519 encryption"
+repository = "https://github.com/Slurp9187/age-plugin-pq"
+keywords = ["age", "encryption", "post-quantum", "mlkem", "x25519"]
+categories = ["cryptography"]
+
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+include.workspace = true
+
+[dependencies]
+age-plugin = "0.6"
+age-core = "0.11"
+age-hpke-pq = { path = "../age-hpke-pq" }
+chacha20poly1305 = "0.10"
+base64 = "0.22"
+bech32 = "0.11"
+clap = { workspace = true }
+rand = { version = "0.8", features = ["std"] }
+time = { version = "0.3", features = ["formatting"] }
+zeroize = "1.8"
+
+[[bin]]
+name = "age-plugin-pq"
+path = "src/main.rs"
