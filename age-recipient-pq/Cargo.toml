@@ -1,0 +1,36 @@
+[package]
+name = "age-recipient-pq"
+version = "0.0.5-dev"
+repository = "https://github.com/Slurp9187/age-recipient-pq"
+description = "A Rust library providing post-quantum hybrid recipients and identities compatible with the age encryption format"
+
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+include.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(fuzzing)'] }
+
+[dependencies]
+age-hpke-pq = { git = "https://github.com/Slurp9187/age-hpke-pq", tag = "v0.0.5" }
+age = "0.11"
+age-core = "0.11"
+base64 = "0.22"
+bech32 = "0.11"
+secrecy = "0.10"
+# unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
+unicode-ident = { workspace = true }
+
+[dev-dependencies]
+# Pin dev-deps to MSRV 1.70-compatible versions; the workspace Cargo.lock
+# is the primary guard, but exact pins prevent surprise resolution bumps.
+proptest = { workspace = true }
+tempfile = { workspace = true }
+time = { workspace = true }
+clap = { workspace = true }
+
+[[example]]
+name = "pq-keygen"
+path = "examples/pq-keygen.rs"
