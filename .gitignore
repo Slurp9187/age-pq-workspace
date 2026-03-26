@@ -6,7 +6,3 @@
 *.results
 
 plan*
-
-/age-hpke-pq/
-/age-plugin-pq/
-/age-recipient-pq/
