@@ -1,0 +1,39 @@
+[workspace]
+members  = ["age-hpke-pq", "age-recipient-pq", "age-plugin-pq"]
+resolver = "2"   # matches MSRV 1.70; upgrade to "3" when MSRV rises to 1.85+
+
+# Redirect age-recipient-pq's git dep to the local crate — no crate Cargo.toml changes needed.
+[patch."https://github.com/Slurp9187/age-hpke-pq"]
+age-hpke-pq = { path = "age-hpke-pq" }
+
+# Crypto math is unusably slow without O2 in debug mode
+[profile.dev]
+opt-level = 2
+
+# Keep debug symbols for profiling/flamegraphs
+[profile.bench]
+debug = true
+
+# Shared lint governance (from RustCrypto/KEMs model)
+[workspace.lints.rust]
+missing_docs                  = "warn"
+missing_debug_implementations = "warn"
+missing_copy_implementations  = "warn"
+unreachable_pub               = "warn"
+unused_lifetimes              = "warn"
+unused_qualifications         = "warn"
+unsafe_code                   = "deny"
+
+[workspace.lints.clippy]
+cast_lossless            = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap       = "warn"
+cast_sign_loss           = "warn"
+doc_markdown             = "warn"
+missing_errors_doc       = "warn"
+missing_panics_doc       = "warn"
+std_instead_of_core      = "warn"
+
+
+[workspace.dependencies]
+clap = { version = "=4.4.18", features = ["derive"] }
