@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated `src/bech32.rs` and `src/pq.rs` into `src/lib.rs`; tests import `HybridRecipient` / `HybridIdentity` from the crate root (only `src/lib.rs` remains).
 - Joined the parent Cargo workspace (`age-hpke-pq`, `age-recipient-pq`, `age-plugin-pq`): one root `Cargo.lock`, no `Cargo.lock` inside this crate directory. Local builds use workspace root `[patch."https://github.com/Slurp9187/age-hpke-pq"]` so the published-style git dependency resolves to the sibling `age-hpke-pq` crate.
 - Aligned `examples/pq-keygen.rs` reported CLI version with package version (`0.0.5-dev`).
+- `age-hpke-pq` dependency switched from `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-hpke-pq" }` for in-workspace development; the workspace `[patch]` table keeps the published git reference valid for downstream consumers.
+
+### Fixed
+
+- `tests/data/lorem.txt` was stored with CRLF line endings (Windows git autocrlf), causing `test_decrypt_lorem_encrypted_with_age_cli` to fail because the encrypted fixture was created from the LF version. File re-written as pure LF; workspace `.gitattributes` now marks `age-recipient-pq/tests/data/**` as `binary` to prevent future conversion on any platform.
 
 ### Docs
 

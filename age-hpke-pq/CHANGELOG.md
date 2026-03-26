@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Explicit type annotations (`0usize..2000usize`, `rng.random::<u8>()`) added in `tests/error_tests.rs` to resolve type-inference ambiguity introduced by the `rand 0.9` API.
+
 ## [0.0.5] - 2026-03-25
 
 ### Added

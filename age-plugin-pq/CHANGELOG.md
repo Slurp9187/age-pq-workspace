@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `rand` dependency upgraded from `0.8` to `0.9`.
+
 ## [0.0.1] - 2026-03-24
 
 Pre-release / experimental crate versioning (`0.0.x`).
