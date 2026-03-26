@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  msrv:
+    name: MSRV (1.70)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.70
+      - run: cargo update -p half --precise 2.4.1
+      - run: cargo check
+      - run: cargo test --all-features

@@ -1,0 +1,15 @@
+# Build directories
+target*/
+/target*/
+/code_packages/
+/.zed/
+docs/
+
+# Database and temporary files
+*.bak
+*.del
+*.errors
+*.results
+
+# Dependencies and locks
+# Cargo.lock
