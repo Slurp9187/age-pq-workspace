@@ -1,3 +1,11 @@
+//! HPKE encryption context and single-shot helpers.
+//!
+//! Implements the HPKE Base-mode key schedule (RFC 9180 section 5) and
+//! provides [`Sender`] / [`Recipient`] encryption contexts, plus one-shot
+//! [`seal`] and [`open`] convenience functions. The key schedule supports
+//! both the standard two-stage (extract + expand) HKDF path and the
+//! one-stage SHAKE path used by `hpke-pq`.
+
 use crate::aead::{Aead, CipherAead};
 use crate::aliases::{Aad, AeadKey32, ExporterContext, Info, Nonce12, Plaintext, SerializedKey};
 use crate::kdf::Kdf;
@@ -8,10 +16,16 @@ use secure_gate::RevealSecret;
 use std::result::Result;
 
 type ExportFn = Box<dyn Fn(&[u8], u16) -> Result<Vec<u8>, Error> + Send + Sync>;
+
+/// HPKE suite ID prefix (`"HPKE"`) per RFC 9180 section 5.1.
 pub(crate) const HPKE_SUITE_PREFIX: &[u8; 4] = b"HPKE";
 
-// Assuming X-Wing specific, but generalize for any KEM/KDF/AEAD
+// ---------------------------------------------------------------------------
+// Encryption context and role wrappers
+// ---------------------------------------------------------------------------
 
+/// Shared HPKE encryption context holding the keyed AEAD, base nonce,
+/// sequence counter, and exporter closure.
 pub struct Context {
     export: ExportFn,
     aead: Option<Box<dyn CipherAead>>,
@@ -19,14 +33,21 @@ pub struct Context {
     seq_num: u64,
 }
 
+/// Sender-side HPKE context (encrypts and exports).
 pub struct Sender {
     context: Context,
 }
 
+/// Recipient-side HPKE context (decrypts and exports).
 pub struct Recipient {
     context: Context,
 }
 
+// ---------------------------------------------------------------------------
+// Key schedule internals
+// ---------------------------------------------------------------------------
+
+/// Builds the 10-byte HPKE suite ID: `"HPKE" || kem_id || kdf_id || aead_id`.
 fn suite_id(kem_id: u16, kdf_id: u16, aead_id: u16) -> [u8; 10] {
     let mut sid = [0u8; 10];
     sid[..4].copy_from_slice(HPKE_SUITE_PREFIX);
@@ -36,6 +57,18 @@ fn suite_id(kem_id: u16, kdf_id: u16, aead_id: u16) -> [u8; 10] {
     sid
 }
 
+/// Executes the HPKE Base-mode key schedule (RFC 9180 section 5.1) and
+/// returns a fully initialised [`Context`].
+///
+/// Two paths are supported depending on [`Kdf::one_stage`]:
+///
+/// * **One-stage (SHAKE)** -- `hpke-pq` style: serializes psk + shared secret
+///   and key-schedule context into a single `labeled_derive` call that
+///   produces `key || base_nonce || exporter_secret` in one shot.
+///
+/// * **Two-stage (HKDF)** -- standard RFC 9180: uses `labeled_extract` to
+///   derive a PRK, then three `labeled_expand` calls to extract the key,
+///   base nonce, and exporter secret independently.
 fn new_context(
     shared_secret: &[u8],
     kem_id: u16,
@@ -49,18 +82,22 @@ fn new_context(
     let export: ExportFn;
 
     let (aead_impl, base_nonce) = if kdf.one_stage() {
+        // --- One-stage SHAKE path (draft-ietf-hpke-pq-03) ----------------
+
+        // Serialize `secrets = len(psk) || len(ss) || ss`.
         let mut secrets_bytes = Vec::new();
         let mut buf = [0u8; 2];
-        BigEndian::write_u16(&mut buf, 0); // empty psk
+        BigEndian::write_u16(&mut buf, 0); // empty psk length
         secrets_bytes.extend_from_slice(&buf);
         BigEndian::write_u16(&mut buf, shared_secret.len() as u16);
         secrets_bytes.extend_from_slice(&buf);
         secrets_bytes.extend_from_slice(shared_secret);
         let secrets = SerializedKey::new(secrets_bytes);
 
+        // Serialize `ks_context = mode || len(psk_id) || len(info) || info`.
         let mut ks_context_bytes = Vec::new();
-        ks_context_bytes.push(0); // mode 0
-        BigEndian::write_u16(&mut buf, 0); // empty psk_id
+        ks_context_bytes.push(0); // mode 0 (Base)
+        BigEndian::write_u16(&mut buf, 0); // empty psk_id length
         ks_context_bytes.extend_from_slice(&buf);
         {
             let info_bytes = info.expose_secret();
@@ -70,15 +107,14 @@ fn new_context(
         }
         let ks_context = SerializedKey::new(ks_context_bytes);
 
+        // Single derive producing `key || base_nonce || exporter_secret`.
         let length = aead.key_size() as u16 + aead.nonce_size() as u16 + kdf.size() as u16;
-        // Preferred access pattern when a low-level API needs multiple secret slices together.
         let secret = SerializedKey::new({
             let secrets_raw = secrets.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
             kdf.labeled_derive(&sid, secrets_raw, "secret", ks_context_raw, length)?
         });
 
-        // Extract once, then slice all derived values from the same raw bytes.
         let secret_raw = secret.expose_secret();
         let key = AeadKey32::try_from(&secret_raw[0..aead.key_size()])
             .map_err(|_| Error::InvalidKeyLength)?;
@@ -99,23 +135,27 @@ fn new_context(
 
         (Some(a), bn)
     } else {
+        // --- Two-stage HKDF path (RFC 9180 section 5.1) ------------------
+
         let psk_id_hash =
             SerializedKey::new(kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?);
         let info_hash = SerializedKey::new(
             info.with_secret(|info_raw| kdf.labeled_extract(&sid, None, "info_hash", info_raw))?,
         );
 
+        // `ks_context = mode || psk_id_hash || info_hash`.
         let mut ks_context_bytes = Vec::new();
-        ks_context_bytes.push(0); // mode 0
+        ks_context_bytes.push(0); // mode 0 (Base)
         psk_id_hash
             .with_secret(|psk_id_hash_raw| ks_context_bytes.extend_from_slice(psk_id_hash_raw));
         info_hash.with_secret(|info_hash_raw| ks_context_bytes.extend_from_slice(info_hash_raw));
         let ks_context = SerializedKey::new(ks_context_bytes);
 
+        // Extract the PRK from the shared secret.
         let secret =
             SerializedKey::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
 
-        // Preferred access pattern when deriving from multiple wrapped buffers.
+        // Expand key, base_nonce, and exporter_secret from the PRK.
         let key = {
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
@@ -128,7 +168,7 @@ fn new_context(
             )?
         };
         let key = AeadKey32::try_from(key.as_slice()).map_err(|_| Error::InvalidKeyLength)?;
-        // Keep exposed borrows scoped to this block to retain auditable lifetimes.
+
         let bn = {
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
@@ -141,7 +181,7 @@ fn new_context(
             )?
         };
         let bn = Nonce12::try_from(bn.as_slice()).map_err(|_| Error::InvalidLength)?;
-        // Same scoped exposure approach for exporter secret derivation.
+
         let exp_secret = SerializedKey::new({
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
@@ -168,7 +208,14 @@ fn new_context(
     })
 }
 
-// NewSender
+// ---------------------------------------------------------------------------
+// Sender / Recipient constructors
+// ---------------------------------------------------------------------------
+
+/// Sets up a Base-mode sender context, returning `(enc, Sender)`.
+///
+/// Encapsulates against `pk`, runs the key schedule, and returns the
+/// serialised encapsulation together with a ready-to-use [`Sender`].
 pub fn new_sender(
     pk: Box<dyn PublicKey>,
     kdf: Box<dyn Kdf>,
@@ -178,6 +225,8 @@ pub fn new_sender(
     new_sender_with_testing_randomness(pk, None, kdf, aead, info)
 }
 
+/// Like [`new_sender`] but accepts optional deterministic randomness for
+/// known-answer tests.
 pub fn new_sender_with_testing_randomness(
     pk: Box<dyn PublicKey>,
     testing_randomness: Option<&[u8]>,
@@ -190,6 +239,7 @@ pub fn new_sender_with_testing_randomness(
     Ok((enc, Sender { context }))
 }
 
+/// Sets up a Base-mode recipient context by decapsulating `enc`.
 pub fn new_recipient(
     sk: Box<dyn PrivateKey>,
     enc: &[u8],
@@ -202,7 +252,13 @@ pub fn new_recipient(
     Ok(Recipient { context })
 }
 
+// ---------------------------------------------------------------------------
+// Sender methods
+// ---------------------------------------------------------------------------
+
 impl Sender {
+    /// Encrypts `plaintext` with `aad`, advances the sequence counter, and
+    /// returns the ciphertext (including the authentication tag).
     pub fn seal(&mut self, aad: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         if self.context.seq_num == u64::MAX {
             return Err(Error::SequenceNumberOverflow);
@@ -214,7 +270,6 @@ impl Sender {
         let aead = self.context.aead.as_ref().ok_or(Error::ExportOnly)?;
         let aad = Aad::new(aad.to_vec());
         let plaintext = Plaintext::new(plaintext.to_vec());
-        // Flat, scoped exposure is preferred over nested with_secret closures for paired inputs.
         let ciphertext = {
             let plaintext_bytes = plaintext.expose_secret();
             let aad_bytes = aad.expose_secret();
@@ -224,6 +279,8 @@ impl Sender {
         Ok(ciphertext)
     }
 
+    /// Exports keying material of the requested `length` using the HPKE
+    /// secret exporter (RFC 9180 section 5.3).
     pub fn export(&self, exporter_context: &[u8], length: usize) -> Result<Vec<u8>, Error> {
         if length > u16::MAX as usize {
             return Err(Error::ExporterLengthTooLarge);
@@ -232,7 +289,13 @@ impl Sender {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Recipient methods
+// ---------------------------------------------------------------------------
+
 impl Recipient {
+    /// Decrypts and verifies `ciphertext` against `aad`, then advances the
+    /// sequence counter.
     pub fn open(&mut self, aad: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         if self.context.seq_num == u64::MAX {
             return Err(Error::SequenceNumberOverflow);
@@ -252,6 +315,7 @@ impl Recipient {
         Ok(plaintext.with_secret(|bytes| bytes.to_vec()))
     }
 
+    /// Exports keying material (same semantics as [`Sender::export`]).
     pub fn export(&self, exporter_context: &[u8], length: usize) -> Result<Vec<u8>, Error> {
         if length > u16::MAX as usize {
             return Err(Error::ExporterLengthTooLarge);
@@ -260,7 +324,12 @@ impl Recipient {
     }
 }
 
-// Single-use Seal
+// ---------------------------------------------------------------------------
+// Single-shot helpers
+// ---------------------------------------------------------------------------
+
+/// One-shot encrypt: sets up a sender context, seals, and returns
+/// `enc || ciphertext || tag`.
 pub fn seal(
     pk: Box<dyn PublicKey>,
     kdf: Box<dyn Kdf>,
@@ -276,7 +345,8 @@ pub fn seal(
     Ok(ciphertext)
 }
 
-// Single-use Open
+/// One-shot decrypt: splits `ciphertext` into `enc || ct`, sets up a
+/// recipient context, and opens.
 pub fn open(
     sk: Box<dyn PrivateKey>,
     kdf: Box<dyn Kdf>,
@@ -295,13 +365,15 @@ pub fn open(
     r.open(aad, ct)
 }
 
-/// Computes the HPKE base_nonce counter-mode nonce for a sequence number (last 8 bytes XORed).
-/// Generic for any HPKE AEAD context (12-byte nonce assumed, e.g., ChaCha20Poly1305).
-/// See RFC 9180 Section 5.3.
+// ---------------------------------------------------------------------------
+// Nonce computation
+// ---------------------------------------------------------------------------
+
+/// Computes the per-message nonce by XOR-ing the sequence number into the
+/// last 8 bytes of `base_nonce` (RFC 9180 section 5.2).
 pub fn compute_nonce(base_nonce: &[u8; 12], seq: u64) -> [u8; 12] {
     let mut nonce = *base_nonce;
     let seq_bytes = seq.to_be_bytes();
-    // XOR in the last 8 bytes (positions 4..12)
     for i in 0..8 {
         nonce[4 + i] ^= seq_bytes[i];
     }

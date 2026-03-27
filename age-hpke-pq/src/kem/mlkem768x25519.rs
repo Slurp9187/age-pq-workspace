@@ -1,4 +1,10 @@
-//! ML-KEM-768 + X25519 variant implementation
+//! Hybrid ML-KEM-768 + X25519 orchestration module.
+//!
+//! This module implements the concrete X-Wing KEM variant specified in
+//! `hpke-pq.md` (MLKEM768-X25519). It owns the hybrid wire format, key
+//! types, encapsulation/decapsulation flow, and the call into the SHA3-256
+//! combiner. Primitive-specific helpers live in [`super::ml_kem`] and
+//! [`super::x25519`]; shared traits and constants live in [`super::common`].
 
 use super::combiner;
 use super::ml_kem;
@@ -23,38 +29,63 @@ use rand::{TryCryptoRng, TryRngCore};
 
 use x25519_dalek::PublicKey as X25519PublicKey;
 
+// ---------------------------------------------------------------------------
+// Wire-format size constants
+// ---------------------------------------------------------------------------
+
+/// ML-KEM-768 public-key size, re-exported from the primitive helper.
 const MLKEM768_PK_SIZE: usize = ml_kem::MLKEM768_PK_SIZE;
+/// ML-KEM-768 ciphertext size, re-exported from the primitive helper.
 pub const MLKEM768_CT_SIZE: usize = ml_kem::MLKEM768_CT_SIZE;
 
-/// KEM suite ID prefix per RFC 9180 §5.3 ("KEM" || KEM_ID).
+/// KEM suite ID prefix per RFC 9180 section 5.3 (`"KEM" || KEM_ID`).
 const KEM_SUITE_PREFIX: &[u8; 3] = b"KEM";
-/// Label used in the DeriveKeyPair operation per RFC 9180 §7.1.3.
+/// Label for the `DeriveKeyPair` operation per RFC 9180 section 7.1.3.
 const KEM_DERIVE_KEY_PAIR_LABEL: &[u8; 13] = b"DeriveKeyPair";
 
-fn expand_key(seed: &[u8; MASTER_SEED_SIZE]) -> (MlKem768KeyPair, [u8; CURVE_SEED_SIZE]) {
-    let (ml_seed, x_bytes) = expand_seed(seed);
-    let kp = ml_kem::keypair_from_seed(ml_seed);
-    (kp, x_bytes)
-}
+// ---------------------------------------------------------------------------
+// Composite size constants (pk_m || pk_x, ct_m || ct_x)
+// ---------------------------------------------------------------------------
 
+/// Serialized encapsulation-key (public key) size: `pk_m || pk_x`.
 pub const MLKEM768X25519_ENCAPSULATION_KEY_SIZE: usize = MLKEM768_PK_SIZE + x25519::X25519_KEY_SIZE;
+/// Serialized decapsulation-key size (seed only).
 pub const MLKEM768X25519_DECAPSULATION_KEY_SIZE: usize = MASTER_SEED_SIZE;
+/// Serialized ciphertext size: `ct_m || ct_x`.
 pub const MLKEM768X25519_CIPHERTEXT_SIZE: usize = MLKEM768_CT_SIZE + x25519::X25519_KEY_SIZE;
 
+// ---------------------------------------------------------------------------
+// Key and ciphertext types
+// ---------------------------------------------------------------------------
+
+/// Hybrid encapsulation (public) key: ML-KEM-768 public key + X25519 point.
 pub struct EncapsulationKey {
+    /// ML-KEM-768 public key (1184 bytes, wrapped in a `Fixed` alias).
     pk_m: MlKem768PublicKey1184,
+    /// X25519 public key (32 bytes).
     pk_x: X25519PublicKey,
 }
 
+/// Hybrid decapsulation (private) key, stored as a 32-byte seed.
+///
+/// The full ML-KEM keypair and X25519 scalar are re-derived on demand via
+/// [`expand_seed`]. Zeroized on drop.
 #[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct DecapsulationKey {
     seed: [u8; MASTER_SEED_SIZE],
 }
 
+/// Hybrid ciphertext: ML-KEM-768 ciphertext + X25519 ephemeral public key.
 pub struct Ciphertext {
+    /// ML-KEM-768 ciphertext (1088 bytes, wrapped in a `Fixed` alias).
     ct_m: MlKem768Ciphertext1088,
+    /// X25519 ephemeral public key (32 bytes).
     ct_x: X25519PublicKey,
 }
+
+// ---------------------------------------------------------------------------
+// Trait impls: equality and debug
+// ---------------------------------------------------------------------------
 
 impl PartialEq for EncapsulationKey {
     fn eq(&self, other: &Self) -> bool {
@@ -86,7 +117,29 @@ impl fmt::Debug for Ciphertext {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Expands a 32-byte master seed into an ML-KEM-768 keypair and raw X25519
+/// scalar bytes via [`expand_seed`].
+fn expand_key(seed: &[u8; MASTER_SEED_SIZE]) -> (MlKem768KeyPair, [u8; CURVE_SEED_SIZE]) {
+    let (ml_seed, x_bytes) = expand_seed(seed);
+    let kp = ml_kem::keypair_from_seed(ml_seed);
+    (kp, x_bytes)
+}
+
+// ---------------------------------------------------------------------------
+// EncapsulationKey — encapsulation paths
+// ---------------------------------------------------------------------------
+
 impl EncapsulationKey {
+    /// Shared inner encapsulation path used by both random and deterministic
+    /// entry points.
+    ///
+    /// 1. ML-KEM-768 encapsulate with `ml_rand_bytes`.
+    /// 2. X25519 ephemeral DH with `ephemeral_bytes`.
+    /// 3. SHA3-256 combiner producing the final [`SharedSecret`](crate::SharedSecret).
     fn encapsulate_inner(
         &self,
         ml_rand_bytes: [u8; 32],
@@ -100,7 +153,7 @@ impl EncapsulationKey {
 
         let ct_x_bytes = X25519PublicKey32::from(ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(self.pk_x.to_bytes());
-        // Preferred access pattern for low-level combiners: expose once in a tight scope.
+
         let ss = {
             let ss_m_bytes = ss_m.expose_secret();
             let ss_x_bytes = ss_x.expose_secret();
@@ -115,6 +168,7 @@ impl EncapsulationKey {
         ))
     }
 
+    /// Serializes the encapsulation key as `pk_m || pk_x`.
     #[must_use]
     pub fn to_bytes(&self) -> [u8; MLKEM768X25519_ENCAPSULATION_KEY_SIZE] {
         let mut buffer = [0u8; MLKEM768X25519_ENCAPSULATION_KEY_SIZE];
@@ -124,7 +178,7 @@ impl EncapsulationKey {
         buffer
     }
 
-    /// Random encapsulation using a caller-provided cryptographically secure RNG.
+    /// Encapsulates with fresh randomness from the provided CSPRNG.
     pub fn encapsulate<R: TryRngCore + TryCryptoRng>(
         &self,
         rng: &mut R,
@@ -136,17 +190,17 @@ impl EncapsulationKey {
         self.encapsulate_inner(ml_rand_bytes, ephemeral_bytes)
     }
 
-    /// Public getter for pk_m
+    /// Returns the raw ML-KEM-768 public-key bytes.
     pub fn pk_m(&self) -> &[u8; MLKEM768_PK_SIZE] {
         self.pk_m.expose_secret()
     }
 
-    /// Public getter for pk_x
+    /// Returns a reference to the X25519 public key.
     pub fn pk_x(&self) -> &X25519PublicKey {
         &self.pk_x
     }
 
-    /// Deterministic generation from 32-byte seed
+    /// Deterministically derives an encapsulation key from a 32-byte seed.
     pub fn from_seed(seed: &[u8; MASTER_SEED_SIZE]) -> CrateResult<Self> {
         let seed = Seed32::from(*seed);
         seed.with_secret(|seed_bytes| {
@@ -163,14 +217,10 @@ impl EncapsulationKey {
         })
     }
 
-    /// Deterministic encapsulation using a fixed 64-byte encapsulation seed.
+    /// Deterministic encapsulation for known-answer tests.
     ///
-    /// The `eseed` is interpreted as:
-    /// - First 32 bytes: randomness for ML-KEM-768 encapsulation
-    /// - Last 32 bytes:  X25519 ephemeral secret key (clamped per RFC 7748)
-    ///
-    /// This allows reproducible known-answer tests (KATs) and matches the
-    /// derandomized encapsulation used in test vectors.
+    /// `eseed` is split as `eseed[0..32]` for ML-KEM-768 randomness and
+    /// `eseed[32..64]` for the X25519 ephemeral scalar.
     pub fn encapsulate_derand(
         &self,
         eseed: &[u8; 64],
@@ -183,16 +233,23 @@ impl EncapsulationKey {
     }
 }
 
+// ---------------------------------------------------------------------------
+// EncapsulationKey — construction and parsing
+// ---------------------------------------------------------------------------
+
 impl EncapsulationKey {
+    /// Constructs from pre-wrapped components (crate-internal).
     pub(crate) fn from_wrapped_components(pk_m: MlKem768PublicKey1184, pk_x: X25519PublicKey) -> Self {
         Self { pk_m, pk_x }
     }
 
+    /// Constructs from raw byte components.
     pub fn from_components(pk_m: [u8; MLKEM768_PK_SIZE], pk_x: X25519PublicKey) -> Self {
         Self::from_wrapped_components(MlKem768PublicKey1184::from(pk_m), pk_x)
     }
 }
 
+/// Parses `pk_m || pk_x` from a byte slice.
 impl TryFrom<&[u8]> for EncapsulationKey {
     type Error = Error;
 
@@ -214,7 +271,7 @@ impl TryFrom<&[u8]> for EncapsulationKey {
     }
 }
 
-// Backward-compatible impl for &[u8; SIZE]
+/// Fixed-size array convenience; delegates to the slice path.
 impl TryFrom<&[u8; MLKEM768X25519_ENCAPSULATION_KEY_SIZE]> for EncapsulationKey {
     type Error = Error;
 
@@ -223,7 +280,12 @@ impl TryFrom<&[u8; MLKEM768X25519_ENCAPSULATION_KEY_SIZE]> for EncapsulationKey 
     }
 }
 
+// ---------------------------------------------------------------------------
+// DecapsulationKey
+// ---------------------------------------------------------------------------
+
 impl DecapsulationKey {
+    /// Constructs from a 32-byte seed.
     pub fn from_seed(seed: &[u8; MASTER_SEED_SIZE]) -> Self {
         let seed = Seed32::from(*seed);
         Self {
@@ -231,7 +293,7 @@ impl DecapsulationKey {
         }
     }
 
-    /// Generate a new decapsulation key using a caller-provided cryptographically secure RNG.
+    /// Generates a fresh decapsulation key from a CSPRNG.
     pub fn generate<R: TryRngCore + TryCryptoRng>(rng: &mut R) -> Self {
         let seed = Seed32::from_rng(rng)
             .expect("Failed to generate random bytes for decapsulation key seed");
@@ -240,11 +302,12 @@ impl DecapsulationKey {
         }
     }
 
-    /// Get the seed as bytes (for HPKE integration).
+    /// Returns the raw seed bytes (for HPKE key-schedule integration).
     pub fn bytes(&self) -> [u8; MASTER_SEED_SIZE] {
         self.seed
     }
 
+    /// Derives the matching encapsulation (public) key.
     pub fn encapsulation_key(&self) -> CrateResult<EncapsulationKey> {
         let seed = Seed32::from(self.seed);
         let (kp, x_bytes) = seed.with_secret(expand_key);
@@ -262,6 +325,11 @@ impl DecapsulationKey {
         ))
     }
 
+    /// Decapsulates a hybrid ciphertext and returns the shared secret.
+    ///
+    /// Re-derives the ML-KEM keypair and X25519 scalar from the stored seed,
+    /// then feeds both component shared secrets plus the X25519 ciphertext and
+    /// public key into the SHA3-256 combiner.
     pub fn decapsulate(&self, ct: &Ciphertext) -> CrateResult<crate::SharedSecret> {
         let seed = Seed32::from(self.seed);
         let (kp, x_bytes) = seed.with_secret(expand_key);
@@ -271,7 +339,7 @@ impl DecapsulationKey {
         let ss_x = SharedSecret32::from(ss_x_raw);
         let ct_x_bytes = X25519PublicKey32::from(ct.ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(pk_x.to_bytes());
-        // Preferred access pattern for low-level combiners: expose once in a tight scope.
+
         let ss = {
             let ss_m_bytes = ss_m.expose_secret();
             let ss_x_bytes = ss_x.expose_secret();
@@ -284,7 +352,12 @@ impl DecapsulationKey {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Ciphertext
+// ---------------------------------------------------------------------------
+
 impl Ciphertext {
+    /// Serializes the ciphertext as `ct_m || ct_x`.
     #[must_use]
     pub fn to_bytes(&self) -> [u8; MLKEM768X25519_CIPHERTEXT_SIZE] {
         let mut buffer = [0u8; MLKEM768X25519_CIPHERTEXT_SIZE];
@@ -294,24 +367,28 @@ impl Ciphertext {
         buffer
     }
 
+    /// Constructs from pre-wrapped components (crate-internal).
     pub(crate) fn from_wrapped_components(ct_m: MlKem768Ciphertext1088, ct_x: X25519PublicKey) -> Self {
         Self { ct_m, ct_x }
     }
 
+    /// Constructs from raw byte components.
     pub fn from_components(ct_m: [u8; MLKEM768_CT_SIZE], ct_x: X25519PublicKey) -> Self {
         Self::from_wrapped_components(MlKem768Ciphertext1088::from(ct_m), ct_x)
     }
 
-    /// Raw ML-KEM-768 ciphertext bytes (for libcrux).
+    /// Returns the raw ML-KEM-768 ciphertext bytes.
     pub fn ct_m(&self) -> &[u8; MLKEM768_CT_SIZE] {
         self.ct_m.expose_secret()
     }
 
+    /// Returns a reference to the X25519 ephemeral public key.
     pub fn ct_x(&self) -> &X25519PublicKey {
         &self.ct_x
     }
 }
 
+/// Parses `ct_m || ct_x` from a byte slice.
 impl TryFrom<&[u8]> for Ciphertext {
     type Error = Error;
 
@@ -332,7 +409,7 @@ impl TryFrom<&[u8]> for Ciphertext {
     }
 }
 
-// Backward-compatible impl for &[u8; SIZE]
+/// Fixed-size array convenience; delegates to the slice path.
 impl TryFrom<&[u8; MLKEM768X25519_CIPHERTEXT_SIZE]> for Ciphertext {
     type Error = Error;
 
@@ -341,7 +418,11 @@ impl TryFrom<&[u8; MLKEM768X25519_CIPHERTEXT_SIZE]> for Ciphertext {
     }
 }
 
-/// Generate a fresh keypair using a caller-provided cryptographically secure RNG.
+// ---------------------------------------------------------------------------
+// Standalone keypair generation
+// ---------------------------------------------------------------------------
+
+/// Generates a fresh hybrid keypair from a CSPRNG.
 pub fn generate_keypair<R: TryRngCore + TryCryptoRng>(
     rng: &mut R,
 ) -> CrateResult<(DecapsulationKey, EncapsulationKey)> {
@@ -350,7 +431,11 @@ pub fn generate_keypair<R: TryRngCore + TryCryptoRng>(
     Ok((sk, pk))
 }
 
-// X-Wing KEM implementation
+// ---------------------------------------------------------------------------
+// MlKem768X25519 — HPKE Kem trait implementation
+// ---------------------------------------------------------------------------
+
+/// Unit struct implementing the [`Kem`] trait for MLKEM768-X25519.
 #[derive(Clone)]
 pub struct MlKem768X25519;
 
@@ -380,6 +465,7 @@ impl Kem for MlKem768X25519 {
         Ok(Box::new(XWingPrivateKey { sk }))
     }
 
+    /// Deterministic key derivation per RFC 9180 section 7.1.3.
     fn derive_key_pair(&self, ikm: &[u8]) -> CrateResult<Box<dyn PrivateKey>> {
         let suite_id = [KEM_SUITE_PREFIX.as_ref(), &KEM_ID.to_be_bytes()].concat();
         let dk = shake256_labeled_derive(&suite_id, ikm, KEM_DERIVE_KEY_PAIR_LABEL, &[], PRIVATE_KEY_SIZE)?;
@@ -395,7 +481,11 @@ impl Kem for MlKem768X25519 {
     }
 }
 
-// PublicKey implementation using EncapsulationKey
+// ---------------------------------------------------------------------------
+// HPKE trait-object wrappers
+// ---------------------------------------------------------------------------
+
+/// Wraps [`EncapsulationKey`] for the HPKE [`PublicKey`] trait.
 pub struct XWingPublicKey {
     pk: EncapsulationKey,
 }
@@ -414,15 +504,9 @@ impl PublicKey for XWingPublicKey {
         testing_randomness: Option<&[u8]>,
     ) -> CrateResult<(Vec<u8>, crate::SharedSecret)> {
         let (ct, ss) = if let Some(rand) = testing_randomness {
-            if rand.len() >= 32 {
-                // Use provided randomness for deterministic encapsulation if >= 64 bytes
-                if rand.len() >= 64 {
-                    self.pk
-                        .encapsulate_derand(rand.try_into().map_err(|_| Error::ArraySizeError)?)?
-                } else {
-                    // Not enough for full deterministic, but we have some - this shouldn't happen in current logic
-                    return Err(Error::InsufficientTestingRandomness);
-                }
+            if rand.len() >= 64 {
+                self.pk
+                    .encapsulate_derand(rand.try_into().map_err(|_| Error::ArraySizeError)?)?
             } else {
                 return Err(Error::InsufficientTestingRandomness);
             }
@@ -435,7 +519,7 @@ impl PublicKey for XWingPublicKey {
     }
 }
 
-// PrivateKey implementation using DecapsulationKey
+/// Wraps [`DecapsulationKey`] for the HPKE [`PrivateKey`] trait.
 pub struct XWingPrivateKey {
     sk: DecapsulationKey,
 }

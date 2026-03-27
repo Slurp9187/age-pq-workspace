@@ -1,3 +1,17 @@
+//! HPKE KDF abstraction layer.
+//!
+//! Provides a trait-object interface over key derivation functions so that
+//! the HPKE key schedule in [`crate::hpke`] stays algorithm-agnostic.
+//!
+//! Two families are supported:
+//!
+//! * **Two-stage (HKDF)** -- `labeled_extract` + `labeled_expand` per
+//!   RFC 9180 section 4. Registered variants: HKDF-SHA256, HKDF-SHA384,
+//!   HKDF-SHA512.
+//! * **One-stage (SHAKE)** -- a single `labeled_derive` call that absorbs
+//!   all inputs into a SHAKE XOF and squeezes the output, as specified in
+//!   `draft-ietf-hpke-pq-03`. Registered variants: SHAKE128, SHAKE256.
+
 use crate::aliases::{LabeledIkm, LabeledOkm, Salt};
 use crate::Error;
 use byteorder::{BigEndian, ByteOrder};
@@ -7,20 +21,43 @@ use sha2::{Sha256, Sha384, Sha512};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::{Shake128, Shake256};
 use std::result::Result;
+
+/// Version label prepended to every labeled operation (`"HPKE-v1"`).
 pub(crate) const HPKE_VERSION_LABEL: &[u8; 7] = b"HPKE-v1";
 
-/// HPKE KDF algorithm IDs per RFC 9180 Table 3.
+// ---------------------------------------------------------------------------
+// Algorithm identifiers (RFC 9180 Table 3 + draft-ietf-hpke-pq-03)
+// ---------------------------------------------------------------------------
+
+/// HKDF-SHA256 (`KDF_ID = 0x0001`).
 pub(crate) const KDF_HKDF_SHA256_ID: u16 = 0x0001;
+/// HKDF-SHA384 (`KDF_ID = 0x0002`).
 pub(crate) const KDF_HKDF_SHA384_ID: u16 = 0x0002;
+/// HKDF-SHA512 (`KDF_ID = 0x0003`).
 pub(crate) const KDF_HKDF_SHA512_ID: u16 = 0x0003;
+/// SHAKE128 one-stage KDF (`KDF_ID = 0x0010`).
 pub(crate) const KDF_SHAKE128_ID: u16 = 0x0010;
+/// SHAKE256 one-stage KDF (`KDF_ID = 0x0011`).
 pub(crate) const KDF_SHAKE256_ID: u16 = 0x0011;
 
-// KDF trait matching Go's KDF interface
+// ---------------------------------------------------------------------------
+// Trait
+// ---------------------------------------------------------------------------
+
+/// KDF algorithm descriptor used by the HPKE key schedule.
+///
+/// Implementations must support either the one-stage path (`labeled_derive`)
+/// or the two-stage path (`labeled_extract` + `labeled_expand`), returning
+/// [`Error::InvalidOperationForKdf`] for the unsupported family.
 pub trait Kdf: Send + Sync {
+    /// RFC 9180 KDF identifier.
     fn id(&self) -> u16;
+    /// Returns `true` for one-stage (SHAKE) KDFs.
     fn one_stage(&self) -> bool;
-    fn size(&self) -> usize; // Nh
+    /// Output hash length in bytes (`Nh`).
+    fn size(&self) -> usize;
+
+    /// One-stage labeled derivation (SHAKE path).
     fn labeled_derive(
         &self,
         suite_id: &[u8],
@@ -29,6 +66,8 @@ pub trait Kdf: Send + Sync {
         context: &[u8],
         length: u16,
     ) -> Result<Vec<u8>, Error>;
+
+    /// Labeled extract step (HKDF path).
     fn labeled_extract(
         &self,
         suite_id: &[u8],
@@ -36,6 +75,8 @@ pub trait Kdf: Send + Sync {
         label: &str,
         input_key: &[u8],
     ) -> Result<Vec<u8>, Error>;
+
+    /// Labeled expand step (HKDF path).
     fn labeled_expand(
         &self,
         suite_id: &[u8],
@@ -46,7 +87,11 @@ pub trait Kdf: Send + Sync {
     ) -> Result<Vec<u8>, Error>;
 }
 
-// Factory function matching Go's NewKDF
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+/// Resolves a KDF algorithm by its RFC 9180 identifier.
 pub fn new_kdf(id: u16) -> Result<Box<dyn Kdf>, Error> {
     match id {
         KDF_HKDF_SHA256_ID => Ok(Box::new(HkdfSha256)),
@@ -58,13 +103,26 @@ pub fn new_kdf(id: u16) -> Result<Box<dyn Kdf>, Error> {
     }
 }
 
-// HKDF-SHA256
+// ---------------------------------------------------------------------------
+// HKDF implementations (two-stage)
+// ---------------------------------------------------------------------------
+
+/// HKDF-SHA256 KDF (`Nh = 32`).
 pub struct HkdfSha256;
-// HKDF-SHA384
+/// HKDF-SHA384 KDF (`Nh = 48`).
 pub struct HkdfSha384;
-// HKDF-SHA512
+/// HKDF-SHA512 KDF (`Nh = 64`).
 pub struct HkdfSha512;
 
+/// Generates `Kdf` trait implementations for all three HKDF-SHA variants.
+///
+/// `labeled_extract` builds `labeled_ikm = "HPKE-v1" || suite_id || label || ikm`
+/// and calls `HKDF-Extract(salt, labeled_ikm)`.
+///
+/// `labeled_expand` builds `labeled_info = I2OSP(L, 2) || "HPKE-v1" || suite_id || label || info`
+/// and calls `HKDF-Expand(prk, labeled_info, L)`.
+///
+/// `labeled_derive` is unsupported for HKDF variants.
 macro_rules! impl_hkdf_kdf {
     ($kdf_ty:ty, $hash_ty:ty, $id:expr, $size:expr) => {
         impl Kdf for $kdf_ty {
@@ -144,7 +202,14 @@ impl_hkdf_kdf!(HkdfSha256, Sha256, KDF_HKDF_SHA256_ID, 32);
 impl_hkdf_kdf!(HkdfSha384, Sha384, KDF_HKDF_SHA384_ID, 48);
 impl_hkdf_kdf!(HkdfSha512, Sha512, KDF_HKDF_SHA512_ID, 64);
 
-// SHAKE128
+// ---------------------------------------------------------------------------
+// SHAKE implementations (one-stage)
+// ---------------------------------------------------------------------------
+
+/// SHAKE128 one-stage KDF (`Nh = 32`).
+///
+/// Absorbs `input_key || "HPKE-v1" || suite_id || I2OSP(len(label), 2) || label || I2OSP(L, 2) || context`
+/// and squeezes `L` bytes.
 pub struct Shake128Kdf;
 
 impl Kdf for Shake128Kdf {
@@ -206,7 +271,10 @@ impl Kdf for Shake128Kdf {
     }
 }
 
-// SHAKE256
+/// SHAKE256 one-stage KDF (`Nh = 64`).
+///
+/// Same absorption order as [`Shake128Kdf`] but uses SHAKE256 and a larger
+/// output hash length.
 pub struct Shake256Kdf;
 
 impl Kdf for Shake256Kdf {
@@ -219,7 +287,7 @@ impl Kdf for Shake256Kdf {
     }
 
     fn size(&self) -> usize {
-        64 // As in Go
+        64
     }
 
     fn labeled_derive(

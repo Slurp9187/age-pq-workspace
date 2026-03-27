@@ -1,3 +1,10 @@
+//! HPKE AEAD abstraction layer.
+//!
+//! Provides a trait-object interface over authenticated encryption algorithms
+//! so that the HPKE key schedule in [`crate::hpke`] stays algorithm-agnostic.
+//! Currently the only registered algorithm is ChaCha20-Poly1305 (RFC 9180
+//! Table 5, `AEAD_ID = 0x0003`).
+
 use crate::aliases::{AeadKey32, Nonce12};
 use crate::Error;
 use aead::{Aead as CryptoAead, KeyInit, Payload};
@@ -5,29 +12,55 @@ use chacha20poly1305::{ChaCha20Poly1305, Key as ChaKey, Nonce as ChaNonce};
 use secure_gate::RevealSecret;
 use std::result::Result;
 
-/// HPKE AEAD algorithm ID for ChaCha20-Poly1305 (RFC 9180 Table 5).
+// ---------------------------------------------------------------------------
+// Algorithm constants (RFC 9180 Table 5)
+// ---------------------------------------------------------------------------
+
+/// AEAD algorithm ID for ChaCha20-Poly1305.
 pub(crate) const CHACHA20_POLY1305_ID: u16 = 0x0003;
 const CHACHA20_POLY1305_KEY_SIZE: usize = 32;
 const CHACHA20_POLY1305_NONCE_SIZE: usize = 12;
 const CHACHA20_POLY1305_TAG_SIZE: usize = 16;
 
-// Trait for CipherAead, matching Go's cipher.AEAD
+// ---------------------------------------------------------------------------
+// Traits
+// ---------------------------------------------------------------------------
+
+/// An instantiated AEAD cipher bound to a specific key.
+///
+/// Mirrors the Go `cipher.AEAD` interface: nonce-based seal/open with
+/// associated data.
 pub trait CipherAead {
+    /// Returns the expected nonce length in bytes.
     fn nonce_size(&self) -> usize;
+    /// Encrypts `plaintext` and authenticates `aad`, returning `ciphertext || tag`.
     fn seal(&self, nonce: &[u8], plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error>;
+    /// Decrypts and verifies `ciphertext || tag` against `aad`.
     fn open(&self, nonce: &[u8], ciphertext: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error>;
 }
 
-// Trait for AEAD, matching Go's AEAD interface
+/// AEAD algorithm descriptor used by the HPKE key schedule.
+///
+/// Each implementation advertises its `id`, sizes, and provides a factory
+/// method ([`Aead::aead`]) that keys a [`CipherAead`].
 pub trait Aead {
+    /// RFC 9180 AEAD identifier.
     fn id(&self) -> u16;
+    /// Instantiates a keyed cipher from raw key bytes.
     fn aead(&self, key: &[u8]) -> Result<Box<dyn CipherAead>, Error>;
+    /// Key length in bytes.
     fn key_size(&self) -> usize;
+    /// Nonce length in bytes.
     fn nonce_size(&self) -> usize;
+    /// Authentication tag length in bytes.
     fn tag_size(&self) -> usize;
 }
 
-// Factory function matching NewAEAD
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+/// Resolves an AEAD algorithm by its RFC 9180 identifier.
 pub fn new_aead(id: u16) -> Result<Box<dyn Aead>, Error> {
     match id {
         CHACHA20_POLY1305_ID => Ok(Box::new(ChaCha20Poly1305Aead)),
@@ -35,7 +68,11 @@ pub fn new_aead(id: u16) -> Result<Box<dyn Aead>, Error> {
     }
 }
 
-// ChaCha20Poly1305
+// ---------------------------------------------------------------------------
+// ChaCha20-Poly1305 implementation
+// ---------------------------------------------------------------------------
+
+/// Algorithm descriptor for ChaCha20-Poly1305 (`AEAD_ID = 0x0003`).
 pub struct ChaCha20Poly1305Aead;
 
 impl Aead for ChaCha20Poly1305Aead {
@@ -63,7 +100,7 @@ impl Aead for ChaCha20Poly1305Aead {
     }
 }
 
-// Implementation for ChaCha20Poly1305
+/// Keyed ChaCha20-Poly1305 cipher.
 struct ChaChaCipher {
     cipher: ChaCha20Poly1305,
 }
