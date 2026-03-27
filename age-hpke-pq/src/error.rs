@@ -59,6 +59,18 @@ pub enum Error {
     #[error("Invalid X25519 private key")]
     InvalidX25519PrivateKey,
 
+    /// Invalid X448 public key format.
+    #[error("Invalid X448 public key")]
+    InvalidX448PublicKey,
+
+    /// Invalid X448 private key.
+    #[error("Invalid X448 private key")]
+    InvalidX448PrivateKey,
+
+    /// X448 Diffie-Hellman produced a low-order point.
+    #[error("X448 Diffie-Hellman failed (low-order point)")]
+    X448DiffieHellmanFailed,
+
     /// Array size conversion failed.
     #[error("Array size conversion failed")]
     ArraySizeError,

@@ -12,6 +12,12 @@ license.workspace = true
 authors.workspace = true
 include.workspace = true
 
+[features]
+default = ["mlkem768"]
+mlkem768 = ["libcrux-ml-kem/mlkem768"]
+mlkem512 = ["libcrux-ml-kem/mlkem512"]
+mlkem1024 = ["libcrux-ml-kem/mlkem1024"]
+
 [dependencies]
 # Cryptographic dependencies - pinned to specific versions for security and reproducibility
 # default-features off: upstream `std` enables `tls_codec/std` while `tls_codec` is optional (`codec`),
@@ -20,6 +26,7 @@ libcrux-ml-kem = { version = "0.0.8", default-features = false, features = ["mlk
 sha3 = { version = "0.10", default-features = false }
 
 x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize", "static_secrets"] }
+x448 = "0.6.0"
 
 zeroize = { version = "1.8", features = ["zeroize_derive"] }
 thiserror = "2.0"

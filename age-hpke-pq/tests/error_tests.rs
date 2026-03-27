@@ -71,7 +71,7 @@ fn test_decryption_failed() {
     let ciphertext = cipher.seal(&nonce, plaintext, aad).unwrap();
 
     // Tamper with the ciphertext to force decryption failure
-    let mut tampered = ciphertext.clone();
+    let mut tampered = ciphertext;
     tampered[0] ^= 1;
 
     let result = cipher.open(&nonce, &tampered, aad);

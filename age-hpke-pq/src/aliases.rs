@@ -20,6 +20,12 @@ fixed_alias!(
 );
 fixed_alias!(pub(crate) X25519Secret32, 32, "Raw X25519 scalar (clamped).");
 fixed_alias!(
+    pub(crate) X448PublicKey56,
+    56,
+    "Raw X448 public key / ephemeral point."
+);
+fixed_alias!(pub(crate) X448Secret56, 56, "Raw X448 scalar (pre-clamping).");
+fixed_alias!(
     pub(crate) MlKem768PublicKey1184,
     1184,
     "Raw ML-KEM-768 public key."
@@ -28,6 +34,30 @@ fixed_alias!(
     pub(crate) MlKem768Ciphertext1088,
     1088,
     "Raw ML-KEM-768 ciphertext."
+);
+#[cfg(feature = "mlkem512")]
+fixed_alias!(
+    pub(crate) MlKem512PublicKey800,
+    800,
+    "Raw ML-KEM-512 public key."
+);
+#[cfg(feature = "mlkem512")]
+fixed_alias!(
+    pub(crate) MlKem512Ciphertext768,
+    768,
+    "Raw ML-KEM-512 ciphertext."
+);
+#[cfg(feature = "mlkem1024")]
+fixed_alias!(
+    pub(crate) MlKem1024PublicKey1568,
+    1568,
+    "Raw ML-KEM-1024 public key."
+);
+#[cfg(feature = "mlkem1024")]
+fixed_alias!(
+    pub(crate) MlKem1024Ciphertext1568,
+    1568,
+    "Raw ML-KEM-1024 ciphertext."
 );
 fixed_alias!(
     pub(crate) ExpandedKeyMaterial96,

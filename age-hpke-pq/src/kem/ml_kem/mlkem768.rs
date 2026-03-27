@@ -24,7 +24,7 @@ pub(crate) fn encapsulate_with_seed(
     pk_m: &MlKem768PublicKey1184,
     randomness: [u8; 32],
 ) -> CrateResult<([u8; MLKEM768_CT_SIZE], [u8; 32])> {
-    let pk_m = MlKem768PublicKey::from(*pk_m.expose_secret());
+    let pk_m = pk_m.with_secret(|bytes| MlKem768PublicKey::from(*bytes));
     let (ct_m, ss_m) = encapsulate(&pk_m, randomness);
     let ct_m_bytes: [u8; MLKEM768_CT_SIZE] =
         ct_m.as_ref().try_into().map_err(|_| Error::ArraySizeError)?;
@@ -37,12 +37,13 @@ pub(crate) fn decapsulate_with_keypair(
     ct_m: &MlKem768Ciphertext1088,
 ) -> [u8; 32] {
     let sk_m = kp.private_key();
-    let ct_m = MlKem768Ciphertext::from(*ct_m.expose_secret());
+    let ct_m = ct_m.with_secret(|bytes| MlKem768Ciphertext::from(*bytes));
     decapsulate(sk_m, &ct_m)
 }
 
 /// Minimal parse/shape validation for ML-KEM public-key bytes.
 pub(crate) fn validate_public_key(pk_m: &MlKem768PublicKey1184) {
-    let mlkem_pk = MlKem768PublicKey::from(*pk_m.expose_secret());
-    let _ = mlkem_pk.as_ref();
+    pk_m.with_secret(|bytes| {
+        let _ = MlKem768PublicKey::from(*bytes).as_ref();
+    });
 }
