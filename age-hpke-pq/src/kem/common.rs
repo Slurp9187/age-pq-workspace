@@ -1,4 +1,4 @@
-//! Common traits and helper functions shared across X-Wing KEM variants.
+//! Common traits, constants, and helper functions for the X-Wing KEM.
 
 use crate::aliases::{ExpandedKeyMaterial96, X25519Secret32};
 use crate::error::{Error, Result as CrateResult};
@@ -8,48 +8,84 @@ use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
 use secure_gate::{RevealSecret, RevealSecretMut};
 use std::any::Any;
-use x25519_dalek::StaticSecret;
 
-// Shared constants across variants
+/// HPKE KEM identifier for MLKEM768-X25519.
 pub const KEM_ID: u16 = 0x647a;
+/// Size in bytes of raw X25519 scalar seed material.
 pub const CURVE_SEED_SIZE: usize = 32;
+/// Size in bytes of an X25519 public key / group element encoding.
 pub const CURVE_POINT_SIZE: usize = 32;
+/// Size in bytes of the root seed used to derive the hybrid private key.
 pub const MASTER_SEED_SIZE: usize = 32;
+/// Serialized private-key size exposed by this crate.
 pub const PRIVATE_KEY_SIZE: usize = MASTER_SEED_SIZE;
+/// Size in bytes of ML-KEM seed material (`d || z`).
 pub const ML_KEM_SEED_SIZE: usize = 64;
 
-// Traits matching Go's interfaces
-
-/// Core KEM trait for X-Wing variants
+/// Core KEM trait implemented by X-Wing variants.
 pub trait Kem {
+    /// Returns the HPKE KEM identifier for this algorithm.
     fn id(&self) -> u16;
+
+    /// Generates a fresh private key using system randomness.
     fn generate_key(&self) -> CrateResult<Box<dyn PrivateKey>>;
+
+    /// Parses a serialized public key.
     fn new_public_key(&self, data: &[u8]) -> CrateResult<Box<dyn PublicKey>>;
+
+    /// Parses a serialized private key.
     fn new_private_key(&self, data: &[u8]) -> CrateResult<Box<dyn PrivateKey>>;
+
+    /// Deterministically derives a private key from input keying material.
     fn derive_key_pair(&self, ikm: &[u8]) -> CrateResult<Box<dyn PrivateKey>>;
+
+    /// Returns the ciphertext size in bytes for this KEM.
     fn enc_size(&self) -> usize;
+
+    /// Returns the serialized public-key size in bytes for this KEM.
     fn public_key_size(&self) -> usize;
 }
 
-/// Public key trait for X-Wing variants
+/// Trait implemented by X-Wing public keys.
 pub trait PublicKey: Send + Sync + Any {
+    /// Returns the KEM algorithm associated with this key.
     fn kem(&self) -> Box<dyn Kem>;
+
+    /// Serializes the public key to its wire format.
     fn bytes(&self) -> Vec<u8>;
+
+    /// Encapsulates to this public key and returns `(ciphertext, shared_secret)`.
+    ///
+    /// `testing_randomness`, when provided, is used only for deterministic tests.
     fn encap(
         &self,
         testing_randomness: Option<&[u8]>,
     ) -> CrateResult<(Vec<u8>, crate::SharedSecret)>;
 }
 
-/// Private key trait for X-Wing variants
+/// Trait implemented by X-Wing private keys.
 pub trait PrivateKey: Send + Sync + Any {
+    /// Returns the KEM algorithm associated with this key.
     fn kem(&self) -> Box<dyn Kem>;
+
+    /// Serializes the private key to its seed-based wire format.
     fn bytes(&self) -> CrateResult<Vec<u8>>;
+
+    /// Derives the matching public key.
     fn public_key(&self) -> Box<dyn PublicKey>;
+
+    /// Decapsulates `enc` and returns the resulting hybrid shared secret.
     fn decap(&self, enc: &[u8]) -> CrateResult<crate::SharedSecret>;
 }
 
-/// SHAKE256 labeled derive matching Go's shakeKDF.labeledDerive
+/// HPKE-style SHAKE256 labeled derive helper.
+///
+/// This matches the local `hpke-pq.md` / hpke-go `shakeKDF.labeledDerive`
+/// construction:
+///
+/// `input_key || HPKE_VERSION_LABEL || suite_id || len(label) || label || len(L) || context`
+///
+/// and then expands the result with `SHAKE256(..., L)`.
 pub fn shake256_labeled_derive(
     suite_id: &[u8],
     input_key: &[u8],
@@ -76,27 +112,13 @@ pub fn shake256_labeled_derive(
     Ok(out)
 }
 
-// X25519 helper functions matching Go's ecdh.X25519().NewPrivateKey
-pub fn x25519_new_private_key(seed: &[u8; CURVE_SEED_SIZE]) -> CrateResult<StaticSecret> {
-    let mut s = X25519Secret32::from(*seed);
-    s.with_secret_mut(clamp_x25519_scalar);
-    if s.with_secret(|scalar| *scalar == [0u8; CURVE_SEED_SIZE]) {
-        return Err(Error::InvalidX25519PrivateKey);
-    }
-    Ok(StaticSecret::from(s.with_secret(|scalar| *scalar)))
-}
-
-/// Clamp an X25519 scalar per RFC 7748 (matches hpke-go clamping).
-pub fn clamp_x25519_scalar(scalar: &mut [u8; CURVE_SEED_SIZE]) {
-    scalar[0] &= 248;
-    scalar[31] &= 127;
-    scalar[31] |= 64;
-}
-
-/// Seed expansion for ML-KEM + X25519 key generation.
+/// Expands a 32-byte hybrid seed into ML-KEM and X25519 key material.
 ///
-/// This mirrors `expandKey` in `hpke-pq.md`: SHAKE256(seed, 96) split into
-/// 64 bytes for ML-KEM (`d || z`) and 32 bytes for X25519 private key material.
+/// This mirrors `expandKey` in `hpke-pq.md`: `SHAKE256(seed, 96)` split into
+/// 64 bytes for ML-KEM (`d || z`) and 32 bytes for X25519 private-key material.
+///
+/// The returned X25519 bytes are the raw expanded seed bytes. Clamping is
+/// performed later by `kem::x25519::static_secret_from_seed`.
 pub(crate) fn expand_seed(
     seed: &[u8; MASTER_SEED_SIZE],
 ) -> ([u8; ML_KEM_SEED_SIZE], [u8; CURVE_SEED_SIZE]) {
@@ -104,20 +126,20 @@ pub(crate) fn expand_seed(
     hasher.update(seed);
     let mut reader = hasher.finalize_xof();
 
-    // Expand to 64 bytes for ML-KEM (d || z) + 32 bytes for X25519 = 96 bytes total
+    // Expand to 64 bytes for ML-KEM (d || z) plus 32 bytes for X25519.
     let mut expanded = ExpandedKeyMaterial96::new([0u8; 96]);
     expanded.with_secret_mut(|bytes| reader.read(bytes));
 
-    // First 64 bytes: d || z for libcrux (implicit mode)
+    // First 64 bytes: `d || z` for libcrux ML-KEM key derivation.
     // This conversion is infallible because `expanded` is exactly 96 bytes.
     let ml_seed: [u8; ML_KEM_SEED_SIZE] =
         expanded.with_secret(|bytes| bytes[0..ML_KEM_SEED_SIZE].try_into().unwrap());
 
-    // Next 32 bytes: X25519 scalar material (unclamped here; clamped in DH).
+    // Next 32 bytes: raw X25519 scalar material (left unclamped here).
     //
-    // Go retries if the raw 32-byte seed is all-zero. We don't need a retry
-    // loop: RFC 7748 clamping always sets bit 6 of the last byte, so the
-    // clamped scalar cannot be all-zero.
+    // hpke-go retries if the raw 32-byte seed is all-zero. This implementation
+    // does not need a retry loop: RFC 7748 clamping always sets bit 6 of the
+    // last byte, so the clamped scalar cannot be all-zero.
     // Same here: `[64..96]` is always exactly 32 bytes.
     let x_bytes: [u8; CURVE_SEED_SIZE] =
         expanded.with_secret(|bytes| bytes[ML_KEM_SEED_SIZE..96].try_into().unwrap());

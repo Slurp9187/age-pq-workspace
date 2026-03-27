@@ -1,32 +1,30 @@
 //! ML-KEM-768 + X25519 variant implementation
 
 use super::combiner;
+use super::ml_kem;
+use super::x25519;
 use crate::aliases::{
     MlKem768Ciphertext1088, MlKem768PublicKey1184, Seed32, SharedSecret32, X25519PublicKey32,
     X25519Secret32,
 };
 use crate::error::{Error, Result as CrateResult};
 use crate::kem::common::{
-    clamp_x25519_scalar, expand_seed, shake256_labeled_derive, Kem, PrivateKey, PublicKey,
-    CURVE_SEED_SIZE, KEM_ID, MASTER_SEED_SIZE, ML_KEM_SEED_SIZE, PRIVATE_KEY_SIZE,
+    expand_seed, shake256_labeled_derive, Kem, PrivateKey, PublicKey, CURVE_SEED_SIZE, KEM_ID,
+    MASTER_SEED_SIZE, PRIVATE_KEY_SIZE,
 };
-use secure_gate::{ConstantTimeEq, RevealSecret, RevealSecretMut};
+use secure_gate::RevealSecret;
 
 use core::fmt;
 
-use libcrux_ml_kem::mlkem768::{
-    decapsulate, encapsulate, generate_key_pair as mlkem768_generate_key_pair, MlKem768Ciphertext,
-    MlKem768KeyPair, MlKem768PublicKey,
-};
+use libcrux_ml_kem::mlkem768::MlKem768KeyPair;
 
 use rand::rngs::OsRng;
 use rand::{TryCryptoRng, TryRngCore};
 
-use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
+use x25519_dalek::PublicKey as X25519PublicKey;
 
-const X25519_KEY_SIZE: usize = 32;
-const MLKEM768_PK_SIZE: usize = 1184;
-pub const MLKEM768_CT_SIZE: usize = 1088;
+const MLKEM768_PK_SIZE: usize = ml_kem::MLKEM768_PK_SIZE;
+pub const MLKEM768_CT_SIZE: usize = ml_kem::MLKEM768_CT_SIZE;
 
 /// KEM suite ID prefix per RFC 9180 §5.3 ("KEM" || KEM_ID).
 const KEM_SUITE_PREFIX: &[u8; 3] = b"KEM";
@@ -35,14 +33,13 @@ const KEM_DERIVE_KEY_PAIR_LABEL: &[u8; 13] = b"DeriveKeyPair";
 
 fn expand_key(seed: &[u8; MASTER_SEED_SIZE]) -> (MlKem768KeyPair, [u8; CURVE_SEED_SIZE]) {
     let (ml_seed, x_bytes) = expand_seed(seed);
-    debug_assert_eq!(ml_seed.len(), ML_KEM_SEED_SIZE);
-    let kp = mlkem768_generate_key_pair(ml_seed);
+    let kp = ml_kem::keypair_from_seed(ml_seed);
     (kp, x_bytes)
 }
 
-pub const MLKEM768X25519_ENCAPSULATION_KEY_SIZE: usize = MLKEM768_PK_SIZE + X25519_KEY_SIZE;
+pub const MLKEM768X25519_ENCAPSULATION_KEY_SIZE: usize = MLKEM768_PK_SIZE + x25519::X25519_KEY_SIZE;
 pub const MLKEM768X25519_DECAPSULATION_KEY_SIZE: usize = MASTER_SEED_SIZE;
-pub const MLKEM768X25519_CIPHERTEXT_SIZE: usize = MLKEM768_CT_SIZE + X25519_KEY_SIZE;
+pub const MLKEM768X25519_CIPHERTEXT_SIZE: usize = MLKEM768_CT_SIZE + x25519::X25519_KEY_SIZE;
 
 pub struct EncapsulationKey {
     pk_m: MlKem768PublicKey1184,
@@ -95,21 +92,11 @@ impl EncapsulationKey {
         ml_rand_bytes: [u8; 32],
         ephemeral_bytes: [u8; 32],
     ) -> CrateResult<(Ciphertext, crate::SharedSecret)> {
-        let pk_m = MlKem768PublicKey::from(*self.pk_m.expose_secret());
-        let ml_rand = Seed32::from(ml_rand_bytes);
-        let (ct_m, mlkem_ss) = ml_rand.with_secret(|rand_seed| encapsulate(&pk_m, *rand_seed));
+        let (ct_m_bytes, mlkem_ss) = ml_kem::encapsulate_with_seed(&self.pk_m, ml_rand_bytes)?;
         let ss_m = SharedSecret32::from(mlkem_ss);
 
-        let ct_m_bytes: [u8; MLKEM768_CT_SIZE] = ct_m
-            .as_ref()
-            .try_into()
-            .map_err(|_| Error::ArraySizeError)?;
-
-        let mut ephemeral_seed = X25519Secret32::from(ephemeral_bytes);
-        ephemeral_seed.with_secret_mut(clamp_x25519_scalar);
-        let ephemeral = StaticSecret::from(ephemeral_seed.with_secret(|bytes| *bytes));
-        let ct_x = X25519PublicKey::from(&ephemeral);
-        let ss_x = SharedSecret32::from(ephemeral.diffie_hellman(&self.pk_x).to_bytes());
+        let (ct_x, ss_x_raw) = x25519::encapsulate_to_public_key(ephemeral_bytes, &self.pk_x);
+        let ss_x = SharedSecret32::from(ss_x_raw);
 
         let ct_x_bytes = X25519PublicKey32::from(ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(self.pk_x.to_bytes());
@@ -170,9 +157,7 @@ impl EncapsulationKey {
                 .try_into()
                 .map_err(|_| Error::ArraySizeError)?;
 
-            let x_bytes = X25519Secret32::from(x_bytes);
-            let sk_x = StaticSecret::from(x_bytes.with_secret(|bytes| *bytes));
-            let pk_x = X25519PublicKey::from(&sk_x);
+            let pk_x = x25519::public_key_from_seed(x_bytes);
 
             Ok(Self::from_components(pk_m_bytes, pk_x))
         })
@@ -219,20 +204,11 @@ impl TryFrom<&[u8]> for EncapsulationKey {
         pk_m_bytes.copy_from_slice(&bytes[..MLKEM768_PK_SIZE]);
         let pk_m = MlKem768PublicKey1184::from(pk_m_bytes);
 
-        let pk_x_bytes: [u8; 32] = bytes[MLKEM768_PK_SIZE..]
+        let pk_x_bytes: [u8; x25519::X25519_KEY_SIZE] = bytes[MLKEM768_PK_SIZE..]
             .try_into()
             .map_err(|_| Error::ArraySizeError)?;
-        let pk_x = X25519PublicKey::from(pk_x_bytes);
-
-        // Validate that pk_x is not the all-zero point (which is invalid for X25519)
-        if pk_x_bytes.ct_eq(&[0u8; 32]) {
-            return Err(Error::InvalidX25519PublicKey);
-        }
-
-        // Validate ML-KEM public key by attempting to create it and test basic functionality
-        let mlkem_pk = MlKem768PublicKey::from(*pk_m.expose_secret());
-        // Test that the key can be used for basic operations by checking it can be converted back
-        let _pk_bytes = mlkem_pk.as_ref();
+        let pk_x = x25519::parse_public_key(pk_x_bytes)?;
+        ml_kem::validate_public_key(&pk_m);
 
         Ok(Self::from_wrapped_components(pk_m, pk_x))
     }
@@ -278,9 +254,7 @@ impl DecapsulationKey {
             .try_into()
             .map_err(|_| Error::ArraySizeError)?;
 
-        let x_bytes = X25519Secret32::from(x_bytes);
-        let sk_x = StaticSecret::from(x_bytes.with_secret(|bytes| *bytes));
-        let pk_x = X25519PublicKey::from(&sk_x);
+        let pk_x = x25519::public_key_from_seed(x_bytes);
 
         Ok(EncapsulationKey::from_wrapped_components(
             MlKem768PublicKey1184::from(pk_m_bytes),
@@ -292,14 +266,9 @@ impl DecapsulationKey {
         let seed = Seed32::from(self.seed);
         let (kp, x_bytes) = seed.with_secret(expand_key);
 
-        let sk_m = kp.private_key();
-        let ct_m = MlKem768Ciphertext::from(*ct.ct_m.expose_secret());
-        let ss_m = SharedSecret32::from(decapsulate(sk_m, &ct_m));
-        let x_bytes = X25519Secret32::from(x_bytes);
-        let sk_x = StaticSecret::from(x_bytes.with_secret(|bytes| *bytes));
-        let ss_x = SharedSecret32::from(sk_x.diffie_hellman(&ct.ct_x).to_bytes());
-
-        let pk_x = X25519PublicKey::from(&sk_x);
+        let ss_m = SharedSecret32::from(ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m));
+        let (ss_x_raw, pk_x) = x25519::decapsulate_from_private_seed(x_bytes, &ct.ct_x);
+        let ss_x = SharedSecret32::from(ss_x_raw);
         let ct_x_bytes = X25519PublicKey32::from(ct.ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(pk_x.to_bytes());
         // Preferred access pattern for low-level combiners: expose once in a tight scope.
@@ -354,15 +323,10 @@ impl TryFrom<&[u8]> for Ciphertext {
         ct_m_bytes.copy_from_slice(&bytes[..MLKEM768_CT_SIZE]);
         let ct_m = MlKem768Ciphertext1088::from(ct_m_bytes);
 
-        let ct_x_bytes: [u8; 32] = bytes[MLKEM768_CT_SIZE..]
+        let ct_x_bytes: [u8; x25519::X25519_KEY_SIZE] = bytes[MLKEM768_CT_SIZE..]
             .try_into()
             .map_err(|_| Error::ArraySizeError)?;
-        let ct_x = X25519PublicKey::from(ct_x_bytes);
-
-        // Validate that ct_x is not the all-zero point
-        if ct_x_bytes.ct_eq(&[0u8; 32]) {
-            return Err(Error::InvalidX25519PublicKey);
-        }
+        let ct_x = x25519::parse_public_key(ct_x_bytes)?;
 
         Ok(Self::from_wrapped_components(ct_m, ct_x))
     }

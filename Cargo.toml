@@ -36,7 +36,7 @@ debug = true    # keep symbols for flamegraphs / profiling
 
 # Shared lint governance (RustCrypto/KEMs style)
 [workspace.lints.rust]
-missing_docs                  = "warn"
+missing_docs                  = "deny"
 missing_debug_implementations = "warn"
 missing_copy_implementations  = "warn"
 unreachable_pub               = "warn"

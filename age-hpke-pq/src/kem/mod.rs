@@ -5,7 +5,9 @@
 
 pub mod combiner;
 pub mod common;
+pub(crate) mod ml_kem;
 pub mod mlkem768x25519;
+pub(crate) mod x25519;
 // Placeholder for future variants:
 
 // Re-export everything from common
