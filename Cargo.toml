@@ -34,25 +34,7 @@ opt-level = 2   # crypto math is painfully slow in unoptimized debug builds
 [profile.bench]
 debug = true    # keep symbols for flamegraphs / profiling
 
-# Shared lint governance (RustCrypto/KEMs style)
-[workspace.lints.rust]
-missing_docs                  = "deny"
-missing_debug_implementations = "warn"
-missing_copy_implementations  = "warn"
-unreachable_pub               = "warn"
-unused_lifetimes              = "warn"
-unused_qualifications         = "warn"
-unsafe_code                   = "deny"
-
-[workspace.lints.clippy]
-cast_lossless            = "warn"
-cast_possible_truncation = "warn"
-cast_possible_wrap       = "warn"
-cast_sign_loss           = "warn"
-doc_markdown             = "warn"
-missing_errors_doc       = "warn"
-missing_panics_doc       = "warn"
-std_instead_of_core      = "warn"
+# Shared workspace lint tables require Cargo 1.74+; omitted so `cargo +1.70` stays warning-free.
 
 [workspace.dependencies]
 secure-gate = { version = "=0.8.0-rc.5", features = ["rand", "ct-eq"] }
