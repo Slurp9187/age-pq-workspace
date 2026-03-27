@@ -1,6 +1,6 @@
 [package]
 name = "age-plugin-pq"
-version = "0.0.1"
+version = "0.0.2"
 description = "age plugin for post-quantum hybrid ML-KEM-768 + X25519 encryption"
 repository = "https://github.com/Slurp9187/age-plugin-pq"
 keywords = ["age", "encryption", "post-quantum", "mlkem", "x25519"]
