@@ -2,6 +2,11 @@ use secure_gate::{dynamic_alias, fixed_alias};
 
 // Public aliases (crate surface)
 fixed_alias!(pub Seed32, 32, "32-byte master seed for deterministic key generation.");
+fixed_alias!(
+    pub SharedSecret,
+    32,
+    "Hybrid post-quantum/classical shared secret (32 bytes)."
+);
 fixed_alias!(pub AeadKey32, 32, "ChaCha20-Poly1305 key (32 bytes).");
 fixed_alias!(pub Nonce12, 12, "ChaCha20-Poly1305 nonce (12 bytes).");
 

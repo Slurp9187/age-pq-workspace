@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "age-hpke-pq"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "aead",
  "byteorder",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "age-plugin-pq"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "age-core",
  "age-hpke-pq",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "age-recipient-pq"
-version = "0.0.5-dev"
+version = "0.0.5"
 dependencies = [
  "age",
  "age-core",
@@ -519,7 +519,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1517,7 +1517,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1590,9 +1590,9 @@ dependencies = [
 
 [[package]]
 name = "secure-gate"
-version = "0.8.0-rc.4"
+version = "0.8.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7338fd983cdb9bd206826164f53dd10a955e12d167c98eef8166efc20a3107d"
+checksum = "9656b4345e6b944fb014a692d5c453b01569677975128401e10f27f02f3c0547"
 dependencies = [
  "half",
  "quote",
@@ -2050,7 +2050,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

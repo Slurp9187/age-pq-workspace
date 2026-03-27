@@ -53,50 +53,6 @@ pub use kdf::{new_kdf, HkdfSha256, HkdfSha384, HkdfSha512, Kdf, Shake128Kdf, Sha
 pub use kem::{Kem, PrivateKey, PublicKey};
 
 pub use kem::MlKem768X25519;
-pub use secure_gate::ConstantTimeEq;
-
-/// The shared secret produced by X-Wing KEM encapsulation or decapsulation.
-///
-/// This is a 32-byte array representing the hybrid post-quantum/classical symmetric key
-/// derived from ML-KEM and X25519 components. It ensures type safety for the final output
-/// of the scheme's cryptographic operations.
-#[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
-pub struct SharedSecret([u8; SHARED_SECRET_SIZE]);
-
-impl core::fmt::Debug for SharedSecret {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_tuple("SharedSecret")
-            .field(&"[REDACTED]")
-            .finish()
-    }
-}
-
-impl PartialEq for SharedSecret {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.ct_eq(&other.0)
-    }
-}
-
-impl Eq for SharedSecret {}
-
-impl From<[u8; SHARED_SECRET_SIZE]> for SharedSecret {
-    fn from(arr: [u8; SHARED_SECRET_SIZE]) -> Self {
-        Self(arr)
-    }
-}
-
-impl AsRef<[u8]> for SharedSecret {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl core::ops::Deref for SharedSecret {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+pub use secure_gate::{ConstantTimeEq, RevealSecret};
 
 pub use hpke::compute_nonce;

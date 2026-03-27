@@ -1,6 +1,4 @@
-use crate::aliases::SharedSecret32;
 use crate::SharedSecret;
-use secure_gate::RevealSecret;
 use sha3::{Digest, Sha3_256};
 
 pub(crate) const X_WING_LABEL: &[u8] = br"\.//^\";
@@ -19,14 +17,13 @@ pub fn combine_shared_secrets(
     // ek_t: Recipient's static traditional encapsulation key. This is the long-term public key of the recipient (a 32-byte Curve25519 point). It's used to compute ss_t and ensures the DH exchange is bound to the correct recipient.
     ek_t: &[u8; 32],
 ) -> SharedSecret {
-    let hash: [u8; 32] = Sha3_256::new()
-        .chain_update(ss_pq)
-        .chain_update(ss_t)
-        .chain_update(ct_t)
-        .chain_update(ek_t)
-        .chain_update(X_WING_LABEL)
-        .finalize()
-        .into();
-    let secure_hash = SharedSecret32::from(hash);
-    SharedSecret::from(secure_hash.with_secret(|bytes| *bytes))
+    SharedSecret::new_with(|buf| {
+        let mut hasher = Sha3_256::new();
+        hasher.update(ss_pq);
+        hasher.update(ss_t);
+        hasher.update(ct_t);
+        hasher.update(ek_t);
+        hasher.update(X_WING_LABEL);
+        buf.copy_from_slice(&hasher.finalize());
+    })
 }

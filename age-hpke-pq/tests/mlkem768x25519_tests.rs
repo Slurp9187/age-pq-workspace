@@ -5,7 +5,7 @@ use age_hpke_pq::kem::mlkem768x25519::{
     MLKEM768X25519_CIPHERTEXT_SIZE, MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
 };
 
-use age_hpke_pq::Error;
+use age_hpke_pq::{ConstantTimeEq, Error};
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
 
@@ -25,7 +25,7 @@ fn test_encapsulation_decapsulation_roundtrip() {
     let (ct, ss_encap) = pk.encapsulate(&mut rng).unwrap();
     let ss_decap = sk.decapsulate(&ct).unwrap();
 
-    assert_eq!(ss_encap, ss_decap);
+    assert!(ss_encap.ct_eq(&ss_decap));
     assert_eq!(ct.to_bytes().len(), MLKEM768X25519_CIPHERTEXT_SIZE);
 }
 
@@ -62,7 +62,7 @@ fn test_different_keys_produce_different_secrets() {
     let (ct1, ss1) = pk1.encapsulate(&mut rng).unwrap();
     let (ct2, ss2) = pk2.encapsulate(&mut rng).unwrap();
 
-    assert_ne!(ss1, ss2);
+    assert!(!ss1.ct_eq(&ss2));
     assert_ne!(ct1, ct2);
 }
 
@@ -78,7 +78,7 @@ fn test_wrong_key_decapsulate_fails() {
 
     // Since it's hybrid, and ML-KEM decapsulates to random if wrong key,
     // but X25519 will give different ss_x, so overall different secret.
-    assert_ne!(ss_encap, ss_decap);
+    assert!(!ss_encap.ct_eq(&ss_decap));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn test_decapsulation_modified_ciphertext_fails() {
     let modified_ct = Ciphertext::try_from(&modified_bytes).unwrap();
     let ss_decap = sk.decapsulate(&modified_ct).unwrap();
     // Should produce different secret
-    assert_ne!(ss_encap, ss_decap);
+    assert!(!ss_encap.ct_eq(&ss_decap));
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_derand_encapsulation_decapsulation_roundtrip() {
     let (ct, ss_encap) = pk.encapsulate_derand(&eseed).unwrap();
     let ss_decap = _sk.decapsulate(&ct).unwrap();
 
-    assert_eq!(ss_encap, ss_decap);
+    assert!(ss_encap.ct_eq(&ss_decap));
     assert_eq!(ct.to_bytes().len(), MLKEM768X25519_CIPHERTEXT_SIZE);
 }
 
@@ -154,7 +154,7 @@ fn test_derand_with_all_zero_eseed() {
 
     let (ct, ss_encap) = result.unwrap();
     let ss_decap = _sk.decapsulate(&ct).unwrap();
-    assert_eq!(ss_encap, ss_decap);
+    assert!(ss_encap.ct_eq(&ss_decap));
 }
 
 #[test]

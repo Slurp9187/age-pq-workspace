@@ -186,7 +186,7 @@ pub fn new_sender_with_testing_randomness(
     info: &[u8],
 ) -> Result<(Vec<u8>, Sender), Error> {
     let (enc, shared) = pk.encap(testing_randomness)?;
-    let context = new_context(shared.as_ref(), pk.kem().id(), kdf, aead, info)?;
+    let context = new_context(shared.expose_secret(), pk.kem().id(), kdf, aead, info)?;
     Ok((enc, Sender { context }))
 }
 
@@ -198,7 +198,7 @@ pub fn new_recipient(
     info: &[u8],
 ) -> Result<Recipient, Error> {
     let shared = sk.decap(enc)?;
-    let context = new_context(shared.as_ref(), sk.kem().id(), kdf, aead, info)?;
+    let context = new_context(shared.expose_secret(), sk.kem().id(), kdf, aead, info)?;
     Ok(Recipient { context })
 }
 

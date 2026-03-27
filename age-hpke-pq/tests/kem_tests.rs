@@ -1,5 +1,5 @@
 mod tests {
-    use age_hpke_pq::{kem::Kem, Error, MlKem768X25519};
+    use age_hpke_pq::{kem::Kem, ConstantTimeEq, Error, MlKem768X25519, RevealSecret};
 
     #[test]
     fn test_mlkem768_properties() {
@@ -76,9 +76,9 @@ mod tests {
         assert_eq!(enc.len(), kem.enc_size());
 
         let ss2 = priv_key.decap(&enc).unwrap();
-        assert_eq!(ss1.as_ref(), ss2.as_ref());
+        assert!(ss1.ct_eq(&ss2));
         // Shared secret should be 32 bytes for hybrid
-        assert_eq!(ss1.as_ref().len(), 32);
+        assert_eq!(ss1.len(), 32);
     }
 
     #[test]
@@ -94,8 +94,8 @@ mod tests {
         assert_eq!(enc.len(), kem.enc_size());
 
         let ss2 = priv_key.decap(&enc).unwrap();
-        assert_eq!(ss1.as_ref(), ss2.as_ref());
-        assert_eq!(ss1.as_ref().len(), 32);
+        assert!(ss1.ct_eq(&ss2));
+        assert_eq!(ss1.len(), 32);
     }
 
     #[test]
@@ -145,6 +145,6 @@ mod tests {
         // Decap with wrong private key
         let priv_key2 = kem.new_private_key(&seed2).unwrap();
         let ss2 = priv_key2.decap(&enc).unwrap();
-        assert_ne!(ss1.as_ref(), ss2.as_ref());
+        assert!(!ss1.ct_eq(&ss2));
     }
 }

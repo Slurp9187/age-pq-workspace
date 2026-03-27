@@ -16,7 +16,7 @@ Experimental project: not currently published on crates.io. Use a pinned GitHub 
 
 ```toml
 [dependencies]
-age-hpke-pq = { git = "https://github.com/Slurp9187/age-hpke-pq", tag = "v0.0.5" } # replace with your milestone tag
+age-hpke-pq = { git = "https://github.com/Slurp9187/age-hpke-pq", tag = "v0.0.6" } # replace with your milestone tag
 ```
 
 ## Usage
@@ -38,7 +38,7 @@ assert!(first_byte <= 255);
 ### KEM
 
 ```rust
-use age_hpke_pq::{MlKem768X25519, kem::Kem};
+use age_hpke_pq::{ConstantTimeEq, MlKem768X25519, kem::Kem};
 
 let kem = MlKem768X25519;
 let sk = kem.generate_key().unwrap();
@@ -50,7 +50,7 @@ let sk_derived = kem.derive_key_pair(&ikm).unwrap();
 
 let (enc, ss) = pk.encap(None).unwrap();       // sender (None = random)
 let ss_recv = sk.decap(&enc).unwrap();         // receiver
-assert_eq!(ss, ss_recv);
+assert!(ss.ct_eq(&ss_recv));
 ```
 
 ### HPKE

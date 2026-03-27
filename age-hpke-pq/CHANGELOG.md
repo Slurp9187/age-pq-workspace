@@ -7,9 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `SharedSecret` now uses `secure-gate` `Fixed<[u8; 32]>` via a public alias in `src/aliases.rs` instead of a hand-rolled newtype in `src/lib.rs`.
+- `combine_shared_secrets` now constructs output directly with `SharedSecret::new_with(...)`, removing the intermediate plain `[u8; 32]` stack copy.
+- `secure-gate` updated to `0.8.0-rc.5` to consume `Fixed::new_with`.
+
 ### Fixed
 
 - Explicit type annotations (`0usize..2000usize`, `rng.random::<u8>()`) added in `tests/error_tests.rs` to resolve type-inference ambiguity introduced by the `rand 0.9` API.
+
+### Security
+
+- Removed implicit shared-secret exposure paths by dropping `SharedSecret` `Deref`/`AsRef` usage; callers now use explicit `RevealSecret` accessors (`with_secret` / `expose_secret`).
 
 ## [0.0.5] - 2026-03-25
 

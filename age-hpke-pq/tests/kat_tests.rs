@@ -1,6 +1,7 @@
 // tests/kat_tests.rs
 
 use age_hpke_pq::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
+use age_hpke_pq::RevealSecret;
 use serde::Deserialize;
 
 use std::fs;
@@ -68,7 +69,7 @@ fn test_official_kat_vectors() {
             .try_into()
             .expect("Invalid ss length");
         assert_eq!(
-            ss_sender.as_ref(),
+            ss_sender.expose_secret(),
             &ss_expected,
             "Shared secret mismatch (sender) in vector {}",
             i
@@ -77,7 +78,7 @@ fn test_official_kat_vectors() {
         // 5. Decapsulation round-trip
         let ss_receiver = sk.decapsulate(&ct).unwrap();
         assert_eq!(
-            ss_receiver.as_ref(),
+            ss_receiver.expose_secret(),
             &ss_expected,
             "Shared secret mismatch (receiver) in vector {}",
             i
