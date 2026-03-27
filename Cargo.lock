@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "age-plugin-pq"
-version = "0.0.2"
+version = "0.0.2-dev"
 dependencies = [
  "age-core",
  "age-hpke-pq",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "age-recipient-pq"
-version = "0.0.5"
+version = "0.0.5-dev"
 dependencies = [
  "age",
  "age-core",
