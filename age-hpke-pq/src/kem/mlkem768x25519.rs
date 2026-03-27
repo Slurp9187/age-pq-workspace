@@ -200,9 +200,9 @@ impl TryFrom<&[u8]> for EncapsulationKey {
         if bytes.len() != MLKEM768X25519_ENCAPSULATION_KEY_SIZE {
             return Err(Error::InvalidEncapsulationKeyLength);
         }
-        let mut pk_m_bytes = [0u8; MLKEM768_PK_SIZE];
-        pk_m_bytes.copy_from_slice(&bytes[..MLKEM768_PK_SIZE]);
-        let pk_m = MlKem768PublicKey1184::from(pk_m_bytes);
+        let pk_m = MlKem768PublicKey1184::new_with(|pk_m_bytes| {
+            pk_m_bytes.copy_from_slice(&bytes[..MLKEM768_PK_SIZE]);
+        });
 
         let pk_x_bytes: [u8; x25519::X25519_KEY_SIZE] = bytes[MLKEM768_PK_SIZE..]
             .try_into()
@@ -319,9 +319,9 @@ impl TryFrom<&[u8]> for Ciphertext {
         if bytes.len() != MLKEM768X25519_CIPHERTEXT_SIZE {
             return Err(Error::InvalidCiphertextLength);
         }
-        let mut ct_m_bytes = [0u8; MLKEM768_CT_SIZE];
-        ct_m_bytes.copy_from_slice(&bytes[..MLKEM768_CT_SIZE]);
-        let ct_m = MlKem768Ciphertext1088::from(ct_m_bytes);
+        let ct_m = MlKem768Ciphertext1088::new_with(|ct_m_bytes| {
+            ct_m_bytes.copy_from_slice(&bytes[..MLKEM768_CT_SIZE]);
+        });
 
         let ct_x_bytes: [u8; x25519::X25519_KEY_SIZE] = bytes[MLKEM768_CT_SIZE..]
             .try_into()

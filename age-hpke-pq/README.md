@@ -9,6 +9,7 @@ Rust implementation of the X-Wing hybrid post-quantum KEM (ML-KEM-768 + X25519) 
 - Constant-time operations
 - Sensitive data zeroized on drop
 - Optional secure wrapper aliases (`Seed32`, `AeadKey32`, `Nonce12`) re-exported for auditable key/nonce handling
+- Internal KEM parsing/expansion paths use `secure-gate` constructors (`new_with`) to minimize temporary fixed-size buffers
 
 ## Installation
 

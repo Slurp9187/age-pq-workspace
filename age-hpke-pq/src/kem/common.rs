@@ -6,7 +6,7 @@ use crate::kdf::HPKE_VERSION_LABEL;
 use byteorder::{BigEndian, ByteOrder};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
-use secure_gate::{RevealSecret, RevealSecretMut};
+use secure_gate::RevealSecret;
 use std::any::Any;
 
 /// HPKE KEM identifier for MLKEM768-X25519.
@@ -127,8 +127,7 @@ pub(crate) fn expand_seed(
     let mut reader = hasher.finalize_xof();
 
     // Expand to 64 bytes for ML-KEM (d || z) plus 32 bytes for X25519.
-    let mut expanded = ExpandedKeyMaterial96::new([0u8; 96]);
-    expanded.with_secret_mut(|bytes| reader.read(bytes));
+    let expanded = ExpandedKeyMaterial96::new_with(|bytes| reader.read(bytes));
 
     // First 64 bytes: `d || z` for libcrux ML-KEM key derivation.
     // This conversion is infallible because `expanded` is exactly 96 bytes.

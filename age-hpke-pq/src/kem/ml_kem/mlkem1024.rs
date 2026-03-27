@@ -24,6 +24,9 @@ pub(crate) fn keypair_from_seed(seed: [u8; ML_KEM_SEED_SIZE]) -> MlKem1024KeyPai
 }
 
 /// Encapsulates to an ML-KEM-1024 public key using caller-supplied randomness.
+///
+/// Returns raw ciphertext bytes to match the current hybrid wire-layout helpers;
+/// wrapping into `Fixed` aliases is deferred to parse/composition layers.
 pub(crate) fn encapsulate_with_seed(
     pk_m: &MlKem1024PublicKey1568,
     randomness: [u8; 32],

@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - `SharedSecret` now uses `secure-gate` `Fixed<[u8; 32]>` via a public alias in `src/aliases.rs` instead of a hand-rolled newtype in `src/lib.rs`.
 - `combine_shared_secrets` now constructs output directly with `SharedSecret::new_with(...)`, removing the intermediate plain `[u8; 32]` stack copy.
 - `secure-gate` updated to `0.8.0-rc.5` to consume `Fixed::new_with`.
+- KEM internals now use `new_with` where it removes temporary fixed-size buffers (`ExpandedKeyMaterial96` initialization in `src/kem/common.rs`, and ML-KEM parse wrappers in `src/kem/mlkem768x25519.rs`).
+- ML-KEM helper modules (`src/kem/ml_kem/*.rs`) keep plain ciphertext-byte return types for wire-layout compatibility, with wrapper construction deferred to parse/composition layers.
 
 ### Fixed
 
