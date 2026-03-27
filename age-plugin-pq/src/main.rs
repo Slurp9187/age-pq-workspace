@@ -5,6 +5,7 @@ use age_core::{
 };
 use age_hpke_pq::compute_nonce;
 use age_hpke_pq::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, EncapsulationKey};
+use age_hpke_pq::RevealSecret;
 use age_plugin::{
     identity::{self, IdentityPluginV1},
     recipient::{self, RecipientPluginV1},
@@ -157,7 +158,7 @@ impl RecipientPluginV1 for RecipientPlugin {
                 .encapsulate(&mut OsRng)
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "encapsulation failed"))?;
 
-            let (mut key_bytes, base_nonce) = derive_key_and_nonce(&ss, PQ_LABEL)
+            let (mut key_bytes, base_nonce) = derive_key_and_nonce(ss.expose_secret(), PQ_LABEL)
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "key derivation failed"))?;
 
             let key = Key::from(key_bytes);
@@ -286,7 +287,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                     };
 
                     let (mut key_bytes, base_nonce) =
-                        match derive_key_and_nonce(&ss, PQ_LABEL) {
+                        match derive_key_and_nonce(ss.expose_secret(), PQ_LABEL) {
                             Ok(r) => r,
                             Err(_) => {
                                 ss.zeroize();

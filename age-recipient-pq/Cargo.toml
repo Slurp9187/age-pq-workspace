@@ -10,9 +10,6 @@ license.workspace = true
 authors.workspace = true
 include.workspace = true
 
-[lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(fuzzing)'] }
-
 [dependencies]
 age-hpke-pq = { path = "../age-hpke-pq" }
 age = "0.11"

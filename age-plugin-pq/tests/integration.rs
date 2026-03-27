@@ -43,7 +43,7 @@ fn test_plugin_identity_conversion() {
     // Convert to plugin format
     println!("Converting: {}... (truncated)", &native_identity[..50]);
     let convert_output = Command::new(plugin_path)
-        .args(&["--identity"])
+        .args(["--identity"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -101,7 +101,7 @@ fn test_plugin_full_encrypt_decrypt_cycle() {
 
     // Generate a plugin keypair
     let keygen_output = Command::new(plugin_path)
-        .args(&["--keygen"])
+        .args(["--keygen"])
         .output()
         .expect("Failed to generate plugin keypair");
 
@@ -127,7 +127,7 @@ fn test_plugin_full_encrypt_decrypt_cycle() {
 
     // Encrypt with age CLI using plugin recipient
     let encrypt_output = Command::new("age")
-        .args(&["--encrypt", "-R", recipient_file, "-o", encrypted_file, "tests/data/lorem.txt"])
+        .args(["--encrypt", "-R", recipient_file, "-o", encrypted_file, "tests/data/lorem.txt"])
         .output()
         .expect("Failed to encrypt");
 
@@ -135,7 +135,7 @@ fn test_plugin_full_encrypt_decrypt_cycle() {
 
     // Decrypt with age CLI using plugin identity
     let decrypt_output = Command::new("age")
-        .args(&["--decrypt", "-i", identity_file, "-o", "tests/data/temp_decrypted.txt", encrypted_file])
+        .args(["--decrypt", "-i", identity_file, "-o", "tests/data/temp_decrypted.txt", encrypted_file])
         .output()
         .expect("Failed to decrypt");
 

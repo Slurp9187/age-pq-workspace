@@ -222,7 +222,7 @@ impl AgeRecipient for HybridRecipient {
                 format!("HPKE seal error: {:?}", e),
             ))
         })?;
-        let base64_enc = BASE64_STANDARD_NO_PAD.encode(&enc);
+        let base64_enc = BASE64_STANDARD_NO_PAD.encode(enc);
         let stanza = Stanza {
             tag: STANZA_TAG.to_string(),
             args: vec![base64_enc],
