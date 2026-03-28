@@ -10,7 +10,8 @@
 //!   HKDF-SHA512.
 //! * **One-stage (SHAKE)** -- a single `labeled_derive` call that absorbs
 //!   all inputs into a SHAKE XOF and squeezes the output, as specified in
-//!   `draft-ietf-hpke-pq-03`. Registered variants: SHAKE128, SHAKE256.
+//!   [`draft-ietf-hpke-pq-03`](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03).
+//!   Registered variants: SHAKE128, SHAKE256.
 
 use crate::aliases::{KdfBytes, LabeledIkm, LabeledOkm, Salt};
 use crate::Error;
@@ -21,6 +22,7 @@ use sha2::{Sha256, Sha384, Sha512};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::{Shake128, Shake256};
 use std::result::Result;
+use zeroize::Zeroizing;
 
 /// Version label prepended to every labeled operation (`"HPKE-v1"`).
 pub(crate) const HPKE_VERSION_LABEL: &[u8; 7] = b"HPKE-v1";
@@ -165,17 +167,18 @@ macro_rules! impl_hkdf_kdf {
                 label: &str,
                 input_key: &[u8],
             ) -> Result<KdfBytes, Error> {
-                let mut labeled_ikm = Vec::new();
+                let mut labeled_ikm = Zeroizing::new(Vec::with_capacity(
+                    HPKE_VERSION_LABEL.len() + suite_id.len() + label.len() + input_key.len(),
+                ));
                 labeled_ikm.extend_from_slice(HPKE_VERSION_LABEL);
                 labeled_ikm.extend_from_slice(suite_id);
                 labeled_ikm.extend_from_slice(label.as_bytes());
                 labeled_ikm.extend_from_slice(input_key);
-                let labeled_ikm = LabeledIkm::new(labeled_ikm);
+                let labeled_ikm = LabeledIkm::new(core::mem::take(&mut *labeled_ikm));
                 let salt = Salt::from(salt.unwrap_or(&[]));
-                let hk = {
-                    let salt_raw: &[u8] = salt.expose_secret();
+                let hk = salt.with_secret(|salt_raw| {
                     labeled_ikm.with_secret(|ikm| Hkdf::<$hash_ty>::extract(Some(salt_raw), ikm))
-                };
+                });
                 Ok(KdfBytes::new(hk.0.to_vec()))
             }
 
@@ -187,7 +190,13 @@ macro_rules! impl_hkdf_kdf {
                 info: &[u8],
                 length: u16,
             ) -> Result<KdfBytes, Error> {
-                let mut labeled_info = Vec::new();
+                let mut labeled_info = Vec::with_capacity(
+                    core::mem::size_of::<u16>()
+                        + HPKE_VERSION_LABEL.len()
+                        + suite_id.len()
+                        + label.len()
+                        + info.len(),
+                );
                 let mut buf = [0u8; 2];
                 BigEndian::write_u16(&mut buf, length);
                 labeled_info.extend_from_slice(&buf);
@@ -197,11 +206,12 @@ macro_rules! impl_hkdf_kdf {
                 labeled_info.extend_from_slice(info);
 
                 let hk = Hkdf::<$hash_ty>::from_prk(random_key).map_err(|_| Error::InvalidLength)?;
-                let mut okm = vec![0u8; length as usize];
-                hk.expand(&labeled_info, &mut okm)
+                let mut okm = Zeroizing::new(vec![0u8; length as usize]);
+                hk.expand(&labeled_info, &mut okm[..])
                     .map_err(|_| Error::InvalidLength)?;
-                let okm = LabeledOkm::new(okm);
-                Ok(KdfBytes::new(okm.with_secret(|bytes| bytes.to_vec())))
+                let okm = LabeledOkm::new(core::mem::take(&mut *okm));
+                let mut okm = okm.into_inner().into_zeroizing();
+                Ok(KdfBytes::new(core::mem::take(&mut *okm)))
             }
         }
     };
@@ -216,6 +226,8 @@ impl_hkdf_kdf!(HkdfSha512, Sha512, KDF_HKDF_SHA512_ID, 64);
 // ---------------------------------------------------------------------------
 
 /// SHAKE128 one-stage KDF (`Nh = 32`).
+///
+/// Draft reference: [`draft-ietf-hpke-pq-03` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03#section-5).
 ///
 /// Absorbs `input_key || "HPKE-v1" || suite_id || I2OSP(len(label), 2) || label || I2OSP(L, 2) || context`
 /// and squeezes `L` bytes.
@@ -253,9 +265,9 @@ impl Kdf for Shake128Kdf {
         BigEndian::write_u16(&mut buf, length);
         h.update(&buf);
         h.update(context);
-        let mut out = vec![0u8; length as usize];
-        h.finalize_xof().read(&mut out);
-        Ok(KdfBytes::new(out))
+        let mut out = Zeroizing::new(vec![0u8; length as usize]);
+        h.finalize_xof().read(&mut out[..]);
+        Ok(KdfBytes::new(core::mem::take(&mut *out)))
     }
 
     fn labeled_extract(
@@ -281,6 +293,8 @@ impl Kdf for Shake128Kdf {
 }
 
 /// SHAKE256 one-stage KDF (`Nh = 64`).
+///
+/// Draft reference: [`draft-ietf-hpke-pq-03` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03#section-5).
 ///
 /// Same absorption order as [`Shake128Kdf`] but uses SHAKE256 and a larger
 /// output hash length.
@@ -318,9 +332,9 @@ impl Kdf for Shake256Kdf {
         BigEndian::write_u16(&mut buf, length);
         h.update(&buf);
         h.update(context);
-        let mut out = vec![0u8; length as usize];
-        h.finalize_xof().read(&mut out);
-        Ok(KdfBytes::new(out))
+        let mut out = Zeroizing::new(vec![0u8; length as usize]);
+        h.finalize_xof().read(&mut out[..]);
+        Ok(KdfBytes::new(core::mem::take(&mut *out)))
     }
 
     fn labeled_extract(
