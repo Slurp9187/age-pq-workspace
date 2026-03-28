@@ -1,6 +1,6 @@
 #[cfg(test)]
 use age_hpke_pq::{
-    kdf::Kdf, new_kdf, HkdfSha256, HkdfSha384, HkdfSha512, Shake128Kdf, Shake256Kdf,
+    kdf::Kdf, new_kdf, HkdfSha256, HkdfSha384, HkdfSha512, RevealSecret, Shake128Kdf, Shake256Kdf,
 };
 
 #[test]

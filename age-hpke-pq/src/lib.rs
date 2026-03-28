@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! # age-hpke-pq
 //!
 //! Post-quantum hybrid X-Wing KEM (ML-KEM-768 + X25519) with full HPKE support.

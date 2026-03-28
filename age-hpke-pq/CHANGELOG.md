@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - `secure-gate` updated to `0.8.0-rc.5` to consume `Fixed::new_with`.
 - KEM internals now use `new_with` where it removes temporary fixed-size buffers (`ExpandedKeyMaterial96` initialization in `src/kem/common.rs`, and ML-KEM parse wrappers in `src/kem/mlkem768x25519.rs`).
 - ML-KEM helper modules (`src/kem/ml_kem/*.rs`) keep plain ciphertext-byte return types for wire-layout compatibility, with wrapper construction deferred to parse/composition layers.
+- `Kdf` trait methods now return `KdfBytes` (secure-gate alias) instead of raw `Vec<u8>`, and internal `SerializedKey` usage was renamed to public `KdfBytes` for consistent HPKE KDF byte handling.
 
 ### Fixed
 

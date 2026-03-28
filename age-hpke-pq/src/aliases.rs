@@ -75,9 +75,14 @@ dynamic_alias!(pub(crate) Aad, Vec<u8>, "Additional authenticated data (public).
 dynamic_alias!(pub(crate) Plaintext, Vec<u8>, "Plaintext message to be encrypted.");
 dynamic_alias!(pub(crate) ExporterContext, Vec<u8>, "HPKE exporter context.");
 dynamic_alias!(
-    pub(crate) SerializedKey,
+    pub KdfBytes,
     Vec<u8>,
-    "HPKE key-schedule intermediate (key material / exporter secret)."
+    "Heap buffer for HPKE KDF outputs and key-schedule intermediates. Mirrors hpke-go []byte values used by labeledExtract/labeledExpand/labeledDerive and newContext locals (secret, pskIDHash, infoHash, expSecret)."
+);
+dynamic_alias!(
+    pub(crate) OneStageSecrets,
+    Vec<u8>,
+    "One-stage HPKE secrets serialization buffer: len(psk) || len(ss) || ss."
 );
 dynamic_alias!(
     pub(crate) LabeledIkm,

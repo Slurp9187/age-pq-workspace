@@ -12,7 +12,7 @@
 //!   all inputs into a SHAKE XOF and squeezes the output, as specified in
 //!   `draft-ietf-hpke-pq-03`. Registered variants: SHAKE128, SHAKE256.
 
-use crate::aliases::{LabeledIkm, LabeledOkm, Salt};
+use crate::aliases::{KdfBytes, LabeledIkm, LabeledOkm, Salt};
 use crate::Error;
 use byteorder::{BigEndian, ByteOrder};
 use hkdf::Hkdf;
@@ -58,6 +58,9 @@ pub trait Kdf: Send + Sync {
     fn size(&self) -> usize;
 
     /// One-stage labeled derivation (SHAKE path).
+    ///
+    /// Returns wrapped keying bytes (`KdfBytes`), analogous to `[]byte`
+    /// outputs in hpke-go `labeledDerive`.
     fn labeled_derive(
         &self,
         suite_id: &[u8],
@@ -65,18 +68,24 @@ pub trait Kdf: Send + Sync {
         label: &str,
         context: &[u8],
         length: u16,
-    ) -> Result<Vec<u8>, Error>;
+    ) -> Result<KdfBytes, Error>;
 
     /// Labeled extract step (HKDF path).
+    ///
+    /// Returns wrapped keying bytes (`KdfBytes`), analogous to `[]byte`
+    /// outputs in hpke-go `labeledExtract`.
     fn labeled_extract(
         &self,
         suite_id: &[u8],
         salt: Option<&[u8]>,
         label: &str,
         input_key: &[u8],
-    ) -> Result<Vec<u8>, Error>;
+    ) -> Result<KdfBytes, Error>;
 
     /// Labeled expand step (HKDF path).
+    ///
+    /// Returns wrapped keying bytes (`KdfBytes`), analogous to `[]byte`
+    /// outputs in hpke-go `labeledExpand`.
     fn labeled_expand(
         &self,
         suite_id: &[u8],
@@ -84,7 +93,7 @@ pub trait Kdf: Send + Sync {
         label: &str,
         info: &[u8],
         length: u16,
-    ) -> Result<Vec<u8>, Error>;
+    ) -> Result<KdfBytes, Error>;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +154,7 @@ macro_rules! impl_hkdf_kdf {
                 _label: &str,
                 _context: &[u8],
                 _length: u16,
-            ) -> Result<Vec<u8>, Error> {
+            ) -> Result<KdfBytes, Error> {
                 Err(Error::InvalidOperationForKdf)
             }
 
@@ -155,7 +164,7 @@ macro_rules! impl_hkdf_kdf {
                 salt: Option<&[u8]>,
                 label: &str,
                 input_key: &[u8],
-            ) -> Result<Vec<u8>, Error> {
+            ) -> Result<KdfBytes, Error> {
                 let mut labeled_ikm = Vec::new();
                 labeled_ikm.extend_from_slice(HPKE_VERSION_LABEL);
                 labeled_ikm.extend_from_slice(suite_id);
@@ -167,7 +176,7 @@ macro_rules! impl_hkdf_kdf {
                     let salt_raw: &[u8] = salt.expose_secret();
                     labeled_ikm.with_secret(|ikm| Hkdf::<$hash_ty>::extract(Some(salt_raw), ikm))
                 };
-                Ok(hk.0.to_vec())
+                Ok(KdfBytes::new(hk.0.to_vec()))
             }
 
             fn labeled_expand(
@@ -177,7 +186,7 @@ macro_rules! impl_hkdf_kdf {
                 label: &str,
                 info: &[u8],
                 length: u16,
-            ) -> Result<Vec<u8>, Error> {
+            ) -> Result<KdfBytes, Error> {
                 let mut labeled_info = Vec::new();
                 let mut buf = [0u8; 2];
                 BigEndian::write_u16(&mut buf, length);
@@ -192,7 +201,7 @@ macro_rules! impl_hkdf_kdf {
                 hk.expand(&labeled_info, &mut okm)
                     .map_err(|_| Error::InvalidLength)?;
                 let okm = LabeledOkm::new(okm);
-                Ok(okm.with_secret(|bytes| bytes.to_vec()))
+                Ok(KdfBytes::new(okm.with_secret(|bytes| bytes.to_vec())))
             }
         }
     };
@@ -232,7 +241,7 @@ impl Kdf for Shake128Kdf {
         label: &str,
         context: &[u8],
         length: u16,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<KdfBytes, Error> {
         let mut h = Shake128::default();
         h.update(input_key);
         h.update(HPKE_VERSION_LABEL);
@@ -246,7 +255,7 @@ impl Kdf for Shake128Kdf {
         h.update(context);
         let mut out = vec![0u8; length as usize];
         h.finalize_xof().read(&mut out);
-        Ok(out)
+        Ok(KdfBytes::new(out))
     }
 
     fn labeled_extract(
@@ -255,7 +264,7 @@ impl Kdf for Shake128Kdf {
         _salt: Option<&[u8]>,
         _label: &str,
         _input_key: &[u8],
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<KdfBytes, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 
@@ -266,7 +275,7 @@ impl Kdf for Shake128Kdf {
         _label: &str,
         _info: &[u8],
         _length: u16,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<KdfBytes, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 }
@@ -297,7 +306,7 @@ impl Kdf for Shake256Kdf {
         label: &str,
         context: &[u8],
         length: u16,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<KdfBytes, Error> {
         let mut h = Shake256::default();
         h.update(input_key);
         h.update(HPKE_VERSION_LABEL);
@@ -311,7 +320,7 @@ impl Kdf for Shake256Kdf {
         h.update(context);
         let mut out = vec![0u8; length as usize];
         h.finalize_xof().read(&mut out);
-        Ok(out)
+        Ok(KdfBytes::new(out))
     }
 
     fn labeled_extract(
@@ -320,7 +329,7 @@ impl Kdf for Shake256Kdf {
         _salt: Option<&[u8]>,
         _label: &str,
         _input_key: &[u8],
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<KdfBytes, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 
@@ -331,7 +340,7 @@ impl Kdf for Shake256Kdf {
         _label: &str,
         _info: &[u8],
         _length: u16,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<KdfBytes, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 }
