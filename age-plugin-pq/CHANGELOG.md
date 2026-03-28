@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Update `hpke_pq.rs` for Secure-Gate / `KdfBytes` compatibility (use `RevealSecret::with_secret` for `Dynamic<Vec<u8>>` values in `labeled_*` calls, `extend_from_slice`, and `copy_from_slice`).
+
 ### Changed
 
 - `rand` dependency upgraded from `0.8` to `0.9`.

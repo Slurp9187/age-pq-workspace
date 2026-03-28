@@ -21,8 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Explicit type annotations (`0usize..2000usize`, `rng.random::<u8>()`) added in `tests/error_tests.rs` to resolve type-inference ambiguity introduced by the `rand 0.9` API.
 
 ### Security
-
 - Removed implicit shared-secret exposure paths by dropping `SharedSecret` `Deref`/`AsRef` usage; callers now use explicit `RevealSecret` accessors (`with_secret` / `expose_secret`).
+- Improved zeroization of HKDF PRK intermediate in `kdf.rs` by scoping the `Hkdf` struct drop and wrapping the `Output` bytes in `Zeroizing`.
 
 ## [0.0.5] - 2026-03-25
 

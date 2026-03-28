@@ -176,10 +176,14 @@ macro_rules! impl_hkdf_kdf {
                 labeled_ikm.extend_from_slice(input_key);
                 let labeled_ikm = LabeledIkm::new(core::mem::take(&mut *labeled_ikm));
                 let salt = Salt::from(salt.unwrap_or(&[]));
-                let hk = salt.with_secret(|salt_raw| {
-                    labeled_ikm.with_secret(|ikm| Hkdf::<$hash_ty>::extract(Some(salt_raw), ikm))
+                let mut prk = Zeroizing::new({
+                    let hk = salt.with_secret(|salt_raw| {
+                        labeled_ikm
+                            .with_secret(|ikm| Hkdf::<$hash_ty>::extract(Some(salt_raw), ikm))
+                    });
+                    hk.0.to_vec()
                 });
-                Ok(KdfBytes::new(hk.0.to_vec()))
+                Ok(KdfBytes::new(core::mem::take(&mut *prk)))
             }
 
             fn labeled_expand(
@@ -205,7 +209,8 @@ macro_rules! impl_hkdf_kdf {
                 labeled_info.extend_from_slice(label.as_bytes());
                 labeled_info.extend_from_slice(info);
 
-                let hk = Hkdf::<$hash_ty>::from_prk(random_key).map_err(|_| Error::InvalidLength)?;
+                let hk =
+                    Hkdf::<$hash_ty>::from_prk(random_key).map_err(|_| Error::InvalidLength)?;
                 let mut okm = Zeroizing::new(vec![0u8; length as usize]);
                 hk.expand(&labeled_info, &mut okm[..])
                     .map_err(|_| Error::InvalidLength)?;
