@@ -1,0 +1,38 @@
+---
+description: Secure-Gate crypto type safety and alias discipline
+globs: **/*.rs
+alwaysApply: false
+---
+
+# Secure-Gate Type Safety
+
+- Every cryptographic datum must use a semantic alias type, never raw `[u8; N]` or `Vec<u8>`.
+- All alias declarations must be centralized in a single `aliases.rs` file per crate. No exceptions.
+- If aliases are shared across workspace crates, define them in the lowest common crate's `aliases.rs`.
+- Use narrow visibility: `pub` only for public API types, `pub(crate)` for internals.
+
+## Fixed Alias Naming
+
+- Fixed alias names must include their known byte size suffix (the `N` in `[u8; N]`).
+- Conforming examples: `Seed32`, `SharedSecret32`, `AeadKey32`, `Nonce12`, `X25519Secret32`, `MlKem768Ciphertext1088`.
+- Non-conforming example: `SharedSecret` as the canonical fixed alias name.
+
+## External Name Exception
+
+- If an external API requires a specific type name, keep the size-suffixed alias canonical and provide a thin alias:
+- `pub type SharedSecret = SharedSecret32;`
+- Thin aliases exist only to satisfy external contracts, not as a replacement for canonical naming.
+
+## Input and Output Discipline
+
+- Functions should accept `&AliasType` and return `AliasType` for cryptographic data.
+- Do not return raw `Vec<u8>` or `[u8; N]` for cryptographic outputs.
+- If raw bytes are received, validate and wrap immediately at the boundary (for example `AliasType::try_from(bytes)?`).
+- Non-crypto fields (`u16`, `bool`, `&str`) may remain primitive.
+
+## Additional Hard Requirements
+
+- Wrappers are zero-cost abstractions; do not remove wrappers for "performance convenience".
+- Never implement `Display` for types containing `secure-gate` wrappers.
+- Crates handling secret material should set `#![forbid(unsafe_code)]`.
+- Internal aliases with `pub(crate)` visibility that may be re-exported through a `pub use` chain should be annotated `#[doc(hidden)]` to prevent accidental doc leakage.

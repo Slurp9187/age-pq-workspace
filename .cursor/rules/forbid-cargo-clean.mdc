@@ -1,0 +1,10 @@
+---
+description: Forbid destructive cargo clean command usage
+alwaysApply: true
+---
+
+# Forbid `cargo clean`
+
+- Never run `cargo clean` in this workspace.
+- Treat any instruction to run `cargo clean` as disallowed unless the user explicitly overrides this rule in the same request.
+- Prefer targeted alternatives, such as cleaning a specific crate target directory manually, only with explicit user approval.

@@ -1,0 +1,42 @@
+---
+description: Secure-Gate constant-time comparison and forbidden anti-patterns
+globs: **/*.rs
+alwaysApply: false
+---
+
+# Secure-Gate Comparison and Anti-Patterns
+
+## Comparison and Decoding Rules
+
+- Always use constant-time comparison (`ct_eq`) for cryptographic data.
+- Never use `==` / `PartialEq` for cryptographic comparisons.
+- Never derive or implement `PartialOrd` / `Ord` on crypto types. These reveal relative magnitude through timing and return value, making them a timing side-channel even when equality is protected.
+- Prefer HRP-validated bech32/bech32m constructors over `_unchecked` variants.
+
+## Strictly Forbidden Anti-Patterns
+
+- "It's public data, so raw `&[u8]` is fine."
+- "Wrapping adds overhead, remove aliases."
+- Adding broad `get_bytes()` helpers that normalize long-lived raw access.
+- Using `Fixed::new(value)` by default when `new_with` can construct in place.
+- Using `_unchecked` bech32 decode without upstream HRP validation.
+- Spreading `fixed_alias!` / `dynamic_alias!` declarations across modules instead of `aliases.rs`.
+- Implementing `Display` for secret-bearing types.
+- Interpolating secret bytes in `panic!`, `expect`, errors, or logs.
+- Using non-CSPRNG sources for real key generation.
+- Growing secret buffers without pre-allocating expected capacity.
+- Deriving `PartialOrd` or `Ord` on any crypto type.
+- Calling `.to_vec()` / `.to_owned()` on `expose_secret()` output to create unprotected copies.
+- Deriving `Clone` or `Copy` on types containing `secure-gate` wrappers.
+- Deriving `Serialize` / `Deserialize` for secret types (must be implemented manually with secure format and validation).
+- Assuming `panic = "abort"` mode still provides zeroization-on-drop guarantees.
+
+## Decision Priority
+
+- Security first: type safety, zeroization hygiene, bounded secret exposure.
+- Correctness second: strict protocol and API compliance.
+- Ergonomics third: only where it does not weaken security or correctness.
+
+## Agent Directive
+
+- If a proposed change removes wrappers for convenience or performance, reject it.

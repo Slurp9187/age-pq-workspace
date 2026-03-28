@@ -1,0 +1,128 @@
+---
+description: Test organization, naming, redundancy, isolation, CI discipline, MSRV enforcement, and feature-matrix coverage standards for Rust test suites
+globs: **/*.rs
+alwaysApply: false
+---
+
+# Test Hygiene
+
+Reference model: `secure-gate/tests/` is the canonical example of the preferred layout.
+
+## Location and Structure
+
+- Flat files by default. Single-concern tests use a flat `tests/{area}_tests.rs` file.
+- Suite directories for multi-file groups. When a concern spans multiple sub-areas, use `tests/{area}_suite/` (e.g. `encoding_suite/hex.rs`, `encoding_suite/bech32.rs`).
+- `mod.rs` inside a suite may only contain `mod` declarations, `use` imports, and `#[cfg]` feature gates. Never place `#[test]` functions in `mod.rs`.
+- Flatten if only one module. Do not create a directory structure for a single file -- use a flat `tests/feature_tests.rs` instead.
+- Inline `#[cfg(test)] mod tests` inside `src/` is allowed only for simple proof-of-concept tests tightly coupled to a reusable module. Complex or multi-step tests go in `tests/*.rs`.
+- Separate binaries for isolation. Tests needing global state (custom allocators, `harness = false`, trybuild) get their own top-level `tests/*.rs` file.
+- An `integration.rs` umbrella runner may aggregate suite modules via `mod` declarations when a single binary is preferred.
+
+## Naming
+
+- Flat test files: `{feature_or_purpose}_tests.rs` (e.g. `kdf_tests.rs`, `coding_agent_tests.rs`, `zeroize_tests.rs`).
+- Suite directories: `{area}_suite/` (e.g. `encoding_suite/`).
+- Test functions: `snake_case`, describe scenario and outcome. Pattern: `{type_or_feature}_{scenario}`.
+  - Good: `fn fixed_try_from_hex_roundtrip()`, `fn encrypt_then_decrypt_roundtrip_succeeds()`
+  - Bad: `fn test_encrypt()`, `fn test1()`
+
+## Documentation
+
+- Every test file opens with a `//!` module doc comment explaining what it tests and the testing strategy.
+- Suite `mod.rs` files may use `//!` to summarize the sub-modules they aggregate.
+
+## Redundancy
+
+- No two tests should assert the same behavior with the same inputs. Use a helper, loop, or proptest for parametric variation instead of copy-pasting tests.
+- Before adding a test, verify no existing test already covers the same contract.
+
+## Known-Answer Tests (KAT)
+
+- For crypto code, tests asserting against spec-sourced vectors must be clearly labeled with the source (RFC number, NIST document, or test vector suite name) in a `//!` or inline comment.
+- KAT vectors must be in a dedicated file (e.g. `kat_tests.rs`) separate from property-based or unit tests.
+- Do not invent test vectors -- use only published, independently verifiable sources.
+
+## Property-Based and Fuzz Tests
+
+- Use proptest or a similar property-based framework when a contract must hold for all valid inputs, not just sampled cases. Examples: roundtrip encoding, constant-time equality symmetry, type alias constructors.
+- Use plain unit tests for specific contract assertions and known-answer verification.
+- Place proptest suites in a `proptest_suite/` directory or a dedicated `proptest_tests.rs` file.
+- Fuzz targets live under `fuzz/` (cargo-fuzz convention), not under `tests/`.
+
+## Purpose
+
+- Every `#[test]` fn must assert something meaningful. A test that calls a function without checking output or side effects is not a test.
+- Tests must fail when the contract they verify is broken.
+- Prefer `fn my_test() -> Result<(), MyError>` signatures over `unwrap()`/`expect()` in test bodies. Result-returning tests produce better failure output and compose naturally with `?`.
+- Avoid `#[should_panic]`. It passes even when the wrong panic fires. Prefer asserting the specific error variant instead, or use `assert!(std::panic::catch_unwind(...).is_err())` only when the panic text must be validated.
+- `#[ignore]` must have a comment directly above it explaining why the test is ignored and, where applicable, a reference to a tracking issue. Uncommented `#[ignore]` is forbidden.
+
+## Shared Helpers
+
+- Common fixtures, builders, and assertion helpers belong in `tests/common.rs`, not duplicated across files.
+- `common.rs` re-exports and helpers are available to suite submodules via the umbrella runner.
+
+## Compile-Fail Tests
+
+- Use a `tests/compile-fail/` directory with trybuild to verify type-safety invariants are enforced at compile time.
+- Each compile-fail source has a matching `.stderr` golden file.
+- A driver file (`compile_fail_tests.rs`) runs the trybuild suite.
+
+## Feature-Gated Tests
+
+- Tests requiring optional features must be gated with `#[cfg(feature = "...")]` so `cargo test` without those features does not fail.
+- Suite `mod.rs` is the natural place to apply feature gates to entire sub-suites.
+
+## Test Isolation
+
+- No test may depend on execution order or shared mutable global state with other tests.
+- Tests requiring a custom global allocator or `harness = false` must be in their own top-level `tests/*.rs` binary, declared in `Cargo.toml`.
+
+## MSRV Enforcement
+
+- If a crate or workspace declares `rust-version` in `Cargo.toml`, all test, clippy, and doc runs must use the MSRV toolchain, not the latest stable.
+- Use `cargo +{msrv} test`, `cargo +{msrv} clippy`, `cargo +{msrv} doc` explicitly.
+- Never update `Cargo.lock` with a toolchain newer than the MSRV -- this can introduce lockfile formats unreadable by the MSRV compiler.
+- CI must run tests on the pinned MSRV toolchain as a required job, not just on stable.
+
+## Required Test and Clippy Invocations
+
+When running tests or clippy on a crate with features, all of the following must pass and any issues found must be fixed:
+
+```
+# Test with default features (includes doctests and integration tests)
+cargo test --doc --tests
+
+# Test with all features enabled
+cargo test --all-features --doc --tests
+
+# Test with no default features (verifies minimal build)
+cargo test --no-default-features --tests
+
+# Clippy with default features
+cargo clippy --all-targets -- -D warnings
+
+# Clippy with all features
+cargo clippy --all-features --all-targets -- -D warnings
+
+# Clippy with no default features
+cargo clippy --no-default-features --all-targets -- -D warnings
+```
+
+- `--doc` ensures doctests compile and run correctly across feature combinations.
+- `--all-targets` (preferred over `--tests` for clippy) covers lib, bins, examples, benches, and integration tests in a single pass.
+- `--no-default-features` catches missing `#[cfg(feature = "...")]` guards on feature-dependent code.
+- Fix all issues that arise from these runs; do not suppress warnings with `#[allow(...)]` unless there is an explicit documented justification.
+
+Also required:
+
+```
+# Verify doc generation and intra-doc link resolution
+cargo doc --no-deps
+
+# For crypto and memory-sensitive code, run Miri on critical test paths
+cargo +nightly miri test
+```
+
+- `cargo doc --no-deps` catches broken intra-doc links and missing doc sections that `--doc` in `cargo test` alone does not catch.
+- `cargo miri test` catches use-after-free, uninitialized reads, stacked borrows violations, and undefined behavior that regular tests miss. Run at minimum on the core crypto and zeroization test paths.

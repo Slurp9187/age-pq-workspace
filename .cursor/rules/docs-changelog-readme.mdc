@@ -1,0 +1,42 @@
+---
+description: Documentation maintenance — when and how to update CHANGELOG.md and README.md at workspace and package levels
+globs:
+alwaysApply: false
+---
+
+# Changelog and README Maintenance
+
+## CHANGELOG.md
+
+- **Format**: Follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every CHANGELOG.md must link both specs.
+- **`[Unreleased]` section**: Every user-visible change gets a bullet under the appropriate subsection in the same commit or PR that introduces the change. Do not batch changelog entries for later.
+- **Allowed subsections** (in this order, include only those with entries): `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, `Docs`.
+- **Entry style**: Start with an imperative verb. Reference the module or area when not obvious.
+  - Example: `- Add constant-time comparison for SharedSecret32 in age-hpke-pq`
+- **Do not** touch version headings, dates, or the `-dev` suffix. The maintainer handles release cuts manually after tagging.
+
+### Package vs Workspace Scope
+
+- Changes scoped to a single crate → that crate's `CHANGELOG.md` only.
+- Cross-cutting changes (workspace deps, CI, shared config, multi-crate refactors) → workspace root `CHANGELOG.md`.
+- Changes touching multiple crates → entry in each affected crate's changelog **and** a summary entry in the workspace root changelog. Do not copy the full text; summarize.
+
+### Amending a Prior Release
+
+Adding an entry under a dated release heading is permitted only when explicitly amending a prior release for a missed item. In that case, add a note such as `(amended YYYY-MM-DD)` to the entry.
+
+## README.md
+
+- **When to update**: A README must be updated in the same PR whenever a code change alters the public API surface, adds or removes a feature flag, changes installation steps, modifies usage examples, or adds a new workspace member.
+- **Workspace root README**: Keep the crates table, quick-start snippets, workspace layout tree, and MSRV table current.
+- **Package README**: Keep feature lists, installation snippets (version/git tags), usage examples, and algorithm tables current.
+- **Code examples must compile**: Use fenced ` ```rust ` blocks. If an example cannot compile standalone, use ` ```rust,no_run ` or ` ```rust,ignore ` and add a brief explanation of why.
+- **Do not** create a README.md where one does not already exist unless the user explicitly asks.
+
+## Anti-Patterns
+
+- Committing user-visible behavior changes with no corresponding changelog entry.
+- Duplicating the full text of a package changelog entry into the workspace changelog (workspace gets a summary, not a copy).
+- Adding new changelog entries under a dated release heading instead of `[Unreleased]` (exception: explicit amendments, see above).
+- Leaving README code examples that no longer match the current API.
+- Touching version headings, dates, or the `-dev` suffix without an explicit release instruction from the maintainer.

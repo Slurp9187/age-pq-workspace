@@ -1,0 +1,70 @@
+---
+description: Secure-Gate memory hygiene, construction, and secret access rules
+globs: **/*.rs
+alwaysApply: false
+---
+
+# Secure-Gate Memory Safety
+
+## Construction Rules
+
+- For `Fixed` types, prefer `Fixed::new_with(|arr| { ... })` over `Fixed::new(value)`.
+- `new_with` writes directly into wrapper storage and avoids intermediate stack copies.
+- `Fixed::new(value)` is allowed but discouraged when a direct in-place construction is feasible.
+- `Dynamic::new(value)` is acceptable for heap-backed values; `Dynamic::new_with` is also valid for in-place construction.
+
+## Zeroization Rules
+
+- All `secure-gate` wrappers must zeroize on drop.
+- Non-wrapper secret-bearing structs must derive or implement `Zeroize`/`ZeroizeOnDrop`.
+- Explicitly zeroize transient stack buffers that hold secret material.
+- Never store secrets in `static` values because `Drop` will not run.
+- Prefer `panic = "unwind"` in security-sensitive builds; `panic = "abort"` bypasses `Drop`. Consequence: secrets persist in RAM with no cleanup. If abort mode is required by the platform, accept the residual risk and document it; do not rely on custom panic hooks as a reliable mitigation.
+
+## Intermediate Buffer Discipline
+
+- Wrap secret temporaries in `zeroize::Zeroizing<T>` before final wrapping.
+- For secret `Vec<u8>` construction, pre-allocate known capacity to avoid growth reallocations:
+- `let mut v = Vec::with_capacity(expected_len);`
+
+## Logging and Error Hygiene
+
+- Assume all secret material is sensitive in logs and traces.
+- Never include secrets in `panic!`, `expect`, error strings, or structured log fields.
+- Wrapper `Debug` output should remain redacted (`[REDACTED]`).
+- Prefer `Display` for production error output to avoid verbose debug metadata.
+
+## Access Patterns
+
+- Preferred: `with_secret` / `with_secret_mut` for simple and flat access scopes.
+- Allowed: `expose_secret` for FFI, serialization, legacy API calls, or when nested closures reduce clarity.
+- When using `expose_secret`, keep borrow lifetime tight using a local block scope.
+- Forbidden: Calling `.to_vec()`, `.to_owned()`, or similar owned-copy methods on the result of `expose_secret()`. This creates an unprotected copy that escapes zeroization.
+- If data must persist beyond the exposure scope, wrap it in a new secure type (`Dynamic::new(bytes)` or `zeroize::Zeroizing<Vec<u8>>`).
+- AI agents that suggest converting exposed references to owned types to "solve lifetime issues" are introducing a security defect.
+- Never rely on implicit deref access for secrets.
+- Encoding methods (`to_hex`, `to_base64url`, `try_to_bech32`, `try_to_bech32m`) are explicit exposure points and must be audited.
+
+## Risky Feature and RNG Discipline
+
+- Audit all `CloneableSecret` and `SerializableSecret` implementations.
+- Forbidden: Deriving `Clone` or `Copy` on types containing `secure-gate` wrappers. If duplication is unavoidable, call `.clone()` explicitly and document the memory cost. Prefer move semantics (`fn take(s: Secret)`) for ownership transfer.
+- Use cryptographically secure randomness for real secrets.
+- `from_rng` with deterministic seeds is for tests only, not production key generation.
+
+## Serialization Safety
+
+- Do not derive `Serialize` / `Deserialize` for secret types. Implement manually to ensure:
+  1. Secrets are encoded to binary formats (Bincode, CBOR) or Base64. Never serialize to human-readable formats (JSON with hex strings, TOML) unless the protocol strictly requires it and the output channel is provably secure.
+  2. Deserialization validates length and format before constructing the wrapper. Never `unwrap()` deserialization.
+  3. Serialization/deserialization error paths do not leak secret material to logs or error messages.
+- Test error paths explicitly to verify no leakage on malformed input.
+
+## Required Audit Sweep
+
+Ensure these exposure methods are grep-audited in reviews:
+
+- `expose_secret`, `expose_secret_mut`
+- `with_secret`, `with_secret_mut`
+- `to_hex`, `to_base64url`
+- `try_to_bech32`, `try_to_bech32m`
