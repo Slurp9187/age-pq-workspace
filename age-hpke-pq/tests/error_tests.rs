@@ -4,8 +4,7 @@ use age_hpke_pq::kem::mlkem768x25519::{Ciphertext as X25519CT, EncapsulationKey 
 use age_hpke_pq::kem::Kem;
 
 use age_hpke_pq::{
-    aead::Aead as AeadTrait,
-    new_aead, new_kdf, new_sender_with_testing_randomness,
+    aead::Aead as AeadTrait, new_aead, new_kdf, new_sender_with_testing_randomness,
     ChaCha20Poly1305Aead, Error, MlKem768X25519,
 };
 
@@ -155,7 +154,10 @@ fn test_invalid_length_variant() {
 
 #[test]
 fn test_exporter_length_too_large_variant() {
-    assert!(matches!(Error::ExporterLengthTooLarge, Error::ExporterLengthTooLarge));
+    assert!(matches!(
+        Error::ExporterLengthTooLarge,
+        Error::ExporterLengthTooLarge
+    ));
     assert!(!format!("{}", Error::ExporterLengthTooLarge).is_empty());
 }
 
@@ -173,13 +175,19 @@ fn test_export_only_variant() {
 
 #[test]
 fn test_sequence_number_overflow_variant() {
-    assert!(matches!(Error::SequenceNumberOverflow, Error::SequenceNumberOverflow));
+    assert!(matches!(
+        Error::SequenceNumberOverflow,
+        Error::SequenceNumberOverflow
+    ));
     assert!(!format!("{}", Error::SequenceNumberOverflow).is_empty());
 }
 
 #[test]
 fn test_invalid_x25519_private_key_variant() {
-    assert!(matches!(Error::InvalidX25519PrivateKey, Error::InvalidX25519PrivateKey));
+    assert!(matches!(
+        Error::InvalidX25519PrivateKey,
+        Error::InvalidX25519PrivateKey
+    ));
     assert!(!format!("{}", Error::InvalidX25519PrivateKey).is_empty());
 }
 

@@ -199,7 +199,10 @@ fn shake256_draft_hpke_pq_key_schedule_vector_matches() -> Result<(), Error> {
         &key_schedule_context,
         expected_secret.len() as u16,
     )?;
-    assert_eq!(secret.expose_secret().as_slice(), expected_secret.as_slice());
+    assert_eq!(
+        secret.expose_secret().as_slice(),
+        expected_secret.as_slice()
+    );
 
     Ok(())
 }

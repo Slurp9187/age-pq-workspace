@@ -5,7 +5,10 @@
 //! - check output lengths for supported HKDF/SHAKE operations
 //! - assert unsupported family operations return `InvalidOperationForKdf`
 
-use age_hpke_pq::{kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, RevealSecret, Shake128Kdf, Shake256Kdf};
+use age_hpke_pq::{
+    kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, RevealSecret, Shake128Kdf,
+    Shake256Kdf,
+};
 
 fn assert_hkdf_extract_output_len<K: Kdf>(kdf: K, expected_len: usize) -> Result<(), Error> {
     let result = kdf.labeled_extract(b"suite", Some(b"salt"), "test", b"key")?;

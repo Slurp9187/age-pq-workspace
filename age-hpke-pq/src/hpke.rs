@@ -7,7 +7,9 @@
 //! one-stage SHAKE path used by `hpke-pq`.
 
 use crate::aead::{Aead, CipherAead};
-use crate::aliases::{Aad, AeadKey32, ExporterContext, Info, KdfBytes, Nonce12, OneStageSecrets, Plaintext};
+use crate::aliases::{
+    Aad, AeadKey32, ExporterContext, Info, KdfBytes, Nonce12, OneStageSecrets, Plaintext,
+};
 use crate::kdf::Kdf;
 use crate::kem::{PrivateKey, PublicKey};
 use crate::Error;
@@ -179,7 +181,8 @@ fn new_context(
                 aead.nonce_size() as u16,
             )?
         };
-        let bn = Nonce12::try_from(bn.expose_secret().as_slice()).map_err(|_| Error::InvalidLength)?;
+        let bn =
+            Nonce12::try_from(bn.expose_secret().as_slice()).map_err(|_| Error::InvalidLength)?;
 
         let exp_secret = {
             let secret_raw = secret.expose_secret();
