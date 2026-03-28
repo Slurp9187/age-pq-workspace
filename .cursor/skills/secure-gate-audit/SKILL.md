@@ -69,6 +69,7 @@ If a change removes wrappers for convenience or performance, reject it.
 - Visibility is minimally scoped (`pub` vs `pub(crate)`).
 - If external naming is required, thin alias points to canonical size-suffixed alias.
 - APIs accept `&AliasType` and return `AliasType` for crypto values.
+- Owned hand-off uses `into_inner()` → `InnerSecret` (or `into_zeroizing` when required), not raw `Vec<u8>` / `[u8; N]`.
 - No `Display` implementations on secret-bearing types.
 - Crates handling secret material use `#![forbid(unsafe_code)]` (or stricter).
 
@@ -81,7 +82,9 @@ If a change removes wrappers for convenience or performance, reject it.
 - Panic/log/error strings do not interpolate secret values.
 - Secret `Vec<u8>` uses pre-allocation when size is known.
 - `CloneableSecret` / `SerializableSecret` uses are justified and audited.
-- No `.to_vec()` / `.to_owned()` on `expose_secret()` output.
+- No `.to_vec()` / `.to_owned()` on `expose_secret()` output; owned extraction uses `into_inner()` / `InnerSecret` when the wrapper supports it.
+- Three-tier access respected: `with_secret` preferred; `expose_secret` rare and scoped; `into_inner` audited separately from `expose_secret*` greps.
+- Every `into_inner`, `InnerSecret`, and `into_zeroizing` use site reviewed.
 - No `Clone` or `Copy` derived on secret-bearing types.
 - `Serialize` / `Deserialize` implemented manually (not derived) for secret types, with binary or Base64 format.
 - Serialization error paths tested; no panic or log leakage on malformed input.
@@ -146,6 +149,7 @@ Search for explicit exposure/materialization points:
 - `expose_secret_mut`
 - `with_secret`
 - `with_secret_mut`
+- `into_inner`, `InnerSecret`, `into_zeroizing`
 - `to_vec`, `to_owned` (near `expose_secret`)
 - `derive(Clone)`, `derive(Copy)` (on types containing wrappers)
 - `derive(Serialize)`, `derive(Deserialize)` (on secret types)

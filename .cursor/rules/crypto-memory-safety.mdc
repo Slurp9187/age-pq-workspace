@@ -34,15 +34,20 @@ alwaysApply: false
 - Wrapper `Debug` output should remain redacted (`[REDACTED]`).
 - Prefer `Display` for production error output to avoid verbose debug metadata.
 
-## Access Patterns
+## Access Patterns (secure-gate three-tier model)
 
-- Preferred: `with_secret` / `with_secret_mut` for simple and flat access scopes.
-- Allowed: `expose_secret` for FFI, serialization, legacy API calls, or when nested closures reduce clarity.
-- When using `expose_secret`, keep borrow lifetime tight using a local block scope.
-- Forbidden: Calling `.to_vec()`, `.to_owned()`, or similar owned-copy methods on the result of `expose_secret()`. This creates an unprotected copy that escapes zeroization.
-- If data must persist beyond the exposure scope, wrap it in a new secure type (`Dynamic::new(bytes)` or `zeroize::Zeroizing<Vec<u8>>`).
-- AI agents that suggest converting exposed references to owned types to "solve lifetime issues" are introducing a security defect.
-- Never rely on implicit deref access for secrets.
+Prefer earlier tiers; each tier is more powerful and needs tighter audit.
+
+1. **Scoped borrow (preferred):** `with_secret` / `with_secret_mut` — use for almost all application code.
+2. **Direct reference (escape hatch):** `expose_secret` / `expose_secret_mut` — FFI, third-party APIs needing `&T`, or rare clarity cases. Keep borrow lifetime tight in a local block; long-lived borrows defeat scoping and must be justified.
+3. **Owned consumption:** `into_inner()` — when the callee needs `T` by value (FFI hand-off, type migration). Consumes the wrapper and returns `InnerSecret<T>` (wraps `zeroize::Zeroizing<T>`); zeroization transfers to the caller; let `InnerSecret` drop normally. `Debug` on `InnerSecret` stays `[REDACTED]`.
+
+- `into_inner` is only available when `Inner: Sized + Default + Zeroize` (see secure-gate `RevealSecret`). If it is not callable for a type, use tier 1 or 2 — never replace with unprotected allocation from `expose_secret`.
+- Forbidden: Calling `.to_vec()`, `.to_owned()`, or similar owned-copy methods on the result of `expose_secret()`. Prefer `into_inner()` → `InnerSecret<T>` when owned material must leave the wrapper (secure-gate 0.8+).
+- If data must persist beyond a borrow scope without consuming the wrapper, use `Dynamic::new(bytes)`, `zeroize::Zeroizing<Vec<u8>>`, or (when moving out) `into_inner()` / `InnerSecret`.
+- When an API explicitly requires `Zeroizing<T>`, `InnerSecret::into_zeroizing()` is the documented bridge — audit every use like other escape hatches.
+- AI agents that suggest converting exposed references to owned types to "solve lifetime issues" are introducing a security defect when `into_inner` is available.
+- Never rely on implicit deref on `Fixed` / `Dynamic`; use `RevealSecret` / `RevealSecretMut` only. `InnerSecret` implements `Deref` for transient reads — do not store references derived from it beyond a tight scope.
 - Encoding methods (`to_hex`, `to_base64url`, `try_to_bech32`, `try_to_bech32m`) are explicit exposure points and must be audited.
 
 ## Risky Feature and RNG Discipline
@@ -62,9 +67,10 @@ alwaysApply: false
 
 ## Required Audit Sweep
 
-Ensure these exposure methods are grep-audited in reviews:
+Ensure these are grep-audited in reviews. **`into_inner` does not match `expose_secret*`** — audit owned consumption separately.
 
-- `expose_secret`, `expose_secret_mut`
 - `with_secret`, `with_secret_mut`
+- `expose_secret`, `expose_secret_mut`
+- `into_inner`, `InnerSecret`, `into_zeroizing`
 - `to_hex`, `to_base64url`
 - `try_to_bech32`, `try_to_bech32m`

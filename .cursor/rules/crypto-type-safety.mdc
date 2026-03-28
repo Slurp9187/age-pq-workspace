@@ -27,6 +27,8 @@ alwaysApply: false
 
 - Functions should accept `&AliasType` and return `AliasType` for cryptographic data.
 - Do not return raw `Vec<u8>` or `[u8; N]` for cryptographic outputs.
+- When owned inner material must leave a wrapper (by value), use `RevealSecret::into_inner()` → `secure_gate::InnerSecret<T>` (secure-gate 0.8+), not a naked buffer. Zeroization stays with `InnerSecret` until it drops.
+- If a callee requires `zeroize::Zeroizing<T>` directly, use `InnerSecret::into_zeroizing()` only when necessary and audit the call site like other escape hatches.
 - If raw bytes are received, validate and wrap immediately at the boundary (for example `AliasType::try_from(bytes)?`).
 - Non-crypto fields (`u16`, `bool`, `&str`) may remain primitive.
 

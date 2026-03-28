@@ -26,7 +26,7 @@ alwaysApply: false
 - Using non-CSPRNG sources for real key generation.
 - Growing secret buffers without pre-allocating expected capacity.
 - Deriving `PartialOrd` or `Ord` on any crypto type.
-- Calling `.to_vec()` / `.to_owned()` on `expose_secret()` output to create unprotected copies.
+- Calling `.to_vec()` / `.to_owned()` on `expose_secret()` output to obtain owned bytes — use `into_inner()` → `InnerSecret` when the wrapper supports it (secure-gate 0.8+); never use unprotected allocation from `expose_secret` as the primary owned path.
 - Deriving `Clone` or `Copy` on types containing `secure-gate` wrappers.
 - Deriving `Serialize` / `Deserialize` for secret types (must be implemented manually with secure format and validation).
 - Assuming `panic = "abort"` mode still provides zeroization-on-drop guarantees.
