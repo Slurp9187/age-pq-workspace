@@ -213,6 +213,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "base16ct"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,6 +229,12 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "base64ct"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "basic-toml"
@@ -1620,18 +1632,16 @@ dependencies = [
 
 [[package]]
 name = "secure-gate"
-version = "0.8.0-rc.6"
+version = "0.8.0-rc.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5545d994cb962a34655eedf9070ea8ad5d6917a7eab2e72408c8766ad5b7d6d6"
+checksum = "597daecb62a40384e9ae5919975e9f6e2586319854c8264456bd134ef2f13f0b"
 dependencies = [
- "half",
- "quote",
+ "base16ct",
+ "base64ct",
+ "bech32 0.11.1",
  "rand 0.9.2",
- "ryu",
  "subtle",
- "syn",
  "thiserror 2.0.18",
- "unicode-ident",
  "zeroize",
 ]
 

@@ -27,7 +27,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   plaintext references are never subject to line-ending conversion on any platform.
 
 ### Changed
-
+- `secure-gate` workspace dependency bumped to `=0.8.0-rc.8` (includes latest type-safety
+  aliases, memory-hygiene improvements, and fixes for `RevealSecret` / `KdfBytes` usage
+  across `age-hpke-pq`, `age-plugin-pq`, and tests).
 - `age-recipient-pq/Cargo.toml`: `age-hpke-pq` dependency switched from
   `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-hpke-pq" }` for in-workspace
   development; the workspace `[patch]` table keeps the published git reference valid for
