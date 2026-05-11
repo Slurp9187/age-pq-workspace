@@ -31,6 +31,11 @@ fixed_alias!(
 );
 fixed_alias!(pub(crate) X448Secret56, 56, "Raw X448 scalar (pre-clamping).");
 fixed_alias!(
+    pub(crate) SharedSecret56,
+    56,
+    "X448 Diffie-Hellman shared secret (56 bytes)."
+);
+fixed_alias!(
     pub(crate) MlKem768PublicKey1184,
     1184,
     "Raw ML-KEM-768 public key."

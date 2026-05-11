@@ -101,8 +101,27 @@ Tier-3 examples in this workspace:
 
 - `x25519_dalek::StaticSecret::from([u8; 32])` — takes the scalar by value
 - `libcrux_ml_kem::*::encapsulate(&pk, [u8; 32])` — takes randomness by value
-- `libcrux_ml_kem::*::generate_key_pair([u8; 64])` — takes the `d \|\| z` seed
-  by value
+
+**MSRV 1.70 constraint on `into_inner`.** `into_inner` requires
+`Self::Inner: Default + Zeroize`. The stdlib only provides
+`impl<T: Default> Default for [T; N]` for `N <= 32` on Rust 1.70 (the const
+generic impl for arbitrary `N` was stabilized later). Practical effect:
+
+| Wrapper size | Tier-3 (`into_inner`) | Tier-2 (`with_secret`) |
+|--------------|----------------------|------------------------|
+| `Fixed<[u8; N]>` where `N <= 32` | ✅ available | ✅ available |
+| `Fixed<[u8; N]>` where `N > 32`  | ❌ no `Default` impl | ✅ required |
+| `Dynamic<Vec<u8>>` / `Dynamic<String>` | ✅ available (`Vec`/`String: Default`) | ✅ available |
+
+For wrappers above 32 bytes (`MlKemSeed64` = 64, `X448Secret56` = 56,
+`ExpandedKeyMaterial96` = 96, KEM public keys / ciphertexts ≥ 800 bytes), the
+function still takes the wrapper *by value* — drop at end-of-function gives
+the same zeroization end-state as Tier-3 — but the FFI hand-off uses
+`with_secret(|bytes| *bytes)` to deref. Mark the call site as
+`// Tier-2 (forced): [u8; N] lacks Default on MSRV 1.70.`
+
+If the workspace MSRV ever bumps past the point where const-generic `Default`
+for arrays is available, revisit these sites and promote to Tier-3.
 
 Audit Tier 3 separately — `into_inner` does not appear in an
 `expose_secret` grep sweep. The Tier-2 boundary inventory below tags each

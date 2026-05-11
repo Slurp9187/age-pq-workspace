@@ -10,7 +10,7 @@ use super::combiner;
 use super::ml_kem;
 use super::x25519;
 use crate::aliases::{
-    MlKem768Ciphertext1088, MlKem768PublicKey1184, Seed32, SharedSecret32, X25519PublicKey32,
+    MlKem768Ciphertext1088, MlKem768PublicKey1184, MlKemSeed64, Seed32, X25519PublicKey32,
     X25519Secret32,
 };
 use crate::error::{Error, Result as CrateResult};
@@ -125,7 +125,8 @@ impl fmt::Debug for Ciphertext {
 /// scalar bytes via [`expand_seed`].
 fn expand_key(seed: &[u8; MASTER_SEED_SIZE]) -> (MlKem768KeyPair, [u8; CURVE_SEED_SIZE]) {
     let (ml_seed, x_bytes) = expand_seed(seed);
-    let kp = ml_kem::keypair_from_seed(ml_seed);
+    // Stopgap: wrap here; PR 3 changes `expand_seed` to return `MlKemSeed64`.
+    let kp = ml_kem::keypair_from_seed(MlKemSeed64::from(ml_seed));
     (kp, x_bytes)
 }
 
@@ -145,11 +146,16 @@ impl EncapsulationKey {
         ml_rand_bytes: [u8; 32],
         ephemeral_bytes: [u8; 32],
     ) -> CrateResult<(Ciphertext, crate::SharedSecret)> {
-        let (ct_m_bytes, mlkem_ss) = ml_kem::encapsulate_with_seed(&self.pk_m, ml_rand_bytes)?;
-        let ss_m = SharedSecret32::from(mlkem_ss);
-
-        let (ct_x, ss_x_raw) = x25519::encapsulate_to_public_key(ephemeral_bytes, &self.pk_x);
-        let ss_x = SharedSecret32::from(ss_x_raw);
+        // Stopgap: wrap randomness here; PR 3 will lift the wrappers up to the
+        // caller (constructed via `from_rng`) so this site goes away.
+        let (ct_m_bytes, ss_m) = ml_kem::encapsulate_with_seed(
+            &self.pk_m,
+            Seed32::from(ml_rand_bytes),
+        )?;
+        let (ct_x, ss_x) = x25519::encapsulate_to_public_key(
+            X25519Secret32::from(ephemeral_bytes),
+            &self.pk_x,
+        );
 
         let ct_x_bytes = X25519PublicKey32::from(ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(self.pk_x.to_bytes());
@@ -211,7 +217,8 @@ impl EncapsulationKey {
                 .try_into()
                 .map_err(|_| Error::ArraySizeError)?;
 
-            let pk_x = x25519::public_key_from_seed(x_bytes);
+            // Stopgap: wrap here; PR 3 changes `expand_key` to return wrapped scalars.
+            let pk_x = x25519::public_key_from_seed(X25519Secret32::from(x_bytes));
 
             Ok(Self::from_components(pk_m_bytes, pk_x))
         })
@@ -317,7 +324,8 @@ impl DecapsulationKey {
             .try_into()
             .map_err(|_| Error::ArraySizeError)?;
 
-        let pk_x = x25519::public_key_from_seed(x_bytes);
+        // Stopgap: wrap here; PR 3 changes `expand_key` to return wrapped scalars.
+        let pk_x = x25519::public_key_from_seed(X25519Secret32::from(x_bytes));
 
         Ok(EncapsulationKey::from_wrapped_components(
             MlKem768PublicKey1184::from(pk_m_bytes),
@@ -334,9 +342,11 @@ impl DecapsulationKey {
         let seed = Seed32::from(self.seed);
         let (kp, x_bytes) = seed.with_secret(expand_key);
 
-        let ss_m = SharedSecret32::from(ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m));
-        let (ss_x_raw, pk_x) = x25519::decapsulate_from_private_seed(x_bytes, &ct.ct_x);
-        let ss_x = SharedSecret32::from(ss_x_raw);
+        let ss_m = ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m);
+        let (ss_x, pk_x) = x25519::decapsulate_from_private_seed(
+            X25519Secret32::from(x_bytes),
+            &ct.ct_x,
+        );
         let ct_x_bytes = X25519PublicKey32::from(ct.ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(pk_x.to_bytes());
 
