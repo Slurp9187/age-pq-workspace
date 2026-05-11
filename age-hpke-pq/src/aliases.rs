@@ -85,18 +85,13 @@ dynamic_alias!(pub(crate) Aad, Vec<u8>, "Additional authenticated data (public).
 dynamic_alias!(
     pub Plaintext,
     Vec<u8>,
-    "Decrypted HPKE plaintext (returned from `Recipient::open` and one-shot `open`)."
-);
-dynamic_alias!(
-    pub AeadCiphertext,
-    Vec<u8>,
-    "HPKE AEAD ciphertext + auth tag (returned from `Sender::seal` and one-shot `seal`). Symmetric with `Plaintext` on the open side; named to avoid clashing with the structured `kem::mlkem768x25519::Ciphertext`."
+    "Opt-in wrapper for plaintext bytes. The public API returns raw `Vec<u8>` — callers who want zeroize-on-drop and redacted `Debug` can wrap via `Plaintext::new(bytes)`."
 );
 dynamic_alias!(pub(crate) ExporterContext, Vec<u8>, "HPKE exporter context.");
 dynamic_alias!(
     pub KdfBytes,
     Vec<u8>,
-    "Heap buffer for HPKE KDF outputs and key-schedule intermediates. Mirrors hpke-go []byte values used by labeledExtract/labeledExpand/labeledDerive and newContext locals (secret, pskIDHash, infoHash, expSecret)."
+    "Heap buffer for HPKE KDF outputs and key-schedule intermediates. Used inside the library to keep PRKs, OKMs, and the HPKE exporter secret wrapped end-to-end. Also re-exported so callers can opt into wrapping their own KDF output via `KdfBytes::new(bytes)`."
 );
 dynamic_alias!(
     pub(crate) OneStageSecrets,

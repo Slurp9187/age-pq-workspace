@@ -5,28 +5,99 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.7] - 2026-05-10
 
-### Changed
+Internal secure-gate hardening pass. No public API changes — every method
+signature, trait method, and return type at the crate boundary is identical
+to `0.0.6-dev`. Internal call chains were tightened to eliminate
+unzeroized intermediate buffers, lift seed/scalar plumbing into wrappers
+end-to-end, and capture the HPKE exporter secret as a `KdfBytes` wrapper
+inside the export closure instead of cloning to a raw `Vec<u8>`.
 
-- `SharedSecret` now uses `secure-gate` `Fixed<[u8; 32]>` via a public alias in `src/aliases.rs` instead of a hand-rolled newtype in `src/lib.rs`.
-- `combine_shared_secrets` now constructs output directly with `SharedSecret::new_with(...)`, removing the intermediate plain `[u8; 32]` stack copy.
-- `secure-gate` updated to `0.8.0-rc.5` to consume `Fixed::new_with`.
-- KEM internals now use `new_with` where it removes temporary fixed-size buffers (`ExpandedKeyMaterial96` initialization in `src/kem/common.rs`, and ML-KEM parse wrappers in `src/kem/mlkem768x25519.rs`).
-- ML-KEM helper modules (`src/kem/ml_kem/*.rs`) keep plain ciphertext-byte return types for wire-layout compatibility, with wrapper construction deferred to parse/composition layers.
-- `Kdf` trait methods now return `KdfBytes` (secure-gate alias) instead of raw `Vec<u8>`, and internal `SerializedKey` usage was renamed to public `KdfBytes` for consistent HPKE KDF byte handling.
+### Changed (internal)
+
+- `src/aead.rs`: `ChaCha20Poly1305Aead::aead` now constructs the cipher via
+  `ChaCha20Poly1305::new_from_slice(key.expose_secret())`, eliminating the
+  non-`Zeroize` `ChaKey` (`GenericArray`) outer binding that previously held
+  the key bytes after the `with_secret` scope closed. `ChaChaCipher::seal`
+  and `::open` drop the wrap-unwrap-rewrap dance in favor of
+  `ChaNonce::from_slice(nonce.expose_secret())`.
+- `src/kdf.rs`: HKDF `labeled_extract` flattens the nested
+  `salt.with_secret(... labeled_ikm.with_secret(...))` to two Tier-2
+  `expose_secret` calls at the `Hkdf::extract` boundary; the PRK lands
+  directly in a `Zeroizing<Vec<u8>>` sized via the macro `$size` and
+  finalizes as `KdfBytes`. `labeled_expand` wraps the previously-bare
+  `labeled_info: Vec<u8>` as `LabeledInfo` and drops the
+  `LabeledOkm::new(...).into_inner().into_zeroizing()` round-trip — the
+  `Zeroizing` → `core::mem::take` → `KdfBytes::new` idiom is sufficient.
+- `src/kem/x25519.rs`, `src/kem/x448.rs`: leaf helpers take wrapped seeds
+  (`X25519Secret32` / `X448Secret56`) by value and return wrapped shared
+  secrets (`SharedSecret32` / `SharedSecret56`). `static_secret_from_seed`
+  clamps in place via `with_secret_mut` on the wrapper, then consumes via
+  `into_inner` (Tier-3) where the inner array size permits.
+- `src/kem/ml_kem/*.rs`: `encapsulate_with_seed` uses `into_inner` (Tier-3)
+  for `Seed32` randomness; `keypair_from_seed` is Tier-2 (forced) for the
+  64-byte `MlKemSeed64` because `[u8; 64]` lacks `Default` on MSRV 1.70.
+  Both return `SharedSecret32` instead of raw `[u8; 32]`.
+- `src/kem/common.rs`: `expand_seed(seed: &Seed32)` returns
+  `(MlKemSeed64, X25519Secret32)` with both halves written directly into
+  wrapper storage via `new_with`, eliminating the intermediate `[u8; 64]`
+  and `[u8; 32]` stack arrays. `shake256_labeled_derive` returns `KdfBytes`
+  and is demoted from `pub` to `pub(crate)` (no external callers in the
+  workspace).
+- `src/kem/mlkem768x25519.rs`: `DecapsulationKey.seed` is now `Seed32`
+  (was `[u8; 32]` with manual `Zeroize`/`ZeroizeOnDrop` derive). `expand_key`
+  takes `&Seed32`. `encapsulate_inner` takes owned `Seed32` +
+  `X25519Secret32` constructed at the entry points (`encapsulate(rng)` via
+  `from_rng`, `encapsulate_derand` via `new_with`). `derive_key_pair`
+  bridges via `dk.with_secret(|bytes| self.new_private_key(bytes))` —
+  derived bytes never live as a bare `Vec<u8>`.
+- `src/hpke.rs`: the HPKE exporter secret captured by `Context::export` is
+  now a `KdfBytes` wrapper rather than a raw `Vec<u8>` clone. The wrapper
+  drops with the closure (and thus the Context), zeroizing the exporter
+  secret. Applies symmetrically to both SHAKE one-stage and HKDF
+  two-stage paths.
 
 ### Added
 
-- Known-answer tests (KATs) for KDF behavior in `tests/kat_tests.rs`, and a clarity/coverage refactor of `tests/kdf_tests.rs` covering both HKDF and SHAKE paths.
+- `src/aliases.rs`: `MlKemSeed64` (`Fixed<[u8; 64]>`), `LabeledInfo`
+  (`Dynamic<Vec<u8>>` for HKDF-Expand info parameter), `SharedSecret56`
+  (`Fixed<[u8; 56]>` for X448 DH output).
+- `Plaintext` and `KdfBytes` aliases are re-exported `pub` so callers can
+  opt into wrapping their own bytes when their threat model warrants
+  (redacted `Debug`, drop-zeroization). The public API itself returns
+  raw `Vec<u8>` — the wrappers are opt-in.
 
-### Fixed
+### Removed
 
-- Explicit type annotations (`0usize..2000usize`, `rng.random::<u8>()`) added in `tests/error_tests.rs` to resolve type-inference ambiguity introduced by the `rand 0.9` API.
+- Unused `LabeledOkm` alias (the `*::into_inner().into_zeroizing()` round-trip
+  it served is gone).
+- `pub` on `shake256_labeled_derive` — demoted to `pub(crate)`.
 
 ### Security
-- Removed implicit shared-secret exposure paths by dropping `SharedSecret` `Deref`/`AsRef` usage; callers now use explicit `RevealSecret` accessors (`with_secret` / `expose_secret`).
-- Improved zeroization of HKDF PRK intermediate in `kdf.rs` by scoping the `Hkdf` struct drop and wrapping the `Output` bytes in `Zeroizing`.
+
+- HPKE exporter secret no longer leaks into the export closure as a raw
+  `Vec<u8>` for the lifetime of the Context.
+- AEAD key never materializes in a non-`Zeroize` `GenericArray` outside
+  a wrapper scope.
+- ML-KEM `d || z` seed and X25519 scalar seed exit `expand_seed` as
+  wrapped values; the previous shape leaked them as raw `[u8; 64]` and
+  `[u8; 32]` on the stack.
+- `DecapsulationKey.seed` is wrapped in `Seed32` for its entire
+  in-process lifetime.
+
+### Known constraints
+
+- `into_inner` (Tier-3 secure-gate consumption) requires `Default` on the
+  inner type. On MSRV 1.70, stdlib provides `Default for [T; N]` only for
+  `N ≤ 32`. Wrappers above 32 bytes (`MlKemSeed64` = 64, `X448Secret56` =
+  56) cannot use Tier-3 and fall back to Tier-2 `with_secret(|b| *b)` at
+  the FFI hand-off — same drop-zeroize end state, marked at each call
+  site with `// Tier-2 (forced): [u8; N] lacks Default on MSRV 1.70.`
+
+### Plan reference
+
+- `docs/plans/age-hpke-pq-secure-gate-hardening.md` (PRs 1–5).
 
 ## [0.0.5] - 2026-03-25
 

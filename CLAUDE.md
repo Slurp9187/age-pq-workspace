@@ -279,40 +279,56 @@ escape points. Anything outside this list is suspect.
 Anywhere else, prefer Tier 1. When adding a new external dependency, expand
 this table in the PR that introduces it.
 
-### Wire boundary — what callers see
+### Wire boundary — discipline inside, raw bytes out
 
-**Outputs of cryptographic primitives return wrappers.** AEAD ciphertexts,
-KDF outputs, plaintexts, key material — all wrapped, even when the underlying
-bytes are intended for the wire. The "wrap everything cryptographic" principle
-applies symmetrically to inputs *and* outputs of crypto operations.
+**The "wrap everything cryptographic" rule applies inside library
+implementations. At the public API boundary, return raw bytes.**
 
-Examples:
+Forcing wrapped return types on callers — `Recipient::open -> Plaintext`,
+`PrivateKey::bytes -> &Seed32`, etc. — propagates the wrapper type into
+caller signatures, blocks direct use with `&[u8]` APIs, and demands an
+`.expose_secret()` at every read site. The protection is illusory when
+callers immediately copy the bytes out to feed downstream APIs anyway.
+The Rust crypto ecosystem (chacha20poly1305, hkdf, x25519-dalek's
+`SharedSecret::to_bytes`) overwhelmingly returns raw bytes for the same
+reason: the library doesn't know the caller's threat model, and forcing
+one shape is paternalism.
 
-- `Recipient::open` → `Plaintext`
-- `Sender::seal` → `AeadCiphertext`
-- `Sender::export` / `Recipient::export` → `KdfBytes`
-- `PrivateKey::bytes` → `&Seed32` (or owned `Seed32`)
-- age `FileKey` material → kept inside `age`'s own wrapper, never copied to a
-  bare `[u8; 16]`
+**Rule:**
 
-**`Vec<u8>` is acceptable only for the byte view of an already-typed wire
-structure.** When a typed struct represents the wire format and exposes a
-serialization method, the method may return `Vec<u8>` because the typed
-struct is the wrapper. The bytes are a projection of the typed value.
+- **Inputs** at the public API: accept `&[u8]` / `Vec<u8>`. Don't dictate
+  caller's wrapper discipline for material they hand in.
+- **Outputs** at the public API: return `Vec<u8>` / `[u8; N]`. Callers wrap
+  themselves if their threat model warrants.
+- **Internally**: every byte buffer is wrapped (`Seed32`, `KdfBytes`,
+  `Plaintext`, etc.) for the entire intra-crate lifetime. PRK and OKM never
+  live as bare `Vec<u8>`. The exporter secret captured by `Context::export`
+  is a `KdfBytes`. Stack residue is minimized via `new_with` at construction
+  and `into_inner` (or `with_secret`) at FFI hand-off.
 
-Examples:
+**Opt-in for callers who want it.** The workspace aliases (`Plaintext`,
+`KdfBytes`, `Seed32`, `MlKemSeed64`, etc.) are re-exported `pub` so callers
+who want the redacted `Debug` and drop-zeroization can wrap their own
+returns:
 
-- `PublicKey::bytes() -> Vec<u8>` — the `PublicKey` trait object is the
-  typed wrapper; `bytes()` is its serialization.
-- `kem::mlkem768x25519::Ciphertext::to_bytes() -> [u8; N]` — same reasoning.
-- KEM `enc` bytes returned from `PublicKey::encap` — the encapsulation has
-  a typed home in the KEM module; the wire bytes are its serialization.
-- age stanza body bytes — the stanza is a typed value upstream; the wire
-  format is the serialization.
+```rust
+let pt = recipient.open(aad, &ct)?;             // -> Vec<u8>
+let pt = age_hpke_pq::Plaintext::new(pt);       // explicit opt-in
+let bytes = pt.with_secret(|b| b.to_vec());     // explicit reveal
+```
 
-When in doubt: if there is no typed wrapper one level up, the raw bytes need
-a wrapper here. Callers explicitly `with_secret` / `expose_secret` to reveal.
-There is no silent unwrapping at the public API.
+The library exposes the building blocks; it doesn't lecture.
+
+**`Vec<u8>` for serialization views of already-typed structs.** Wire-format
+serializations (`PublicKey::bytes`, `kem::*::Ciphertext::to_bytes`, age
+stanza bodies) return `Vec<u8>` / `[u8; N]`. The wrapper exists at the
+struct level; the bytes are a projection of it.
+
+**Inside the library, the rule still bites.** Every internal call chain
+holds secrets in wrappers from construction through final consumption.
+Audits should grep for `expose_secret` to find every escape hatch — if
+you find one inside the implementation that doesn't sit at a Tier-2 / 3
+FFI boundary documented in the inventory below, it's a bug.
 
 ### IO with `Dynamic<Vec<u8>>`
 
