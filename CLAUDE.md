@@ -241,23 +241,38 @@ this table in the PR that introduces it.
 
 ### Wire boundary — what callers see
 
-**Returned `Vec<u8>` is reserved for public wire bytes.** Examples:
+**Outputs of cryptographic primitives return wrappers.** AEAD ciphertexts,
+KDF outputs, plaintexts, key material — all wrapped, even when the underlying
+bytes are intended for the wire. The "wrap everything cryptographic" principle
+applies symmetrically to inputs *and* outputs of crypto operations.
 
-- `Sender::seal` output (ciphertext + tag — public bytes)
-- KEM `enc` bytes (public encapsulation)
-- `PublicKey::bytes` (public)
-- `age` stanza body bytes after encoding
-
-**Secret outputs return wrappers.** Examples:
+Examples:
 
 - `Recipient::open` → `Plaintext`
+- `Sender::seal` → `AeadCiphertext`
 - `Sender::export` / `Recipient::export` → `KdfBytes`
 - `PrivateKey::bytes` → `&Seed32` (or owned `Seed32`)
 - age `FileKey` material → kept inside `age`'s own wrapper, never copied to a
   bare `[u8; 16]`
 
-Callers explicitly `with_secret` / `expose_secret` to reveal. There is no
-silent unwrapping at the public API.
+**`Vec<u8>` is acceptable only for the byte view of an already-typed wire
+structure.** When a typed struct represents the wire format and exposes a
+serialization method, the method may return `Vec<u8>` because the typed
+struct is the wrapper. The bytes are a projection of the typed value.
+
+Examples:
+
+- `PublicKey::bytes() -> Vec<u8>` — the `PublicKey` trait object is the
+  typed wrapper; `bytes()` is its serialization.
+- `kem::mlkem768x25519::Ciphertext::to_bytes() -> [u8; N]` — same reasoning.
+- KEM `enc` bytes returned from `PublicKey::encap` — the encapsulation has
+  a typed home in the KEM module; the wire bytes are its serialization.
+- age stanza body bytes — the stanza is a typed value upstream; the wire
+  format is the serialization.
+
+When in doubt: if there is no typed wrapper one level up, the raw bytes need
+a wrapper here. Callers explicitly `with_secret` / `expose_secret` to reveal.
+There is no silent unwrapping at the public API.
 
 ### IO with `Dynamic<Vec<u8>>`
 
