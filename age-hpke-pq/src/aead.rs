@@ -8,7 +8,7 @@
 use crate::aliases::{AeadKey32, Nonce12};
 use crate::Error;
 use aead::{Aead as CryptoAead, KeyInit, Payload};
-use chacha20poly1305::{ChaCha20Poly1305, Key as ChaKey, Nonce as ChaNonce};
+use chacha20poly1305::{ChaCha20Poly1305, Nonce as ChaNonce};
 use secure_gate::RevealSecret;
 use std::result::Result;
 
@@ -82,8 +82,12 @@ impl Aead for ChaCha20Poly1305Aead {
 
     fn aead(&self, key: &[u8]) -> Result<Box<dyn CipherAead>, Error> {
         let key = AeadKey32::try_from(key).map_err(|_| Error::InvalidKeyLength)?;
-        let key: ChaKey = key.with_secret(|key_bytes| *ChaKey::from_slice(key_bytes));
-        let cipher = ChaCha20Poly1305::new(&key);
+        // Tier-2: ChaCha20Poly1305::new_from_slice takes &[u8]. Feeding from
+        // expose_secret() avoids materialising a non-Zeroize `ChaKey`
+        // (GenericArray) in an outer binding — the cipher copies the bytes
+        // into its own internal state and `key` zeroizes on drop.
+        let cipher = ChaCha20Poly1305::new_from_slice(key.expose_secret())
+            .map_err(|_| Error::InvalidKeyLength)?;
         Ok(Box::new(ChaChaCipher { cipher }))
     }
 
@@ -112,27 +116,22 @@ impl CipherAead for ChaChaCipher {
 
     fn seal(&self, nonce: &[u8], plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error> {
         let nonce = Nonce12::try_from(nonce).map_err(|_| Error::InvalidLength)?;
-        let nonce_bytes = nonce.with_secret(|bytes| *bytes);
-        let nonce = ChaNonce::from_slice(&nonce_bytes);
-        let payload = Payload {
-            msg: plaintext,
-            aad,
-        };
+        // Tier-2: ChaNonce::from_slice takes &[u8]. The wrapped nonce stays
+        // alive for the duration of the call; no intermediate array binding.
+        let cipher_nonce = ChaNonce::from_slice(nonce.expose_secret());
+        let payload = Payload { msg: plaintext, aad };
         self.cipher
-            .encrypt(nonce, payload)
+            .encrypt(cipher_nonce, payload)
             .map_err(|_| Error::EncryptionFailed)
     }
 
     fn open(&self, nonce: &[u8], ciphertext: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error> {
         let nonce = Nonce12::try_from(nonce).map_err(|_| Error::InvalidLength)?;
-        let nonce_bytes = nonce.with_secret(|bytes| *bytes);
-        let nonce = ChaNonce::from_slice(&nonce_bytes);
-        let payload = Payload {
-            msg: ciphertext,
-            aad,
-        };
+        // Tier-2: ChaNonce::from_slice takes &[u8].
+        let cipher_nonce = ChaNonce::from_slice(nonce.expose_secret());
+        let payload = Payload { msg: ciphertext, aad };
         self.cipher
-            .decrypt(nonce, payload)
+            .decrypt(cipher_nonce, payload)
             .map_err(|_| Error::DecryptionFailed)
     }
 }

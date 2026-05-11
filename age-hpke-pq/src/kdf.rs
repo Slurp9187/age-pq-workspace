@@ -13,7 +13,7 @@
 //!   [`draft-ietf-hpke-pq-03`](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03).
 //!   Registered variants: SHAKE128, SHAKE256.
 
-use crate::aliases::{KdfBytes, LabeledIkm, LabeledOkm, Salt};
+use crate::aliases::{KdfBytes, LabeledIkm, LabeledInfo, Salt};
 use crate::Error;
 use byteorder::{BigEndian, ByteOrder};
 use hkdf::Hkdf;
@@ -176,13 +176,17 @@ macro_rules! impl_hkdf_kdf {
                 labeled_ikm.extend_from_slice(input_key);
                 let labeled_ikm = LabeledIkm::new(core::mem::take(&mut *labeled_ikm));
                 let salt = Salt::from(salt.unwrap_or(&[]));
-                let mut prk = Zeroizing::new({
-                    let hk = salt.with_secret(|salt_raw| {
-                        labeled_ikm
-                            .with_secret(|ikm| Hkdf::<$hash_ty>::extract(Some(salt_raw), ikm))
-                    });
-                    hk.0.to_vec()
-                });
+
+                let mut prk = Zeroizing::new(vec![0u8; $size]);
+                // Tier-2: hkdf::Hkdf::extract takes &[u8] for salt and IKM. Salt
+                // is wrapped purely for audit (it's public); IKM is the secret.
+                // GenericArray PRK lifetime is one statement before bytes land
+                // in the Zeroizing buffer.
+                let (h, _) = Hkdf::<$hash_ty>::extract(
+                    Some(salt.expose_secret()),
+                    labeled_ikm.expose_secret(),
+                );
+                prk.copy_from_slice(&h);
                 Ok(KdfBytes::new(core::mem::take(&mut *prk)))
             }
 
@@ -194,7 +198,7 @@ macro_rules! impl_hkdf_kdf {
                 info: &[u8],
                 length: u16,
             ) -> Result<KdfBytes, Error> {
-                let mut labeled_info = Vec::with_capacity(
+                let mut labeled_info_bytes = Vec::with_capacity(
                     core::mem::size_of::<u16>()
                         + HPKE_VERSION_LABEL.len()
                         + suite_id.len()
@@ -203,19 +207,21 @@ macro_rules! impl_hkdf_kdf {
                 );
                 let mut buf = [0u8; 2];
                 BigEndian::write_u16(&mut buf, length);
-                labeled_info.extend_from_slice(&buf);
-                labeled_info.extend_from_slice(HPKE_VERSION_LABEL);
-                labeled_info.extend_from_slice(suite_id);
-                labeled_info.extend_from_slice(label.as_bytes());
-                labeled_info.extend_from_slice(info);
+                labeled_info_bytes.extend_from_slice(&buf);
+                labeled_info_bytes.extend_from_slice(HPKE_VERSION_LABEL);
+                labeled_info_bytes.extend_from_slice(suite_id);
+                labeled_info_bytes.extend_from_slice(label.as_bytes());
+                labeled_info_bytes.extend_from_slice(info);
+                let labeled_info = LabeledInfo::new(labeled_info_bytes);
 
                 let hk =
                     Hkdf::<$hash_ty>::from_prk(random_key).map_err(|_| Error::InvalidLength)?;
                 let mut okm = Zeroizing::new(vec![0u8; length as usize]);
-                hk.expand(&labeled_info, &mut okm[..])
+                // Tier-2: hkdf::Hkdf::expand takes &[u8] for info and &mut [u8]
+                // for the output buffer. On error, the Zeroizing wrapper covers
+                // the partially-filled buffer.
+                hk.expand(labeled_info.expose_secret(), &mut okm[..])
                     .map_err(|_| Error::InvalidLength)?;
-                let okm = LabeledOkm::new(core::mem::take(&mut *okm));
-                let mut okm = okm.into_inner().into_zeroizing();
                 Ok(KdfBytes::new(core::mem::take(&mut *okm)))
             }
         }

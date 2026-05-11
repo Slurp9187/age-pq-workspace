@@ -9,6 +9,11 @@ fixed_alias!(
 );
 fixed_alias!(pub AeadKey32, 32, "ChaCha20-Poly1305 key (32 bytes).");
 fixed_alias!(pub Nonce12, 12, "ChaCha20-Poly1305 nonce (12 bytes).");
+fixed_alias!(
+    pub MlKemSeed64,
+    64,
+    "ML-KEM `d || z` seed (64 bytes), produced by `expand_seed` and consumed by libcrux's keypair generator."
+);
 
 // Crate-internal aliases (auditability wrappers)
 // Fixed-size aliases — KEM internals
@@ -72,7 +77,16 @@ dynamic_alias!(
     "HPKE info string (public, arbitrary length)."
 );
 dynamic_alias!(pub(crate) Aad, Vec<u8>, "Additional authenticated data (public).");
-dynamic_alias!(pub(crate) Plaintext, Vec<u8>, "Plaintext message to be encrypted.");
+dynamic_alias!(
+    pub Plaintext,
+    Vec<u8>,
+    "Decrypted HPKE plaintext (returned from `Recipient::open` and one-shot `open`)."
+);
+dynamic_alias!(
+    pub AeadCiphertext,
+    Vec<u8>,
+    "HPKE AEAD ciphertext + auth tag (returned from `Sender::seal` and one-shot `seal`). Symmetric with `Plaintext` on the open side; named to avoid clashing with the structured `kem::mlkem768x25519::Ciphertext`."
+);
 dynamic_alias!(pub(crate) ExporterContext, Vec<u8>, "HPKE exporter context.");
 dynamic_alias!(
     pub KdfBytes,
@@ -90,9 +104,9 @@ dynamic_alias!(
     "HPKE labeled IKM buffer used as HKDF-Extract input."
 );
 dynamic_alias!(
-    pub(crate) LabeledOkm,
+    pub(crate) LabeledInfo,
     Vec<u8>,
-    "HPKE labeled output keying material (OKM) buffer."
+    "HPKE labeled info buffer used as HKDF-Expand info parameter."
 );
 dynamic_alias!(
     pub(crate) Salt,
