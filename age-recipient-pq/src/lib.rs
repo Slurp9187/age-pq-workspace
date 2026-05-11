@@ -69,6 +69,7 @@ use bech32::{encode, Bech32, Hrp};
 use secrecy::{ExposeSecret, SecretBox};
 use std::collections::HashSet;
 use std::str::FromStr;
+use zeroize::Zeroizing;
 
 /// Custom checksum that matches classic Bech32 (BIP-173) exactly,
 /// including the original theoretical maximum code length of 4096 characters.
@@ -128,8 +129,12 @@ impl HybridRecipient {
         let kem = MlKem768X25519;
         let sk = kem.generate_key()?;
         let pk = sk.public_key();
-        let seed_bytes = sk.bytes()?;
-        let seed: [u8; 32] = seed_bytes.try_into().map_err(|_| "Invalid seed length")?;
+        // Zeroizing covers the private-key seed Vec until it's copied into SecretBox.
+        let seed_bytes = Zeroizing::new(sk.bytes()?);
+        let seed: [u8; 32] = seed_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| "Invalid seed length")?;
         let pub_key_bytes = pk.bytes();
         Ok((
             Self {
@@ -263,8 +268,9 @@ impl HybridIdentity {
             )));
         }
 
-        let seed_bytes: Vec<u8> = checked.byte_iter().collect();
-        let seed: [u8; 32] = seed_bytes.try_into().map_err(|_| {
+        // Zeroizing covers the parsed seed Vec until it's copied into SecretBox.
+        let seed_bytes: Zeroizing<Vec<u8>> = Zeroizing::new(checked.byte_iter().collect());
+        let seed: [u8; 32] = seed_bytes.as_slice().try_into().map_err(|_| {
             age::DecryptError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid seed length",
@@ -279,9 +285,15 @@ impl HybridIdentity {
     /// Serializes the identity to its bech32-encoded string representation (uppercase).
     pub fn to_string(&self) -> SecretString {
         let hrp = Hrp::parse("age-secret-key-pq-").expect("static valid HRP");
-        let lower_encoded = encode::<Bech32>(hrp, self.seed.expose_secret())
-            .expect("encoding with valid data never fails");
-        SecretString::from(lower_encoded.to_ascii_uppercase())
+        // The bech32-encoded string carries the private key; keep it zeroize-covered
+        // until it's handed off to SecretString. `make_ascii_uppercase` mutates in
+        // place so no second unprotected copy is produced.
+        let mut encoded = Zeroizing::new(
+            encode::<Bech32>(hrp, self.seed.expose_secret())
+                .expect("encoding with valid data never fails"),
+        );
+        encoded.make_ascii_uppercase();
+        SecretString::from(core::mem::take(&mut *encoded))
     }
 
     /// Derives the public recipient from this identity.
@@ -338,11 +350,12 @@ impl AgeIdentity for HybridIdentity {
         };
         let mut ct = enc;
         ct.extend_from_slice(&stanza.body);
+        // Zeroizing covers the decrypted file-key Vec until it's copied into FileKey.
         let file_key_bytes = match open(sk, kdf, aead, PQ_LABEL, &[], &ct) {
-            Ok(f) => f,
+            Ok(f) => Zeroizing::new(f),
             Err(_) => return None,
         };
-        let file_key = match file_key_bytes.try_into() {
+        let file_key = match file_key_bytes.as_slice().try_into() {
             Ok(arr) => FileKey::new(Box::new(arr)),
             Err(_) => return None,
         };

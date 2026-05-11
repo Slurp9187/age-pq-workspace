@@ -124,6 +124,7 @@ dependencies = [
  "tempfile",
  "time",
  "unicode-ident",
+ "zeroize",
 ]
 
 [[package]]

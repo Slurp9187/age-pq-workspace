@@ -17,6 +17,7 @@ age-core = "0.11"
 base64 = "0.22"
 bech32 = "0.11"
 secrecy = "0.10"
+zeroize = "1.8"
 # unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
 unicode-ident = { workspace = true }
 
