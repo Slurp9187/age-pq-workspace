@@ -3,8 +3,8 @@
 //! This module implements the concrete X-Wing KEM variant specified in
 //! `hpke-pq.md` (MLKEM768-X25519). It owns the hybrid wire format, key
 //! types, encapsulation/decapsulation flow, and the call into the SHA3-256
-//! combiner. Primitive-specific helpers live in [`super::ml_kem`] and
-//! [`super::x25519`]; shared traits and constants live in [`super::common`].
+//! combiner. Primitive-specific helpers live in `super::ml_kem` and
+//! `super::x25519`; shared traits and constants live in [`super::common`].
 
 use super::combiner;
 use super::ml_kem;
@@ -68,9 +68,9 @@ pub struct EncapsulationKey {
 /// Hybrid decapsulation (private) key, stored as a wrapped 32-byte seed.
 ///
 /// The full ML-KEM keypair and X25519 scalar are re-derived on demand via
-/// [`expand_seed`]. The `Seed32` wrapper provides zeroize-on-drop and a
-/// redacted `Debug` representation; access to the bytes goes through the
-/// `secure-gate` 3-tier API.
+/// the crate-internal `expand_seed` helper. The `Seed32` wrapper provides
+/// zeroize-on-drop and a redacted `Debug` representation; access to the
+/// bytes goes through the `secure-gate` 3-tier API.
 pub struct DecapsulationKey {
     seed: Seed32,
 }

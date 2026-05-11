@@ -7,7 +7,7 @@ pub(crate) const X_WING_LABEL: &[u8] = br"\.//^\";
 /// [`SharedSecret`] using SHA3-256.
 ///
 /// This follows the hybrid KEM combiner in `hpke-pq.md`. The domain separator
-/// [`X_WING_LABEL`] is appended to bind the context and prevent cross-protocol
+/// `X_WING_LABEL` is appended to bind the context and prevent cross-protocol
 /// attacks. The digest is written directly into `SharedSecret` via `new_with`,
 /// avoiding an intermediate plaintext stack copy.
 pub fn combine_shared_secrets(
