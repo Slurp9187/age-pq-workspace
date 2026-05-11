@@ -89,8 +89,25 @@ Every `expose_secret` should pass the sniff test: *could this be a
 use Tier 1.
 
 **Tier 3 — `into_inner` (consumption).**
-For moving a value into an API that takes `T` by value. Audit separately —
-`into_inner` does not appear in an `expose_secret` grep sweep.
+For moving a value into an API that takes `T` (or `[u8; N]`) by value when
+the wrapper will not be needed again. Returns `InnerSecret<T>`, which
+derefs to `&T` and zeroizes on drop — so the secret remains zeroize-protected
+through the hand-off. Prefer Tier 3 over `with_secret(|s| *s)` at FFI
+boundaries that take owned arrays: the explicit consumption is clearer, the
+zeroization is automatic, and you don't need a manual `clamped.zeroize()`
+after a transformation.
+
+Tier-3 examples in this workspace:
+
+- `x25519_dalek::StaticSecret::from([u8; 32])` — takes the scalar by value
+- `libcrux_ml_kem::*::encapsulate(&pk, [u8; 32])` — takes randomness by value
+- `libcrux_ml_kem::*::generate_key_pair([u8; 64])` — takes the `d \|\| z` seed
+  by value
+
+Audit Tier 3 separately — `into_inner` does not appear in an
+`expose_secret` grep sweep. The Tier-2 boundary inventory below tags each
+external API as Tier-2 (`&[u8]`) or Tier-3 (`[u8; N]` by value) so the
+correct tier is grep-able per call site.
 
 ### NEVER do these
 
@@ -211,15 +228,19 @@ escape points. Anything outside this list is suspect.
 
 **`age-hpke-pq`:**
 
-| Call | Where | Reason |
-|------|------|--------|
-| `libcrux_ml_kem::*::encapsulate / decapsulate / generate_key_pair` | `src/kem/ml_kem/*.rs` | Takes raw arrays by value |
-| `x25519_dalek::{StaticSecret, PublicKey}::from`, `diffie_hellman` | `src/kem/x25519.rs` | Takes `[u8; 32]` / `&PublicKey` |
-| `x448::{Secret, PublicKey}::from`, `as_diffie_hellman` | `src/kem/x448.rs` | Same |
-| `hkdf::Hkdf::{extract, expand}` | `src/kdf.rs` | Takes `&[u8]` |
-| `chacha20poly1305::{ChaCha20Poly1305::new_from_slice, encrypt, decrypt}` | `src/aead.rs` | Takes `&[u8]` / `&Nonce` |
-| `sha3::Shake*::update` | `src/kdf.rs`, `src/kem/common.rs`, `src/kem/combiner.rs` | Takes `&[u8]` |
-| `combiner::combine_shared_secrets(&[u8; 32], …)` | callers in `kem/mlkem768x25519.rs` | 4-arg call; nesting would obscure |
+| Call | Where | Tier | Reason |
+|------|------|------|--------|
+| `libcrux_ml_kem::*::encapsulate(&pk, [u8; 32])` | `src/kem/ml_kem/*.rs` | **3** | Randomness taken by value — consume via `into_inner` |
+| `libcrux_ml_kem::*::generate_key_pair([u8; 64])` | `src/kem/ml_kem/*.rs` | **3** | `d \|\| z` seed taken by value — consume via `into_inner` |
+| `libcrux_ml_kem::*::decapsulate(&sk, &ct)` | `src/kem/ml_kem/*.rs` | 2 | Borrows; ct is public bytes via `with_secret` |
+| `libcrux_ml_kem::*PublicKey::from([u8; N])` | `src/kem/ml_kem/*.rs` | 2 | Public-key bytes; `with_secret` deref |
+| `x25519_dalek::StaticSecret::from([u8; 32])` | `src/kem/x25519.rs` | **3** | Scalar taken by value — consume via `into_inner`; `StaticSecret` is itself `ZeroizeOnDrop` |
+| `x25519_dalek::StaticSecret::diffie_hellman(&PublicKey)` | `src/kem/x25519.rs` | 2 | Borrowed peer key |
+| `x448::Secret::from(&[u8; 56])`, `as_diffie_hellman` | `src/kem/x448.rs` | 2/3 | Same shape as X25519 |
+| `hkdf::Hkdf::{extract, expand}` | `src/kdf.rs` | 2 | Takes `&[u8]` |
+| `chacha20poly1305::{ChaCha20Poly1305::new_from_slice, encrypt, decrypt}` | `src/aead.rs` | 2 | Takes `&[u8]` / `&Nonce` |
+| `sha3::Shake*::update` | `src/kdf.rs`, `src/kem/common.rs`, `src/kem/combiner.rs` | 2 | Takes `&[u8]` |
+| `combiner::combine_shared_secrets(&[u8; 32], …)` | callers in `kem/mlkem768x25519.rs` | 2 | 4-arg call; closure nesting would obscure |
 
 **`age-recipient-pq`:**
 
