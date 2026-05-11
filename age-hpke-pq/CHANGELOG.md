@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - ML-KEM helper modules (`src/kem/ml_kem/*.rs`) keep plain ciphertext-byte return types for wire-layout compatibility, with wrapper construction deferred to parse/composition layers.
 - `Kdf` trait methods now return `KdfBytes` (secure-gate alias) instead of raw `Vec<u8>`, and internal `SerializedKey` usage was renamed to public `KdfBytes` for consistent HPKE KDF byte handling.
 
+### Added
+
+- Known-answer tests (KATs) for KDF behavior in `tests/kat_tests.rs`, and a clarity/coverage refactor of `tests/kdf_tests.rs` covering both HKDF and SHAKE paths.
+
 ### Fixed
 
 - Explicit type annotations (`0usize..2000usize`, `rng.random::<u8>()`) added in `tests/error_tests.rs` to resolve type-inference ambiguity introduced by the `rand 0.9` API.

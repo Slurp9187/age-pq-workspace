@@ -25,11 +25,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `.gitattributes`: `* text=auto` baseline with `binary` overrides for
   `age-recipient-pq/tests/data/**` and `age-hpke-pq/tests/data/**` so encrypted fixtures and
   plaintext references are never subject to line-ending conversion on any platform.
+- `rust-toolchain.toml` pinning the workspace to channel `1.70` with `cargo`, `rustc`,
+  `rust-std`, `clippy`, and `rustfmt` (minimal profile), so contributors get the MSRV toolchain
+  automatically.
 
 ### Changed
-- `secure-gate` workspace dependency bumped to `=0.8.0-rc.8` (includes latest type-safety
-  aliases, memory-hygiene improvements, and fixes for `RevealSecret` / `KdfBytes` usage
-  across `age-hpke-pq`, `age-plugin-pq`, and tests).
+- `secure-gate` workspace dependency bumped to `=0.8.0-rc.9` (supersedes the earlier `rc.8`
+  bump; brings the latest type-safety aliases, memory-hygiene improvements, and fixes for
+  `RevealSecret` / `KdfBytes` usage across `age-hpke-pq`, `age-plugin-pq`, and tests).
+- `Cargo.toml` `include` patterns rewritten as workspace-rooted absolute paths
+  (`/CHANGELOG.md`, `/LICENSE*`, `/README.md`) so packaging picks up the workspace files
+  unambiguously regardless of member-crate cwd.
 - `age-recipient-pq/Cargo.toml`: `age-hpke-pq` dependency switched from
   `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-hpke-pq" }` for in-workspace
   development; the workspace `[patch]` table keeps the published git reference valid for
