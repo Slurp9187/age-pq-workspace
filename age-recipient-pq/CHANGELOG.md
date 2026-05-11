@@ -5,15 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.5] - 2026-05-10
 
 ### Changed
 
 - Test tree uses current naming (`mlkem768x25519`, etc.); no legacy `age-xwing` strings remain under `tests/`.
 - Consolidated `src/bech32.rs` and `src/pq.rs` into `src/lib.rs`; tests import `HybridRecipient` / `HybridIdentity` from the crate root (only `src/lib.rs` remains).
 - Joined the parent Cargo workspace (`age-hpke-pq`, `age-recipient-pq`, `age-plugin-pq`): one root `Cargo.lock`, no `Cargo.lock` inside this crate directory. Local builds use workspace root `[patch."https://github.com/Slurp9187/age-hpke-pq"]` so the published-style git dependency resolves to the sibling `age-hpke-pq` crate.
-- Aligned `examples/pq-keygen.rs` reported CLI version with package version (`0.0.5-dev`).
+- Aligned `examples/pq-keygen.rs` reported CLI version with package version (`0.0.5`).
 - `age-hpke-pq` dependency switched from `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-hpke-pq" }` for in-workspace development; the workspace `[patch]` table keeps the published git reference valid for downstream consumers.
+
+### Security
+
+- Closed four un-zeroized intermediate buffers between secret extraction and re-wrap. `HybridRecipient::generate`, `HybridIdentity::parse`, `HybridIdentity::to_string`, and `AgeIdentity::unwrap_stanza` all previously held private-key seed bytes or decrypted file-key bytes in plain `Vec<u8>` / `String` heap buffers between the moment the bytes were produced and the moment they were copied into `SecretBox` / `SecretString` / `FileKey`. Each intermediate is now wrapped in `zeroize::Zeroizing<...>` so the heap buffer is zeroized when it drops. `HybridIdentity::to_string` additionally switches `to_ascii_uppercase()` (which produced a second plain `String`) to `make_ascii_uppercase()` (in-place mutation) to avoid the second unprotected copy.
+- Added `zeroize = "1.8"` as a direct dependency (previously transitive via `secrecy` and `age-hpke-pq`). No new code in the dependency graph.
 
 ### Fixed
 

@@ -5,14 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.7] - 2026-05-10
+## [0.0.6] - 2026-05-10
 
 Internal secure-gate hardening pass. No public API changes — every method
 signature, trait method, and return type at the crate boundary is identical
-to `0.0.6-dev`. Internal call chains were tightened to eliminate
-unzeroized intermediate buffers, lift seed/scalar plumbing into wrappers
-end-to-end, and capture the HPKE exporter secret as a `KdfBytes` wrapper
-inside the export closure instead of cloning to a raw `Vec<u8>`.
+to the previous `0.0.6-dev` working version. Internal call chains were
+tightened to eliminate unzeroized intermediate buffers, lift seed/scalar
+plumbing into wrappers end-to-end, and capture the HPKE exporter secret
+as a `KdfBytes` wrapper inside the export closure instead of cloning to a
+raw `Vec<u8>`.
 
 ### Changed (internal)
 
