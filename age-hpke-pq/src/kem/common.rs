@@ -1,6 +1,6 @@
 //! Common traits, constants, and helper functions for the X-Wing KEM.
 
-use crate::aliases::{ExpandedKeyMaterial96, X25519Secret32};
+use crate::aliases::{ExpandedKeyMaterial96, KdfBytes, MlKemSeed64, Seed32, X25519Secret32};
 use crate::error::{Error, Result as CrateResult};
 use crate::kdf::HPKE_VERSION_LABEL;
 use byteorder::{BigEndian, ByteOrder};
@@ -8,6 +8,7 @@ use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
 use secure_gate::RevealSecret;
 use std::any::Any;
+use zeroize::Zeroizing;
 
 /// HPKE KEM identifier for MLKEM768-X25519.
 pub const KEM_ID: u16 = 0x647a;
@@ -86,13 +87,18 @@ pub trait PrivateKey: Send + Sync + Any {
 /// `input_key || HPKE_VERSION_LABEL || suite_id || len(label) || label || len(L) || context`
 ///
 /// and then expands the result with `SHAKE256(..., L)`.
-pub fn shake256_labeled_derive(
+///
+/// `input_key` is the secret IKM and is fed once into the SHAKE absorb;
+/// the helper does not retain it past the absorb call. Callers should
+/// hold IKM in a wrapper (`KdfBytes`, `Seed32`, etc.) upstream and pass
+/// its `expose_secret()` here.
+pub(crate) fn shake256_labeled_derive(
     suite_id: &[u8],
     input_key: &[u8],
     label: &[u8],
     context: &[u8],
     length: usize,
-) -> CrateResult<Vec<u8>> {
+) -> CrateResult<KdfBytes> {
     if length > u16::MAX as usize || label.len() > u16::MAX as usize {
         return Err(Error::InvalidLength);
     }
@@ -107,9 +113,9 @@ pub fn shake256_labeled_derive(
     BigEndian::write_u16(&mut buf, length as u16);
     h.update(&buf);
     h.update(context);
-    let mut out = vec![0; length];
+    let mut out = Zeroizing::new(vec![0u8; length]);
     h.finalize_xof().read(&mut out);
-    Ok(out)
+    Ok(KdfBytes::new(core::mem::take(&mut *out)))
 }
 
 /// Expands a 32-byte hybrid seed into ML-KEM and X25519 key material.
@@ -117,32 +123,34 @@ pub fn shake256_labeled_derive(
 /// This mirrors `expandKey` in `hpke-pq.md`: `SHAKE256(seed, 96)` split into
 /// 64 bytes for ML-KEM (`d || z`) and 32 bytes for X25519 private-key material.
 ///
-/// The returned X25519 bytes are the raw expanded seed bytes. Clamping is
-/// performed later by `kem::x25519::static_secret_from_seed`.
-pub(crate) fn expand_seed(
-    seed: &[u8; MASTER_SEED_SIZE],
-) -> ([u8; ML_KEM_SEED_SIZE], [u8; CURVE_SEED_SIZE]) {
-    let mut hasher = Shake256::default();
-    hasher.update(seed);
-    let mut reader = hasher.finalize_xof();
+/// Returns wrapped seeds — both halves are written directly into wrapper
+/// storage via `new_with`, eliminating the intermediate `[u8; 64]` and
+/// `[u8; 32]` stack arrays the previous shape produced. The returned X25519
+/// bytes are unclamped; clamping is performed by
+/// `kem::x25519::static_secret_from_seed`.
+///
+/// `hpke-go` retries if the raw 32-byte X25519 seed is all-zero; this
+/// implementation does not need a retry loop because RFC 7748 clamping
+/// always sets bit 6 of the last byte, so the clamped scalar is never
+/// all-zero.
+pub(crate) fn expand_seed(seed: &Seed32) -> (MlKemSeed64, X25519Secret32) {
+    seed.with_secret(|seed_bytes| {
+        let mut hasher = Shake256::default();
+        hasher.update(seed_bytes);
+        let mut reader = hasher.finalize_xof();
 
-    // Expand to 64 bytes for ML-KEM (d || z) plus 32 bytes for X25519.
-    let expanded = ExpandedKeyMaterial96::new_with(|bytes| reader.read(bytes));
+        // Expand to 96 bytes (64 ML-KEM `d || z` + 32 X25519 scalar).
+        let expanded = ExpandedKeyMaterial96::new_with(|bytes| reader.read(bytes));
 
-    // First 64 bytes: `d || z` for libcrux ML-KEM key derivation.
-    // This conversion is infallible because `expanded` is exactly 96 bytes.
-    let ml_seed: [u8; ML_KEM_SEED_SIZE] =
-        expanded.with_secret(|bytes| bytes[0..ML_KEM_SEED_SIZE].try_into().unwrap());
-
-    // Next 32 bytes: raw X25519 scalar material (left unclamped here).
-    //
-    // hpke-go retries if the raw 32-byte seed is all-zero. This implementation
-    // does not need a retry loop: RFC 7748 clamping always sets bit 6 of the
-    // last byte, so the clamped scalar cannot be all-zero.
-    // Same here: `[64..96]` is always exactly 32 bytes.
-    let x_bytes: [u8; CURVE_SEED_SIZE] =
-        expanded.with_secret(|bytes| bytes[ML_KEM_SEED_SIZE..96].try_into().unwrap());
-    let x_secret = X25519Secret32::from(x_bytes);
-    let x_bytes = x_secret.with_secret(|bytes| *bytes);
-    (ml_seed, x_bytes)
+        // Slice into the two wrapper halves without ever naming the raw
+        // bytes in an outer binding — `new_with` writes directly into the
+        // destination wrapper's storage.
+        let ml = expanded.with_secret(|e| {
+            MlKemSeed64::new_with(|out| out.copy_from_slice(&e[0..ML_KEM_SEED_SIZE]))
+        });
+        let x = expanded.with_secret(|e| {
+            X25519Secret32::new_with(|out| out.copy_from_slice(&e[ML_KEM_SEED_SIZE..]))
+        });
+        (ml, x)
+    })
 }
