@@ -127,11 +127,15 @@ fn new_context(
         let exp_secret = KdfBytes::new(secret_raw[aead.key_size() + aead.nonce_size()..].to_vec());
 
         let a = key.with_secret(|key_raw| aead.aead(key_raw))?;
-        let exp_secret_clone = exp_secret.expose_secret().to_vec();
+        // Capture `exp_secret` as a wrapped `KdfBytes` by `move` — the
+        // previous shape leaked the exporter secret as an unzeroized
+        // `Vec<u8>` for the entire lifetime of the Context.
         export = Box::new(move |exporter_context: &[u8], length: u16| {
             let exporter_context = ExporterContext::new(exporter_context.to_vec());
+            // Tier-2: kdf.labeled_derive takes &[u8] for input_key and context.
+            let raw = exp_secret.expose_secret();
             exporter_context.with_secret(|ctx| {
-                kdf.labeled_derive(&sid, &exp_secret_clone, "sec", ctx, length)
+                kdf.labeled_derive(&sid, raw, "sec", ctx, length)
                     .map(|bytes| bytes.with_secret(|b| b.to_vec()))
             })
         });
@@ -191,11 +195,15 @@ fn new_context(
         };
 
         let a = key.with_secret(|key_raw| aead.aead(key_raw))?;
-        let exp_secret_clone = exp_secret.expose_secret().to_vec();
+        // Capture `exp_secret` as a wrapped `KdfBytes` by `move` — the
+        // previous shape leaked the exporter secret as an unzeroized
+        // `Vec<u8>` for the entire lifetime of the Context.
         export = Box::new(move |exporter_context: &[u8], length: u16| {
             let exporter_context = ExporterContext::new(exporter_context.to_vec());
+            // Tier-2: kdf.labeled_expand takes &[u8] for prk and info.
+            let raw = exp_secret.expose_secret();
             exporter_context.with_secret(|ctx| {
-                kdf.labeled_expand(&sid, &exp_secret_clone, "sec", ctx, length)
+                kdf.labeled_expand(&sid, raw, "sec", ctx, length)
                     .map(|bytes| bytes.with_secret(|b| b.to_vec()))
             })
         });
