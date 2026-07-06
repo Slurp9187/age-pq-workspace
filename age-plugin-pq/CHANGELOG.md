@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `rand` dependency upgraded from `0.8` to `0.9`.
+
 ### Fixed
 
 - Update `hpke_pq.rs` for Secure-Gate / `KdfBytes` compatibility (use `RevealSecret::with_secret` for `Dynamic<Vec<u8>>` values in `labeled_*` calls, `extend_from_slice`, and `copy_from_slice`).
 
-### Changed
+### Security
 
-- `rand` dependency upgraded from `0.8` to `0.9`.
+- Zeroize intermediates between secret extraction and re-wrap in `RecipientPlugin::wrap_file_keys`
+  and `unwrap_file_keys` (feed AEAD key via `new_from_slice` so the only live copy after
+  `key_bytes` zeroizes is inside the cipher), `IdentityPlugin::add_identity` (stack seed after
+  `from_seed`), `unwrap_file_keys` plaintext (`Zeroizing<Vec<u8>>` for decrypted file keys),
+  `keygen` (`Zeroizing` seed, identity, and output strings; `make_ascii_uppercase` in place),
+  and `convert_native_identities` (stdin buffer, decoded bytes, per-line seeds, and re-encoded
+  plugin identity strings).
 
 ## [0.0.1] - 2026-03-24
 

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Docs
+
+- Fix rustdoc warnings from intradoc links to `pub(crate)` items in `kem/combiner.rs` and
+  `kem/mlkem768x25519.rs` (plain backticks where the target is not public on docs.rs).
+
 ## [0.0.6] - 2026-05-10
 
 Internal secure-gate hardening pass. No public API changes — every method

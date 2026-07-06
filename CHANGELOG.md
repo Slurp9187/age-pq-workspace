@@ -10,16 +10,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-
-- `age-recipient-pq/tests/data/lorem.txt` re-written as pure LF (was committed with CRLF on
-  Windows), fixing `test_decrypt_lorem_encrypted_with_age_cli` which compared decrypted bytes
-  against the on-disk reference (the encrypted fixture was created from the LF version).
-- `age-plugin-pq`: `rand` dependency corrected from `0.8` to `0.9` to match the rest of the
-  workspace (was the sole outlier still on the old series).
-- `age-hpke-pq/tests/error_tests.rs`: explicit type annotations (`0usize..2000usize`,
-  `rng.random::<u8>()`) resolve type-inference ambiguity introduced by the `rand 0.9` API.
-
 ### Added
 
 - `.gitattributes`: `* text=auto` baseline with `binary` overrides for
@@ -30,9 +20,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   automatically.
 
 ### Changed
-- `secure-gate` workspace dependency bumped to `=0.8.0-rc.9` (supersedes the earlier `rc.8`
-  bump; brings the latest type-safety aliases, memory-hygiene improvements, and fixes for
-  `RevealSecret` / `KdfBytes` usage across `age-hpke-pq`, `age-plugin-pq`, and tests).
+
+- `secure-gate` workspace dependency bumped to `=0.8.0-rc.10` (supersedes `rc.9`; pinned
+  across `age-hpke-pq`, `age-plugin-pq`, and tests).
 - `Cargo.toml` `include` patterns rewritten as workspace-rooted absolute paths
   (`/CHANGELOG.md`, `/LICENSE*`, `/README.md`) so packaging picks up the workspace files
   unambiguously regardless of member-crate cwd.
@@ -40,6 +30,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-hpke-pq" }` for in-workspace
   development; the workspace `[patch]` table keeps the published git reference valid for
   downstream consumers without requiring changes to member `Cargo.toml` files.
+
+### Fixed
+
+- `age-recipient-pq/tests/data/lorem.txt` re-written as pure LF (was committed with CRLF on
+  Windows), fixing `test_decrypt_lorem_encrypted_with_age_cli` which compared decrypted bytes
+  against the on-disk reference (the encrypted fixture was created from the LF version).
+- `age-plugin-pq`: `rand` dependency corrected from `0.8` to `0.9` to match the rest of the
+  workspace (was the sole outlier still on the old series).
+- `age-hpke-pq/tests/error_tests.rs`: explicit type annotations (`0usize..2000usize`,
+  `rng.random::<u8>()`) resolve type-inference ambiguity introduced by the `rand 0.9` API.
+
+### Security
+
+- `age-plugin-pq`: wrap private-key and file-key intermediates in `Zeroizing<...>` across
+  `wrap_file_keys` / `unwrap_file_keys`, `add_identity`, `keygen`, and
+  `convert_native_identities` (ChaCha20-Poly1305 key setup, decrypted file keys, bech32
+  strings, and stack seed copies).
 
 ---
 
