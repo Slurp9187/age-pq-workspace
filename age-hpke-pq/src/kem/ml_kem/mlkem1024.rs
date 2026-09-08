@@ -4,7 +4,9 @@
 
 #![allow(dead_code)]
 
-use crate::aliases::{MlKem1024Ciphertext1568, MlKem1024PublicKey1568, MlKemSeed64, Seed32, SharedSecret32};
+use crate::aliases::{
+    MlKem1024Ciphertext1568, MlKem1024PublicKey1568, MlKemSeed64, Seed32, SharedSecret32,
+};
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem1024::{
     decapsulate, encapsulate, generate_key_pair as mlkem1024_generate_key_pair,
@@ -33,8 +35,10 @@ pub(crate) fn encapsulate_with_seed(
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
     let r = randomness.into_inner();
     let (ct_m, ss_m) = encapsulate(&pk_m, *r);
-    let ct_m_bytes: [u8; MLKEM1024_CT_SIZE] =
-        ct_m.as_ref().try_into().map_err(|_| Error::ArraySizeError)?;
+    let ct_m_bytes: [u8; MLKEM1024_CT_SIZE] = ct_m
+        .as_ref()
+        .try_into()
+        .map_err(|_| Error::ArraySizeError)?;
     Ok((ct_m_bytes, SharedSecret32::from(ss_m)))
 }
 

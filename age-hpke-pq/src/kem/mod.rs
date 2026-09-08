@@ -17,8 +17,8 @@ pub mod combiner;
 pub mod common;
 pub(crate) mod ml_kem;
 pub mod mlkem768x25519;
-pub(crate) mod x448;
 pub(crate) mod x25519;
+pub(crate) mod x448;
 
 pub use common::*;
 pub use mlkem768x25519::MlKem768X25519;

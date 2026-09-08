@@ -238,7 +238,10 @@ impl EncapsulationKey {
 
 impl EncapsulationKey {
     /// Constructs from pre-wrapped components (crate-internal).
-    pub(crate) fn from_wrapped_components(pk_m: MlKem768PublicKey1184, pk_x: X25519PublicKey) -> Self {
+    pub(crate) fn from_wrapped_components(
+        pk_m: MlKem768PublicKey1184,
+        pk_x: X25519PublicKey,
+    ) -> Self {
         Self { pk_m, pk_x }
     }
 
@@ -369,7 +372,10 @@ impl Ciphertext {
     }
 
     /// Constructs from pre-wrapped components (crate-internal).
-    pub(crate) fn from_wrapped_components(ct_m: MlKem768Ciphertext1088, ct_x: X25519PublicKey) -> Self {
+    pub(crate) fn from_wrapped_components(
+        ct_m: MlKem768Ciphertext1088,
+        ct_x: X25519PublicKey,
+    ) -> Self {
         Self { ct_m, ct_x }
     }
 

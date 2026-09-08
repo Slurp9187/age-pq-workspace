@@ -4,9 +4,9 @@ use crate::aliases::{ExpandedKeyMaterial96, KdfBytes, MlKemSeed64, Seed32, X2551
 use crate::error::{Error, Result as CrateResult};
 use crate::kdf::HPKE_VERSION_LABEL;
 use byteorder::{BigEndian, ByteOrder};
+use secure_gate::RevealSecret;
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
-use secure_gate::RevealSecret;
 use std::any::Any;
 use zeroize::Zeroizing;
 

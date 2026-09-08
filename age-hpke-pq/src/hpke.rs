@@ -116,7 +116,13 @@ fn new_context(
         let secret = {
             let secrets_raw = secrets.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
-            KdfBytes::new(kdf.labeled_derive(&sid, secrets_raw, "secret", ks_context_raw, length)?)
+            KdfBytes::new(kdf.labeled_derive(
+                &sid,
+                secrets_raw,
+                "secret",
+                ks_context_raw,
+                length,
+            )?)
         };
 
         let secret_raw = secret.expose_secret();
@@ -159,7 +165,8 @@ fn new_context(
         let ks_context = KdfBytes::new(ks_context_bytes);
 
         // Extract the PRK from the shared secret.
-        let secret = KdfBytes::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
+        let secret =
+            KdfBytes::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
 
         // Expand key, base_nonce, and exporter_secret from the PRK.
         let key = {
@@ -193,9 +200,13 @@ fn new_context(
         let exp_secret = {
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
-            KdfBytes::new(
-                kdf.labeled_expand(&sid, secret_raw, "exp", ks_context_raw, kdf.size() as u16)?,
-            )
+            KdfBytes::new(kdf.labeled_expand(
+                &sid,
+                secret_raw,
+                "exp",
+                ks_context_raw,
+                kdf.size() as u16,
+            )?)
         };
 
         let a = key.with_secret(|key_raw| aead.aead(key_raw))?;
