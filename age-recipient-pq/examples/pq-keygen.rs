@@ -4,6 +4,7 @@ use secrecy::ExposeSecret;
 use std::io::Write;
 use std::path::Path;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use zeroize::Zeroizing;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("pq-keygen")
@@ -62,12 +63,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (recipient, identity) = HybridRecipient::generate()?;
 
     let created = OffsetDateTime::now_utc().format(&Rfc3339)?;
-    let output_text = format!(
+    // Carries the bech32-encoded private identity key; `Zeroizing` wipes the
+    // heap buffer on drop instead of leaving it for the allocator to reuse.
+    let output_text = Zeroizing::new(format!(
         "# created: {}\n# public key: {}\n{}",
         created,
         recipient.to_string(),
         identity.to_string().expose_secret()
-    );
+    ));
 
     if split {
         if let Some(base) = output_path {
@@ -98,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::fs::create_dir_all(parent)?;
             }
 
-            std::fs::write(&keypair_path, output_text.clone())?;
+            std::fs::write(&keypair_path, output_text.as_bytes())?;
             std::fs::write(&recipient_path, recipient.to_string())?;
             std::fs::write(&identity_path, identity.to_string().expose_secret())?;
             println!(
@@ -124,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Public key: {}", recipient.to_string());
     } else {
         // Output to stdout
-        println!("{}", output_text);
+        println!("{}", &*output_text);
     }
 
     Ok(())
