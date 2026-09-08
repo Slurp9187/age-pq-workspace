@@ -19,8 +19,9 @@ pub const MLKEM1024_CT_SIZE: usize = 1568;
 
 /// Derives an ML-KEM-1024 key pair from a wrapped 64-byte (`d || z`) seed.
 pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem1024KeyPair {
-    // Tier-2 (forced): [u8; 64] lacks Default on MSRV 1.70 — see mlkem768.rs.
-    seed.with_secret(|bytes| mlkem1024_generate_key_pair(*bytes))
+    // Tier-3: seed taken by value — see mlkem768.rs.
+    let owned = seed.into_inner();
+    mlkem1024_generate_key_pair(*owned)
 }
 
 /// Encapsulates to an ML-KEM-1024 public key using caller-supplied randomness.

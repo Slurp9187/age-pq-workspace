@@ -18,11 +18,11 @@ pub const MLKEM768_CT_SIZE: usize = 1088;
 /// Consumes the seed wrapper — libcrux's `generate_key_pair` takes
 /// `[u8; 64]` by value.
 pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem768KeyPair {
-    // Tier-2 (forced): `into_inner` requires `Default` on the inner type;
-    // stdlib only provides `Default` for `[u8; N]` with N <= 32 on MSRV 1.70.
-    // The wrapper still drops (zeroizing) at end of function — same end
-    // state as Tier-3, just expressed via `with_secret` deref.
-    seed.with_secret(|bytes| mlkem768_generate_key_pair(*bytes))
+    // Tier-3: libcrux generate_key_pair takes the [u8; 64] `d || z` seed by
+    // value. `into_inner` works at any length (SentinelValue, not Default).
+    let owned = seed.into_inner();
+    mlkem768_generate_key_pair(*owned)
+    // `owned` drops here, zeroizing the seed.
 }
 
 /// Encapsulates to an ML-KEM-768 public key using caller-supplied randomness.
