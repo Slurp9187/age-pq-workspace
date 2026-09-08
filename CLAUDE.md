@@ -14,8 +14,24 @@ explicitly scopes itself.
 | `age-recipient-pq` | `age` recipient / identity wrapper around `age-hpke-pq`. Parses stanzas, performs file-key wrap/unwrap. |
 | `age-plugin-pq` | `age-plugin-*` binary that exposes the recipient layer over the age plugin protocol (stdio, newline-delimited base64). |
 
-All three depend on the workspace-pinned `secure-gate = "=0.8.0-rc.9"` with
-features `rand`, `ct-eq`.
+**Secret-handling libraries differ by crate — verify before applying a rule.**
+
+| Crate | Secret handling |
+|-------|-----------------|
+| `age-hpke-pq` | workspace-pinned `secure-gate = "=0.8.0-rc.11"`, features `rand`, `ct-eq` |
+| `age-recipient-pq` | `secrecy = "0.10"` + `zeroize = "1.8"` — **no `secure-gate` dependency** |
+| `age-plugin-pq` | `zeroize = "1.8"` — **no `secure-gate` dependency** |
+
+The secure-gate sections below therefore bind `age-hpke-pq` in full. The other
+two crates touch secure-gate types only where `age-hpke-pq`'s public API hands
+them one (`SharedSecret` from `decap`, `KdfBytes` from the `Kdf` trait) and
+reach the access methods through `age-hpke-pq`'s `RevealSecret` re-export.
+Their own secret material uses `secrecy` / `zeroize` idioms instead, so apply
+the *principles* there (no unzeroized copies, no secrets in `Debug` or error
+payloads, constant-time comparison) rather than the literal API.
+
+Unifying on one library across all three is an open question, not a settled
+rule. Do not migrate a crate as a side effect of another change.
 
 ---
 
@@ -101,27 +117,32 @@ Tier-3 examples in this workspace:
 
 - `x25519_dalek::StaticSecret::from([u8; 32])` — takes the scalar by value
 - `libcrux_ml_kem::*::encapsulate(&pk, [u8; 32])` — takes randomness by value
+- `libcrux_ml_kem::*::generate_key_pair([u8; 64])` — takes the `d || z` seed by value
+- `x448::Secret::from([u8; 56])` — takes the clamped scalar by value
 
-**MSRV 1.70 constraint on `into_inner`.** `into_inner` requires
-`Self::Inner: Default + Zeroize`. The stdlib only provides
-`impl<T: Default> Default for [T; N]` for `N <= 32` on Rust 1.70 (the const
-generic impl for arbitrary `N` was stabilized later). Practical effect:
+**`into_inner` has no length ceiling.** Since secure-gate `0.8.0-rc.10` the
+bound is `Self::Inner: Sized + SentinelValue + Zeroize`, and the impl is
+`impl<T: Default, const N: usize> SentinelValue for [T; N]` — the `Default`
+bound sits on the *element* type, so every array length qualifies on MSRV
+1.70. `into_inner` replaces the wrapper's contents with an inert sentinel and
+hands the caller an `InnerSecret<T>` that zeroizes on drop.
 
-| Wrapper size | Tier-3 (`into_inner`) | Tier-2 (`with_secret`) |
+| Wrapper shape | Tier-3 (`into_inner`) | Tier-2 (`with_secret`) |
 |--------------|----------------------|------------------------|
-| `Fixed<[u8; N]>` where `N <= 32` | ✅ available | ✅ available |
-| `Fixed<[u8; N]>` where `N > 32`  | ❌ no `Default` impl | ✅ required |
-| `Dynamic<Vec<u8>>` / `Dynamic<String>` | ✅ available (`Vec`/`String: Default`) | ✅ available |
+| `Fixed<[u8; N]>`, any `N` | ✅ available | ✅ available |
+| `Dynamic<Vec<u8>>` / `Dynamic<String>` | ✅ available | ✅ available |
 
-For wrappers above 32 bytes (`MlKemSeed64` = 64, `X448Secret56` = 56,
-`ExpandedKeyMaterial96` = 96, KEM public keys / ciphertexts ≥ 800 bytes), the
-function still takes the wrapper *by value* — drop at end-of-function gives
-the same zeroization end-state as Tier-3 — but the FFI hand-off uses
-`with_secret(|bytes| *bytes)` to deref. Mark the call site as
-`// Tier-2 (forced): [u8; N] lacks Default on MSRV 1.70.`
+Historical note: before rc.10 the bound was `Self::Inner: Default + Zeroize`,
+and the stdlib's `Default for [T; N]` stopped at `N <= 32` on 1.70, so
+wrappers above 32 bytes (`MlKemSeed64` = 64, `X448Secret56` = 56,
+`ExpandedKeyMaterial96` = 96) were pinned to Tier-2 with a
+`// Tier-2 (forced)` marker. That ceiling is gone; the markers were removed
+in the rc.11 migration. If you meet one in an old branch, it is stale —
+promote it rather than propagating it.
 
-If the workspace MSRV ever bumps past the point where const-generic `Default`
-for arrays is available, revisit these sites and promote to Tier-3.
+`InnerSecret<T>` derefs to `&T` but has **no** `DerefMut`, so any mutation
+(scalar clamping, for instance) must happen on the wrapper *before*
+consumption. See `kem/x25519.rs::static_secret_from_seed` for the pattern.
 
 Audit Tier 3 separately — `into_inner` does not appear in an
 `expose_secret` grep sweep. The Tier-2 boundary inventory below tags each
@@ -240,6 +261,27 @@ assert!(original_ss.ct_eq(&recovered_ss));   // secret — ct_eq
 assert!(pk_a.expose_secret() == pk_b.expose_secret());   // public — == is fine
 ```
 
+### Length metadata — `SecretLen`, not `RevealSecret`
+
+Since secure-gate `0.8.0-rc.11`, `len()` / `byte_len()` / `is_empty()` live on
+a separate `SecretLen` trait rather than on `RevealSecret`, so `RevealSecret`
+can be implemented for every inner type instead of only the length-bearing
+shapes. `SecretLen` is implemented exactly where a length is meaningful:
+`Fixed<[T; N]>`, `Dynamic<String>`, `Dynamic<Vec<T>>`.
+
+Call sites that ask a wrapper its length need the trait in scope. `age-hpke-pq`
+re-exports it next to the other two:
+
+```rust
+use age_hpke_pq::{ConstantTimeEq, RevealSecret, SecretLen};
+
+let n = kdf_output.len();   // requires SecretLen
+```
+
+Length is metadata, not contents — but it is still a side channel for
+variable-length secrets. Don't branch on it or log it where the value is
+attacker-relevant.
+
 ### Tier-2 boundary inventory
 
 External APIs that take raw bytes and are the *legitimate* Tier-2
@@ -255,7 +297,8 @@ escape points. Anything outside this list is suspect.
 | `libcrux_ml_kem::*PublicKey::from([u8; N])` | `src/kem/ml_kem/*.rs` | 2 | Public-key bytes; `with_secret` deref |
 | `x25519_dalek::StaticSecret::from([u8; 32])` | `src/kem/x25519.rs` | **3** | Scalar taken by value — consume via `into_inner`; `StaticSecret` is itself `ZeroizeOnDrop` |
 | `x25519_dalek::StaticSecret::diffie_hellman(&PublicKey)` | `src/kem/x25519.rs` | 2 | Borrowed peer key |
-| `x448::Secret::from(&[u8; 56])`, `as_diffie_hellman` | `src/kem/x448.rs` | 2/3 | Same shape as X25519 |
+| `x448::Secret::from([u8; 56])` | `src/kem/x448.rs` | **3** | Scalar taken by value — consume via `into_inner` after clamping on the wrapper |
+| `x448::Secret::as_diffie_hellman(&PublicKey)` | `src/kem/x448.rs` | 2 | Borrowed peer key |
 | `hkdf::Hkdf::{extract, expand}` | `src/kdf.rs` | 2 | Takes `&[u8]` |
 | `chacha20poly1305::{ChaCha20Poly1305::new_from_slice, encrypt, decrypt}` | `src/aead.rs` | 2 | Takes `&[u8]` / `&Nonce` |
 | `sha3::Shake*::update` | `src/kdf.rs`, `src/kem/common.rs`, `src/kem/combiner.rs` | 2 | Takes `&[u8]` |
