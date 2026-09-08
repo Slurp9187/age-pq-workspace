@@ -1,6 +1,6 @@
 // tests/determinism_tests.rs
 use age_hpke_pq::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
-use age_hpke_pq::{ConstantTimeEq, RevealSecret};
+use age_hpke_pq::ConstantTimeEq;
 
 const FIXED_SEED: [u8; 32] = [42u8; 32];
 const FIXED_ESEED: [u8; 64] = [0u8; 64];
@@ -39,9 +39,7 @@ fn test_full_deterministic_flow() {
     assert!(ss1.ct_eq(&ss2));
 
     assert_eq!(&ct1.to_bytes()[..32], EXPECTED_CT_FIRST_32);
-    ss1.with_secret(|bytes| {
-        assert_eq!(bytes, &EXPECTED_SS);
-    });
+    assert_eq!(ss1, EXPECTED_SS);
 
     let ss_decap = sk.decapsulate(&ct1).unwrap();
     assert!(ss1.ct_eq(&ss_decap));

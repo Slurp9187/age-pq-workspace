@@ -7,6 +7,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **Every secure-gate type removed from the public API.** Public in/out types
+  are now native Rust types throughout; the wrappers remain internal, covering
+  each secret for its whole intra-crate lifetime. Callers who want
+  zeroize-on-drop and a redacted `Debug` opt in by wrapping the returned value
+  themselves — the aliases stay `pub` for exactly that.
+
+  | Item | Before | After |
+  |------|--------|-------|
+  | `kem::PublicKey::encap` | `(Vec<u8>, SharedSecret)` | `(Vec<u8>, [u8; 32])` |
+  | `kem::PrivateKey::decap` | `SharedSecret` | `[u8; 32]` |
+  | `Kdf::labeled_derive` / `labeled_extract` / `labeled_expand` | `KdfBytes` | `Vec<u8>` |
+  | `kem::combiner::combine_shared_secrets` | `SharedSecret` | `[u8; 32]` |
+  | `EncapsulationKey::encapsulate` / `encapsulate_derand` | `(Ciphertext, SharedSecret)` | `(Ciphertext, [u8; 32])` |
+  | `DecapsulationKey::decapsulate` | `SharedSecret` | `[u8; 32]` |
+
+  `Kdf` and the `kem` traits are public, so this also changes what an external
+  implementor must return, not just what a caller receives.
+
+  Internal discipline is unchanged and in two places is now explicit: the key
+  schedule re-wraps every `Kdf` output in `KdfBytes` on arrival, and
+  `new_sender` / `new_recipient` re-wrap the shared secret in `SharedSecret`
+  immediately after `encap` / `decap`, so no PRK, OKM, or shared secret lives
+  as a bare buffer inside the crate. `combine_shared_secrets` still computes
+  into a `SharedSecret` and consumes it with `into_inner`, so the digest buffer
+  is zeroized as the value is handed out.
+
+  `ConstantTimeEq` still resolves on `[u8; 32]`, so constant-time comparison of
+  shared secrets survives without wrapping.
+
+  Verified against the known-answer vectors in `tests/kat_tests.rs` — behavior
+  is unchanged.
+
+  **Migration:** delete the `RevealSecret` round trip at the call site.
+  `ss.expose_secret()` becomes `&ss`; `bytes.with_secret(|b| ...)` becomes
+  `...(&bytes)`. To keep the old protection, wrap on receipt:
+  `let ss = SharedSecret::from(sk.decap(enc)?);`
+
 ### Added
 
 - `SecretLen` re-exported from the crate root alongside `ConstantTimeEq` and

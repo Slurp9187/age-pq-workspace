@@ -1,7 +1,8 @@
 // src/hpke_pq.rs
 //! Age-specific HPKE utilities for the post-quantum hybrid plugin.
 
-use age_hpke_pq::{kdf::new_kdf, Error, RevealSecret};
+use age_hpke_pq::{kdf::new_kdf, Error};
+use zeroize::Zeroizing;
 
 pub const KEM_ID: u16 = 0x647a; // XWing768X25519
 pub const KDF_ID: u16 = 0x0001; // HKDF-SHA256
@@ -24,25 +25,27 @@ pub fn derive_key_and_nonce(
     let sid = suite_id();
     let kdf = new_kdf(KDF_ID)?;
 
-    let psk_id_hash = kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?;
-    let info_hash = kdf.labeled_extract(&sid, None, "info_hash", info)?;
+    // The `Kdf` trait returns native `Vec<u8>` at the API boundary. This crate
+    // does not depend on secure-gate, so every PRK / OKM is parked in
+    // `Zeroizing` on arrival rather than living as a bare vector.
+    let psk_id_hash = Zeroizing::new(kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?);
+    let info_hash = Zeroizing::new(kdf.labeled_extract(&sid, None, "info_hash", info)?);
 
     let mut ks_context = Vec::new();
     ks_context.push(MODE);
-    psk_id_hash.with_secret(|bytes| ks_context.extend_from_slice(bytes));
-    info_hash.with_secret(|bytes| ks_context.extend_from_slice(bytes));
+    ks_context.extend_from_slice(&psk_id_hash);
+    ks_context.extend_from_slice(&info_hash);
 
-    let secret = kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?;
+    let secret = Zeroizing::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
 
-    let key_vec =
-        secret.with_secret(|bytes| kdf.labeled_expand(&sid, bytes, "key", &ks_context, 32))?;
+    let key_vec = Zeroizing::new(kdf.labeled_expand(&sid, &secret, "key", &ks_context, 32)?);
     let mut key = [0u8; 32];
-    key_vec.with_secret(|bytes| key.copy_from_slice(bytes));
+    key.copy_from_slice(&key_vec);
 
-    let nonce_vec = secret
-        .with_secret(|bytes| kdf.labeled_expand(&sid, bytes, "base_nonce", &ks_context, 12))?;
+    let nonce_vec =
+        Zeroizing::new(kdf.labeled_expand(&sid, &secret, "base_nonce", &ks_context, 12)?);
     let mut base_nonce = [0u8; 12];
-    nonce_vec.with_secret(|bytes| base_nonce.copy_from_slice(bytes));
+    base_nonce.copy_from_slice(&nonce_vec);
 
     Ok((key, base_nonce))
 }

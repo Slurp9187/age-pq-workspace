@@ -9,6 +9,7 @@
 use crate::aead::{Aead, CipherAead};
 use crate::aliases::{
     Aad, AeadKey32, ExporterContext, Info, KdfBytes, Nonce12, OneStageSecrets, Plaintext,
+    SharedSecret,
 };
 use crate::kdf::Kdf;
 use crate::kem::{PrivateKey, PublicKey};
@@ -115,7 +116,7 @@ fn new_context(
         let secret = {
             let secrets_raw = secrets.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
-            kdf.labeled_derive(&sid, secrets_raw, "secret", ks_context_raw, length)?
+            KdfBytes::new(kdf.labeled_derive(&sid, secrets_raw, "secret", ks_context_raw, length)?)
         };
 
         let secret_raw = secret.expose_secret();
@@ -134,19 +135,20 @@ fn new_context(
             let exporter_context = ExporterContext::new(exporter_context.to_vec());
             // Tier-2: kdf.labeled_derive takes &[u8] for input_key and context.
             let raw = exp_secret.expose_secret();
-            exporter_context.with_secret(|ctx| {
-                kdf.labeled_derive(&sid, raw, "sec", ctx, length)
-                    .map(|bytes| bytes.with_secret(|b| b.to_vec()))
-            })
+            exporter_context.with_secret(|ctx| kdf.labeled_derive(&sid, raw, "sec", ctx, length))
         });
 
         (Some(a), bn)
     } else {
         // --- Two-stage HKDF path (RFC 9180 section 5.1) ------------------
 
-        let psk_id_hash = kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?;
-        let info_hash =
-            info.with_secret(|info_raw| kdf.labeled_extract(&sid, None, "info_hash", info_raw))?;
+        // The `Kdf` trait returns native `Vec<u8>` at the API boundary; each
+        // output is re-wrapped here so PRKs and OKMs never live as bare vectors
+        // inside the key schedule.
+        let psk_id_hash = KdfBytes::new(kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?);
+        let info_hash = KdfBytes::new(
+            info.with_secret(|info_raw| kdf.labeled_extract(&sid, None, "info_hash", info_raw))?,
+        );
 
         // `ks_context = mode || psk_id_hash || info_hash`.
         let mut ks_context_bytes = Vec::new();
@@ -157,19 +159,19 @@ fn new_context(
         let ks_context = KdfBytes::new(ks_context_bytes);
 
         // Extract the PRK from the shared secret.
-        let secret = kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?;
+        let secret = KdfBytes::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
 
         // Expand key, base_nonce, and exporter_secret from the PRK.
         let key = {
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
-            kdf.labeled_expand(
+            KdfBytes::new(kdf.labeled_expand(
                 &sid,
                 secret_raw,
                 "key",
                 ks_context_raw,
                 aead.key_size() as u16,
-            )?
+            )?)
         };
         let key = AeadKey32::try_from(key.expose_secret().as_slice())
             .map_err(|_| Error::InvalidKeyLength)?;
@@ -177,13 +179,13 @@ fn new_context(
         let bn = {
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
-            kdf.labeled_expand(
+            KdfBytes::new(kdf.labeled_expand(
                 &sid,
                 secret_raw,
                 "base_nonce",
                 ks_context_raw,
                 aead.nonce_size() as u16,
-            )?
+            )?)
         };
         let bn =
             Nonce12::try_from(bn.expose_secret().as_slice()).map_err(|_| Error::InvalidLength)?;
@@ -191,7 +193,9 @@ fn new_context(
         let exp_secret = {
             let secret_raw = secret.expose_secret();
             let ks_context_raw = ks_context.expose_secret();
-            kdf.labeled_expand(&sid, secret_raw, "exp", ks_context_raw, kdf.size() as u16)?
+            KdfBytes::new(
+                kdf.labeled_expand(&sid, secret_raw, "exp", ks_context_raw, kdf.size() as u16)?,
+            )
         };
 
         let a = key.with_secret(|key_raw| aead.aead(key_raw))?;
@@ -202,10 +206,7 @@ fn new_context(
             let exporter_context = ExporterContext::new(exporter_context.to_vec());
             // Tier-2: kdf.labeled_expand takes &[u8] for prk and info.
             let raw = exp_secret.expose_secret();
-            exporter_context.with_secret(|ctx| {
-                kdf.labeled_expand(&sid, raw, "sec", ctx, length)
-                    .map(|bytes| bytes.with_secret(|b| b.to_vec()))
-            })
+            exporter_context.with_secret(|ctx| kdf.labeled_expand(&sid, raw, "sec", ctx, length))
         });
 
         (Some(a), bn)
@@ -246,6 +247,9 @@ pub fn new_sender_with_testing_randomness(
     info: &[u8],
 ) -> Result<(Vec<u8>, Sender), Error> {
     let (enc, shared) = pk.encap(testing_randomness)?;
+    // `encap` returns a native [u8; 32] at the API boundary; re-wrap immediately
+    // so the shared secret is zeroize-covered for its whole internal lifetime.
+    let shared = SharedSecret::from(shared);
     let context = new_context(shared.expose_secret(), pk.kem().id(), kdf, aead, info)?;
     Ok((enc, Sender { context }))
 }
@@ -259,6 +263,8 @@ pub fn new_recipient(
     info: &[u8],
 ) -> Result<Recipient, Error> {
     let shared = sk.decap(enc)?;
+    // Native [u8; 32] at the API boundary; re-wrap for the internal lifetime.
+    let shared = SharedSecret::from(shared);
     let context = new_context(shared.expose_secret(), sk.kem().id(), kdf, aead, info)?;
     Ok(Recipient { context })
 }

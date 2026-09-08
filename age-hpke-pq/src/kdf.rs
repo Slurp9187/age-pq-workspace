@@ -13,7 +13,7 @@
 //!   [`draft-ietf-hpke-pq-03`](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03).
 //!   Registered variants: SHAKE128, SHAKE256.
 
-use crate::aliases::{KdfBytes, LabeledIkm, LabeledInfo, Salt};
+use crate::aliases::{LabeledIkm, LabeledInfo, Salt};
 use crate::Error;
 use byteorder::{BigEndian, ByteOrder};
 use hkdf::Hkdf;
@@ -61,8 +61,10 @@ pub trait Kdf: Send + Sync {
 
     /// One-stage labeled derivation (SHAKE path).
     ///
-    /// Returns wrapped keying bytes (`KdfBytes`), analogous to `[]byte`
-    /// outputs in hpke-go `labeledDerive`.
+    /// Returns raw keying bytes. Per the workspace wire-boundary rule, public
+    /// API outputs are native Rust types; callers who want zeroize-on-drop wrap
+    /// the result themselves via `KdfBytes::new(bytes)`. The implementations
+    /// hold the buffer in `Zeroizing` right up to the return.
     fn labeled_derive(
         &self,
         suite_id: &[u8],
@@ -70,24 +72,22 @@ pub trait Kdf: Send + Sync {
         label: &str,
         context: &[u8],
         length: u16,
-    ) -> Result<KdfBytes, Error>;
+    ) -> Result<Vec<u8>, Error>;
 
     /// Labeled extract step (HKDF path).
     ///
-    /// Returns wrapped keying bytes (`KdfBytes`), analogous to `[]byte`
-    /// outputs in hpke-go `labeledExtract`.
+    /// Returns raw keying bytes; see [`Kdf::labeled_derive`] for the rationale.
     fn labeled_extract(
         &self,
         suite_id: &[u8],
         salt: Option<&[u8]>,
         label: &str,
         input_key: &[u8],
-    ) -> Result<KdfBytes, Error>;
+    ) -> Result<Vec<u8>, Error>;
 
     /// Labeled expand step (HKDF path).
     ///
-    /// Returns wrapped keying bytes (`KdfBytes`), analogous to `[]byte`
-    /// outputs in hpke-go `labeledExpand`.
+    /// Returns raw keying bytes; see [`Kdf::labeled_derive`] for the rationale.
     fn labeled_expand(
         &self,
         suite_id: &[u8],
@@ -95,7 +95,7 @@ pub trait Kdf: Send + Sync {
         label: &str,
         info: &[u8],
         length: u16,
-    ) -> Result<KdfBytes, Error>;
+    ) -> Result<Vec<u8>, Error>;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ macro_rules! impl_hkdf_kdf {
                 _label: &str,
                 _context: &[u8],
                 _length: u16,
-            ) -> Result<KdfBytes, Error> {
+            ) -> Result<Vec<u8>, Error> {
                 Err(Error::InvalidOperationForKdf)
             }
 
@@ -166,7 +166,7 @@ macro_rules! impl_hkdf_kdf {
                 salt: Option<&[u8]>,
                 label: &str,
                 input_key: &[u8],
-            ) -> Result<KdfBytes, Error> {
+            ) -> Result<Vec<u8>, Error> {
                 let mut labeled_ikm = Zeroizing::new(Vec::with_capacity(
                     HPKE_VERSION_LABEL.len() + suite_id.len() + label.len() + input_key.len(),
                 ));
@@ -187,7 +187,7 @@ macro_rules! impl_hkdf_kdf {
                     labeled_ikm.expose_secret(),
                 );
                 prk.copy_from_slice(&h);
-                Ok(KdfBytes::new(core::mem::take(&mut *prk)))
+                Ok(core::mem::take(&mut *prk))
             }
 
             fn labeled_expand(
@@ -197,7 +197,7 @@ macro_rules! impl_hkdf_kdf {
                 label: &str,
                 info: &[u8],
                 length: u16,
-            ) -> Result<KdfBytes, Error> {
+            ) -> Result<Vec<u8>, Error> {
                 let mut labeled_info_bytes = Vec::with_capacity(
                     core::mem::size_of::<u16>()
                         + HPKE_VERSION_LABEL.len()
@@ -222,7 +222,7 @@ macro_rules! impl_hkdf_kdf {
                 // the partially-filled buffer.
                 hk.expand(labeled_info.expose_secret(), &mut okm[..])
                     .map_err(|_| Error::InvalidLength)?;
-                Ok(KdfBytes::new(core::mem::take(&mut *okm)))
+                Ok(core::mem::take(&mut *okm))
             }
         }
     };
@@ -264,7 +264,7 @@ impl Kdf for Shake128Kdf {
         label: &str,
         context: &[u8],
         length: u16,
-    ) -> Result<KdfBytes, Error> {
+    ) -> Result<Vec<u8>, Error> {
         let mut h = Shake128::default();
         h.update(input_key);
         h.update(HPKE_VERSION_LABEL);
@@ -278,7 +278,7 @@ impl Kdf for Shake128Kdf {
         h.update(context);
         let mut out = Zeroizing::new(vec![0u8; length as usize]);
         h.finalize_xof().read(&mut out[..]);
-        Ok(KdfBytes::new(core::mem::take(&mut *out)))
+        Ok(core::mem::take(&mut *out))
     }
 
     fn labeled_extract(
@@ -287,7 +287,7 @@ impl Kdf for Shake128Kdf {
         _salt: Option<&[u8]>,
         _label: &str,
         _input_key: &[u8],
-    ) -> Result<KdfBytes, Error> {
+    ) -> Result<Vec<u8>, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 
@@ -298,7 +298,7 @@ impl Kdf for Shake128Kdf {
         _label: &str,
         _info: &[u8],
         _length: u16,
-    ) -> Result<KdfBytes, Error> {
+    ) -> Result<Vec<u8>, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 }
@@ -331,7 +331,7 @@ impl Kdf for Shake256Kdf {
         label: &str,
         context: &[u8],
         length: u16,
-    ) -> Result<KdfBytes, Error> {
+    ) -> Result<Vec<u8>, Error> {
         let mut h = Shake256::default();
         h.update(input_key);
         h.update(HPKE_VERSION_LABEL);
@@ -345,7 +345,7 @@ impl Kdf for Shake256Kdf {
         h.update(context);
         let mut out = Zeroizing::new(vec![0u8; length as usize]);
         h.finalize_xof().read(&mut out[..]);
-        Ok(KdfBytes::new(core::mem::take(&mut *out)))
+        Ok(core::mem::take(&mut *out))
     }
 
     fn labeled_extract(
@@ -354,7 +354,7 @@ impl Kdf for Shake256Kdf {
         _salt: Option<&[u8]>,
         _label: &str,
         _input_key: &[u8],
-    ) -> Result<KdfBytes, Error> {
+    ) -> Result<Vec<u8>, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 
@@ -365,7 +365,7 @@ impl Kdf for Shake256Kdf {
         _label: &str,
         _info: &[u8],
         _length: u16,
-    ) -> Result<KdfBytes, Error> {
+    ) -> Result<Vec<u8>, Error> {
         Err(Error::InvalidOperationForKdf)
     }
 }
