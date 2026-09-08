@@ -1,5 +1,5 @@
 mod tests {
-    use age_hpke_pq::{kem::Kem, ConstantTimeEq, Error, MlKem768X25519, RevealSecret};
+    use age_hpke_pq::{kem::Kem, ConstantTimeEq, Error, MlKem768X25519, SecretLen};
 
     #[test]
     fn test_mlkem768_properties() {
