@@ -46,6 +46,10 @@ rule. Do not migrate a crate as a side effect of another change.
   `secure-gate` is on the `0.8.0-rc.*` line, which exists solely as the
   MSRV-1.70 backport of `main`.
 
+  Plan and checklist: [`docs/plans/msrv-1.85-cohort-bump.md`](docs/plans/msrv-1.85-cohort-bump.md),
+  tracked as issue #2. Boundary-type decisions that constrain it:
+  [`docs/design/api-boundary-types.md`](docs/design/api-boundary-types.md).
+
   **What the 1.85 bump unlocks** (checklist for that PR, not this one):
 
   | Item | Today (1.70) | After 1.85 |
