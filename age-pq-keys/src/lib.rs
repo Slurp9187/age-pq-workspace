@@ -91,9 +91,12 @@ const IDENTITY_HRP: &str = "age-secret-key-pq-";
 /// length is needed at all.
 ///
 /// **This is a length gate, not a strength parameter.** It never enters the
-/// checksum computation, so the encoded output is byte-identical at any
-/// sufficient value; the hand-rolled `CODE_LENGTH = 8192` this replaced
-/// produced the same bytes. What it changes is that over-long input is rejected
+/// checksum computation, so the encoded output is byte-identical at *any*
+/// sufficient value. The change from the hand-rolled `CODE_LENGTH = 8192` is
+/// therefore **provably** byte-neutral, not merely tested to be: the two values
+/// cannot diverge, because neither reaches the checksum. `tests/
+/// bech32_byte_identity.rs` confirms it against Go age CLI fixtures; it does not
+/// establish it. What it changes is that over-long input is rejected
 /// on length rather than processed.
 ///
 /// The bech32 checksum is a BCH code proven to detect up to 4 errors within
@@ -184,14 +187,13 @@ impl HybridRecipient {
     pub fn parse(s: &str) -> Result<Self, age::EncryptError> {
         let bytes =
             RecipientBytes::try_from_bech32_sized::<RECIPIENT_CODE_LENGTH>(s, RECIPIENT_HRP)
-                // Static message rather than the decode error: bech32's own
-                // Display echoes input-derived characters, and error payloads
-                // in this workspace stay free of caller data.
-                .map_err(|_| {
-                    age::EncryptError::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "malformed age1pq recipient",
-                    ))
+                // The decode error is forwarded here but deliberately NOT on
+                // the identity path below. A recipient is public data, so the
+                // detail ("invalid character", "checksum mismatch") is useful
+                // and leaks nothing. An identity string *is* the private key,
+                // and bech32's Display echoes input-derived characters.
+                .map_err(|e| {
+                    age::EncryptError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
                 })?;
         Self::from_bytes(bytes.into_inner())
     }
@@ -298,7 +300,8 @@ impl HybridIdentity {
         // Decodes straight into the wrapper's own storage. The path this
         // replaced collected the payload into a heap `Vec<u8>` first, then
         // validated its length.
-        // The error must not carry any of `s` - `s` is the private key.
+        // Payload-free by design, unlike the recipient path above: `s` is the
+        // private key, and bech32's Display echoes input-derived characters.
         let seed = Seed32::try_from_bech32(s, IDENTITY_HRP).map_err(|_| {
             age::DecryptError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,

@@ -23,7 +23,7 @@ base64 = "0.22"
 clap = { workspace = true }
 rand = { version = "0.9", features = ["std"] }
 time = { version = "0.3", features = ["formatting"] }
-secure-gate = { workspace = true, features = ["encoding-bech32"] }
+secure-gate = { workspace = true, features = ["encoding-bech32", "std"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
