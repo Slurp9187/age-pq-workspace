@@ -5,4 +5,11 @@ target
 *.exe
 *.results
 
+# Tool/IDE planning scratch (.cursor/plans, and the equivalent for any other
+# assistant that writes a plan*/ directory). Directory-only pattern.
 **/plan*/
+
+# ...but docs/plans is the project's own plan tree and belongs in the repo.
+# Git will not descend into an excluded directory, so the directory itself has
+# to be re-included, not just its contents.
+!docs/plans/
