@@ -13,7 +13,7 @@
 //! Future variants can add new orchestration modules without changing the
 //! primitive/helper boundaries.
 
-pub mod combiner;
+pub(crate) mod combiner;
 pub mod common;
 pub(crate) mod ml_kem;
 pub mod mlkem768x25519;

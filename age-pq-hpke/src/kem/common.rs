@@ -1,6 +1,6 @@
 //! Common traits, constants, and helper functions for the X-Wing KEM.
 
-use crate::aliases::{ExpandedKeyMaterial96, KdfBytes, MlKemSeed64, Seed32, X25519Secret32};
+use crate::aliases::{ExpandedKeyMaterial96, KdfBytes, MlKemSeed64, Seed32, X25519Scalar};
 use crate::error::{Error, Result as CrateResult};
 use crate::kdf::HPKE_VERSION_LABEL;
 use byteorder::{BigEndian, ByteOrder};
@@ -140,7 +140,7 @@ pub(crate) fn shake256_labeled_derive(
 /// implementation does not need a retry loop because RFC 7748 clamping
 /// always sets bit 6 of the last byte, so the clamped scalar is never
 /// all-zero.
-pub(crate) fn expand_seed(seed: &Seed32) -> (MlKemSeed64, X25519Secret32) {
+pub(crate) fn expand_seed(seed: &Seed32) -> (MlKemSeed64, X25519Scalar) {
     seed.with_secret(|seed_bytes| {
         let mut hasher = Shake256::default();
         hasher.update(seed_bytes);
@@ -156,7 +156,7 @@ pub(crate) fn expand_seed(seed: &Seed32) -> (MlKemSeed64, X25519Secret32) {
             MlKemSeed64::new_with(|out| out.copy_from_slice(&e[0..ML_KEM_SEED_SIZE]))
         });
         let x = expanded.with_secret(|e| {
-            X25519Secret32::new_with(|out| out.copy_from_slice(&e[ML_KEM_SEED_SIZE..]))
+            X25519Scalar::new_with(|out| out.copy_from_slice(&e[ML_KEM_SEED_SIZE..]))
         });
         (ml, x)
     })

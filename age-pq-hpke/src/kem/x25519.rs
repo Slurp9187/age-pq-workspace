@@ -1,6 +1,6 @@
 //! X25519 primitive helpers used by the hybrid X-Wing KEM.
 
-use crate::aliases::{SharedSecret32, X25519Secret32};
+use crate::aliases::{X25519Scalar, X25519SharedSecret};
 use crate::error::{Error, Result as CrateResult};
 use crate::kem::common::CURVE_SEED_SIZE;
 use secure_gate::{ConstantTimeEq, RevealSecret, RevealSecretMut};
@@ -25,7 +25,7 @@ pub fn clamp_x25519_scalar(scalar: &mut [u8; CURVE_SEED_SIZE]) {
 /// wrapper via `into_inner` (Tier-3) to feed `StaticSecret::from`. Clamping
 /// must precede consumption — `into_inner` yields a plain value, so there is
 /// no wrapper left to mutate through afterwards.
-pub(crate) fn static_secret_from_seed(seed: X25519Secret32) -> StaticSecret {
+pub(crate) fn static_secret_from_seed(seed: X25519Scalar) -> StaticSecret {
     let mut s = seed;
     s.with_secret_mut(clamp_x25519_scalar);
     // Tier-3: x25519_dalek::StaticSecret::from takes [u8; 32] by value.
@@ -36,7 +36,7 @@ pub(crate) fn static_secret_from_seed(seed: X25519Secret32) -> StaticSecret {
 }
 
 /// Derives an X25519 public key from a wrapped seed.
-pub(crate) fn public_key_from_seed(seed: X25519Secret32) -> X25519PublicKey {
+pub(crate) fn public_key_from_seed(seed: X25519Scalar) -> X25519PublicKey {
     let sk = static_secret_from_seed(seed);
     X25519PublicKey::from(&sk)
 }
@@ -49,9 +49,9 @@ pub(crate) fn public_key_from_seed(seed: X25519Secret32) -> X25519PublicKey {
 /// Consumes the ephemeral seed — single-shot use, the wrapper has no role
 /// past this call.
 pub(crate) fn encapsulate_to_public_key(
-    ephemeral_seed: X25519Secret32,
+    ephemeral_seed: X25519Scalar,
     recipient_pk: &X25519PublicKey,
-) -> CrateResult<(X25519PublicKey, SharedSecret32)> {
+) -> CrateResult<(X25519PublicKey, X25519SharedSecret)> {
     let ephemeral = static_secret_from_seed(ephemeral_seed);
     let ct_x = X25519PublicKey::from(&ephemeral);
     let dh = ephemeral.diffie_hellman(recipient_pk);
@@ -60,8 +60,8 @@ pub(crate) fn encapsulate_to_public_key(
     }
     // Tier-2: x25519_dalek::SharedSecret::as_bytes returns &[u8; 32].
     // `dh` is ZeroizeOnDrop and dies at end of statement; the bytes land
-    // directly in SharedSecret32 storage via new_with.
-    let ss = SharedSecret32::new_with(|out| out.copy_from_slice(dh.as_bytes()));
+    // directly in X25519SharedSecret storage via new_with.
+    let ss = X25519SharedSecret::new_with(|out| out.copy_from_slice(dh.as_bytes()));
     Ok((ct_x, ss))
 }
 
@@ -73,9 +73,9 @@ pub(crate) fn encapsulate_to_public_key(
 /// Consumes the private seed — callers re-derive it from the master seed
 /// on each decapsulation, so the wrapper has no role past this call.
 pub(crate) fn decapsulate_from_private_seed(
-    private_seed: X25519Secret32,
+    private_seed: X25519Scalar,
     ct_x: &X25519PublicKey,
-) -> CrateResult<(SharedSecret32, X25519PublicKey)> {
+) -> CrateResult<(X25519SharedSecret, X25519PublicKey)> {
     let sk_x = static_secret_from_seed(private_seed);
     let pk_x = X25519PublicKey::from(&sk_x);
     let dh = sk_x.diffie_hellman(ct_x);
@@ -86,7 +86,7 @@ pub(crate) fn decapsulate_from_private_seed(
         return Err(Error::X25519DiffieHellmanFailed);
     }
     // Tier-2: x25519_dalek::SharedSecret::as_bytes returns &[u8; 32].
-    let ss = SharedSecret32::new_with(|out| out.copy_from_slice(dh.as_bytes()));
+    let ss = X25519SharedSecret::new_with(|out| out.copy_from_slice(dh.as_bytes()));
     Ok((ss, pk_x))
 }
 

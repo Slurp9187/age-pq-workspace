@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use crate::aliases::{SharedSecret56, X448Secret56};
+use crate::aliases::{X448Scalar, X448SharedSecret};
 use crate::error::{Error, Result as CrateResult};
 use secure_gate::{ConstantTimeEq, RevealSecret, RevealSecretMut};
 use x448::{PublicKey as X448PublicKey, Secret as X448Secret};
@@ -24,7 +24,7 @@ pub fn clamp_x448_scalar(scalar: &mut [u8; X448_KEY_SIZE]) {
 /// Converts a wrapped X448 seed into a clamped secret.
 ///
 /// Consumes the wrapper — `x448::Secret::from` takes `[u8; 56]` by value.
-pub(crate) fn secret_from_seed(seed: X448Secret56) -> X448Secret {
+pub(crate) fn secret_from_seed(seed: X448Scalar) -> X448Secret {
     let mut s = seed;
     s.with_secret_mut(clamp_x448_scalar);
     // Tier-3: x448::Secret::from takes [u8; 56] by value. `into_inner` zeroizes
@@ -34,38 +34,38 @@ pub(crate) fn secret_from_seed(seed: X448Secret56) -> X448Secret {
 }
 
 /// Derives an X448 public key from a wrapped seed.
-pub(crate) fn public_key_from_seed(seed: X448Secret56) -> X448PublicKey {
+pub(crate) fn public_key_from_seed(seed: X448Scalar) -> X448PublicKey {
     let sk = secret_from_seed(seed);
     X448PublicKey::from(&sk)
 }
 
 /// Computes sender-side X448 encapsulation output `(ct_x, ss_x)`.
 pub(crate) fn encapsulate_to_public_key(
-    ephemeral_seed: X448Secret56,
+    ephemeral_seed: X448Scalar,
     recipient_pk: &X448PublicKey,
-) -> CrateResult<(X448PublicKey, SharedSecret56)> {
+) -> CrateResult<(X448PublicKey, X448SharedSecret)> {
     let ephemeral = secret_from_seed(ephemeral_seed);
     let ct_x = X448PublicKey::from(&ephemeral);
     let dh = ephemeral
         .as_diffie_hellman(recipient_pk)
         .ok_or(Error::X448DiffieHellmanFailed)?;
     // Tier-2: x448::SharedSecret::as_bytes returns &[u8; 56].
-    let ss = SharedSecret56::new_with(|out| out.copy_from_slice(dh.as_bytes()));
+    let ss = X448SharedSecret::new_with(|out| out.copy_from_slice(dh.as_bytes()));
     Ok((ct_x, ss))
 }
 
 /// Computes recipient-side X448 decapsulation output `(ss_x, pk_x)`.
 pub(crate) fn decapsulate_from_private_seed(
-    private_seed: X448Secret56,
+    private_seed: X448Scalar,
     ct_x: &X448PublicKey,
-) -> CrateResult<(SharedSecret56, X448PublicKey)> {
+) -> CrateResult<(X448SharedSecret, X448PublicKey)> {
     let sk_x = secret_from_seed(private_seed);
     let pk_x = X448PublicKey::from(&sk_x);
     let dh = sk_x
         .as_diffie_hellman(ct_x)
         .ok_or(Error::X448DiffieHellmanFailed)?;
     // Tier-2: x448::SharedSecret::as_bytes returns &[u8; 56].
-    let ss = SharedSecret56::new_with(|out| out.copy_from_slice(dh.as_bytes()));
+    let ss = X448SharedSecret::new_with(|out| out.copy_from_slice(dh.as_bytes()));
     Ok((ss, pk_x))
 }
 

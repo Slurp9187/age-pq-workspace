@@ -1,7 +1,7 @@
 //! ML-KEM-768 primitive helpers used by the hybrid X-Wing KEM.
 
 use crate::aliases::{
-    MlKem768Ciphertext1088, MlKem768PublicKey1184, MlKemSeed64, Seed32, SharedSecret32,
+    MlKem768Ciphertext1088, MlKem768PublicKey1184, MlKemSeed64, MlKemSharedSecret, Seed32,
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem768::{
@@ -33,7 +33,7 @@ pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem768KeyPair {
 pub(crate) fn encapsulate_with_seed(
     pk_m: &MlKem768PublicKey1184,
     randomness: Seed32,
-) -> CrateResult<([u8; MLKEM768_CT_SIZE], SharedSecret32)> {
+) -> CrateResult<([u8; MLKEM768_CT_SIZE], MlKemSharedSecret)> {
     let pk_m = pk_m.with_secret(|bytes| MlKem768PublicKey::from(*bytes));
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
     let (ct_m, ss_m) = encapsulate(&pk_m, randomness.into_inner());
@@ -41,7 +41,7 @@ pub(crate) fn encapsulate_with_seed(
         .as_ref()
         .try_into()
         .map_err(|_| Error::ArraySizeError)?;
-    Ok((ct_m_bytes, SharedSecret32::from(ss_m)))
+    Ok((ct_m_bytes, MlKemSharedSecret::from(ss_m)))
 }
 
 /// Decapsulates an ML-KEM-768 ciphertext using a previously derived key pair.
@@ -51,10 +51,10 @@ pub(crate) fn encapsulate_with_seed(
 pub(crate) fn decapsulate_with_keypair(
     kp: &MlKem768KeyPair,
     ct_m: &MlKem768Ciphertext1088,
-) -> SharedSecret32 {
+) -> MlKemSharedSecret {
     let sk_m = kp.private_key();
     let ct_m = ct_m.with_secret(|bytes| MlKem768Ciphertext::from(*bytes));
-    SharedSecret32::from(decapsulate(sk_m, &ct_m))
+    MlKemSharedSecret::from(decapsulate(sk_m, &ct_m))
 }
 
 /// Minimal parse/shape validation for ML-KEM public-key bytes.

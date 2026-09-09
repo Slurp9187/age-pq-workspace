@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 
 use crate::aliases::{
-    MlKem1024Ciphertext1568, MlKem1024PublicKey1568, MlKemSeed64, Seed32, SharedSecret32,
+    MlKem1024Ciphertext1568, MlKem1024PublicKey1568, MlKemSeed64, MlKemSharedSecret, Seed32,
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem1024::{
@@ -29,7 +29,7 @@ pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem1024KeyPair {
 pub(crate) fn encapsulate_with_seed(
     pk_m: &MlKem1024PublicKey1568,
     randomness: Seed32,
-) -> CrateResult<([u8; MLKEM1024_CT_SIZE], SharedSecret32)> {
+) -> CrateResult<([u8; MLKEM1024_CT_SIZE], MlKemSharedSecret)> {
     let pk_m = pk_m.with_secret(|bytes| MlKem1024PublicKey::from(*bytes));
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
     let (ct_m, ss_m) = encapsulate(&pk_m, randomness.into_inner());
@@ -37,17 +37,17 @@ pub(crate) fn encapsulate_with_seed(
         .as_ref()
         .try_into()
         .map_err(|_| Error::ArraySizeError)?;
-    Ok((ct_m_bytes, SharedSecret32::from(ss_m)))
+    Ok((ct_m_bytes, MlKemSharedSecret::from(ss_m)))
 }
 
 /// Decapsulates an ML-KEM-1024 ciphertext using a previously derived key pair.
 pub(crate) fn decapsulate_with_keypair(
     kp: &MlKem1024KeyPair,
     ct_m: &MlKem1024Ciphertext1568,
-) -> SharedSecret32 {
+) -> MlKemSharedSecret {
     let sk_m = kp.private_key();
     let ct_m = ct_m.with_secret(|bytes| MlKem1024Ciphertext::from(*bytes));
-    SharedSecret32::from(decapsulate(sk_m, &ct_m))
+    MlKemSharedSecret::from(decapsulate(sk_m, &ct_m))
 }
 
 /// Minimal parse/shape validation for ML-KEM public-key bytes.
