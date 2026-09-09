@@ -53,6 +53,9 @@ until issue #2 lands.
       the workflow that never ran.
 - [ ] **Restore the `flate2`-free deviation** or add `flate2` once `cargo fetch`
       works again, so vectors can be refreshed verbatim from upstream.
+- [ ] **Add `rust-hpke` as a second differential oracle** (post-1.85). Its
+      `MlKem1024P384` KATs are the acceptance criterion for our own port (#19).
+      Same shape as the rage decision: own the runtime, borrow the oracle.
 
 ## Blocked / adjacent
 
@@ -65,8 +68,24 @@ were pre-decompressed instead of adding `flate2`.
 
 ## Next variant: MLKEM1024-P384
 
-The extensibility argument that justifies keeping our own runtime. Parameters
-per `hpke-pq.md` / CFRG CONCRETE-04:
+Tracked as issue #19. Note this is **no longer** the argument that justifies
+keeping our own runtime — `rust-hpke` already implements it. We keep our runtime
+for verified ML-KEM; see [`../design/hpke-import-vs-own.md`](../design/hpke-import-vs-own.md).
+
+Port estimate against our existing modules — **~650–750 lines**, nearly all
+structural mirroring:
+
+| Piece | Status |
+|---|---|
+| ML-KEM-1024 primitives | already exist (`ml_kem/mlkem1024.rs`, libcrux-verified); feature declared, not default |
+| P-384 classical half | missing entirely; ~100 lines mirroring `x25519.rs` / `x448.rs` |
+| `mlkem1024p384.rs` | ~560 lines mirroring `mlkem768x25519.rs` |
+| Combiner | label must be parameterised (`MLKEM1024-P384`) |
+
+**libcrux has no verified P-384**, so the classical half is RustCrypto `p384`
+either way. The verified-backend advantage applies only to the PQ half.
+
+Parameters per `hpke-pq.md` / CFRG CONCRETE-04:
 
 | Parameter | Value |
 |---|---|
