@@ -30,8 +30,17 @@ jobs:
       # failure -- without it those tests skip, and a skipped test reports as
       # passed, which is how this suite stayed green without running.
       - name: Install age CLI
+        env:
+          AGE_VERSION: v1.3.2
+          # sha256 of age-v1.3.2-linux-amd64.tar.gz. Verified rather than piped
+          # straight into tar: this binary decrypts test material, so a swapped
+          # release would be executing attacker code inside CI.
+          AGE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
         run: |
-          curl -sSLf https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz | tar -xz
+          set -euo pipefail
+          curl -sSLf -o age.tar.gz             "https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-linux-amd64.tar.gz"
+          echo "${AGE_SHA256}  age.tar.gz" | sha256sum -c -
+          tar -xzf age.tar.gz
           sudo install -m 0755 age/age /usr/local/bin/age
           age --version
       - run: cargo test --workspace --all-features
