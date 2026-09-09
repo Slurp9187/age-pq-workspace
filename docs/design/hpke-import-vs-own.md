@@ -89,3 +89,11 @@ and exactly the half importing `rust-hpke` would make unverified.
 All facts in the comparison table were read directly from the local cargo git
 checkout of `str4d/rust-hpke` at rev `1268205e` and from this workspace's own
 manifests on 2026-09-09.
+
+The `MlKem1024P384` finding — the one that retires the extensibility argument —
+was **independently confirmed** by a parallel session at
+`src/kem/mlkem_nistp.rs:555-562` of the same rev, reached by its own grep rather
+than from this document. Two readings of the same source is weaker evidence than
+two independent implementations, but it does rule out a misread, which is the
+failure mode that matters here: the whole reframing turns on that macro
+invocation existing.
