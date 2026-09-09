@@ -10,7 +10,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`cargo fetch` works again on MSRV 1.70.** It failed on every branch,
+  including `main`: three transitive crates in the WASI dependency chain
+  (`wit-bindgen`, `wit-bindgen-core`, `wasip2`) are edition 2024, which Cargo
+  1.70 cannot parse, so any all-target prefetch aborted. Ordinary
+  `cargo check` / `build` / `test` were unaffected because those crates are
+  target-gated to WASI and never compile here — which is why this went unnoticed.
+
+  Pinned in `Cargo.lock`: `getrandom` 0.3.4 → 0.3.1 (drops `wasi` 0.14 for 0.13,
+  removing `wasip2`) and `uuid` 1.22.0 → 1.11.0 (drops `getrandom` 0.4, removing
+  the `wit-bindgen-*` and `wit-component` chain). Both are lockfile-only; no
+  manifest requirement changed, and the 1.85 bump can simply drop the pins.
+
 ### Changed
+
 
 - **`publish = false` on all three crates**, inherited from `[workspace.package]`.
   These are experimental and distributed by git tag; none has ever been on
