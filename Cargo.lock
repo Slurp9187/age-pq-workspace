@@ -120,6 +120,7 @@ dependencies = [
  "clap",
  "proptest",
  "secure-gate",
+ "sha2",
  "tempfile",
  "time",
  "unicode-ident",

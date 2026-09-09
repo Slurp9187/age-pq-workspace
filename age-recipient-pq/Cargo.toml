@@ -25,6 +25,10 @@ unicode-ident = { workspace = true }
 # Pin dev-deps to MSRV 1.70-compatible versions; the workspace Cargo.lock
 # is the primary guard, but exact pins prevent surprise resolution bumps.
 proptest = { workspace = true }
+# CCTV testkit conformance harness: `armor` for the armored vector, `sha2` for
+# payload digests. Both resolve to already-locked versions (no new fetch).
+age = { version = "0.11", features = ["armor"] }
+sha2 = "0.10"
 tempfile = { workspace = true }
 time = { workspace = true }
 clap = { workspace = true }
