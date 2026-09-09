@@ -6,6 +6,7 @@ description = "Post-quantum hybrid X-Wing KEM (ML-KEM-768 + X25519) with HPKE su
 keywords = ["post-quantum", "cryptography", "hybrid", "ML-KEM", "X25519"]
 categories = ["cryptography"]
 
+publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

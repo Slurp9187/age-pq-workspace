@@ -6,6 +6,7 @@ repository = "https://github.com/Slurp9187/age-plugin-pq"
 keywords = ["age", "encryption", "post-quantum", "mlkem", "x25519"]
 categories = ["cryptography"]
 
+publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

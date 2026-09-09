@@ -12,11 +12,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`publish = false` on all three crates**, inherited from `[workspace.package]`.
+  These are experimental and distributed by git tag; none has ever been on
+  crates.io. Nothing previously said so in the manifests, so `cargo publish` was
+  permitted — now it is a hard error rather than a convention.
+
 - **`secure-gate` moved to a git dependency on `release/0.8` (`0.8.0-rc.12`).**
-  rc.12 is not on crates.io yet, so this is temporary: **a git dependency makes
-  every crate here unpublishable** — `cargo publish` rejects them. Swap back to a
-  `version = "=0.8.0-rc.12"` registry pin before cutting the release. `Cargo.lock`
-  pins the exact rev regardless of the branch.
+  rc.12 is not on crates.io, which costs nothing here given the line above.
+  `Cargo.lock` pins the exact rev regardless of the branch.
 
   Two rc.12 changes reach this workspace:
 
