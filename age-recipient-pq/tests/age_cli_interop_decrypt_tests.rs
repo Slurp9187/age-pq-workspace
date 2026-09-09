@@ -7,15 +7,14 @@ const ENCRYPTED_FILE: &str = "tests/data/lorem.txt.age";
 const PLAINTEXT_FILE: &str = "tests/data/lorem.txt";
 const IDENTITY_FILE: &str = "tests/data/age_cli_pq_identity.key";
 
-mod common;
-
+/// Decrypts a file produced by the **Go age CLI v1.3.1** using this crate.
+///
+/// This needs no `age` binary at run time: the ciphertext, the identity and the
+/// expected plaintext are all stored fixtures. It used to be gated on the CLI
+/// being installed, which skipped genuine cross-implementation coverage for no
+/// reason -- and a skipped test reports as passed.
 #[test]
 fn test_decrypt_lorem_encrypted_with_age_cli() {
-    if !common::check_age_cli_version() {
-        eprintln!("SKIPPED: age CLI not available");
-        return;
-    }
-
     // Read the encrypted file (lorem.txt.age from age-cli)
     let encrypted_data =
         fs::read(ENCRYPTED_FILE).unwrap_or_else(|_| panic!("Failed to read {}", ENCRYPTED_FILE));

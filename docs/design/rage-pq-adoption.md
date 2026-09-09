@@ -69,8 +69,18 @@ Remaining plugin value:
    plugin identity can also unwrap native `mlkem768x25519` stanzas produced by
    official binaries.
 
-Item 2 is the reason to keep our own runtime. If the variant work is ever
-dropped, revisit this decision — the extensibility argument is the only leg left.
+Item 2 was originally cited as *the* reason to keep our own runtime.
+
+> **Superseded 2026-09-09.** That reasoning no longer holds. `rust-hpke` already
+> implements `MlKem1024P384` with KAT coverage, so the variant is not something
+> only we can reach — adopting rage would make it "wire a stanza type around an
+> existing KEM". The decision to keep our own runtime stands, but on a different
+> basis: `libcrux-ml-kem` is **formally verified** where `rust-hpke`'s
+> RustCrypto `ml-kem` is not, and we require `#![forbid(unsafe_code)]` where
+> `rust-hpke` does not declare it.
+>
+> Cite the verified-backend argument, not the extensibility one. Full analysis
+> and the port estimate: [`hpke-import-vs-own.md`](hpke-import-vs-own.md).
 
 ## Q3 — Draft tracking: pinned, not chasing head
 

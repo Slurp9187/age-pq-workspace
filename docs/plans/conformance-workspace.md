@@ -51,22 +51,48 @@ until issue #2 lands.
       absent in CI (issue #14). Today's interop tests `eprintln!("SKIPPED")` and
       return, so they pass without testing anything — the same failure shape as
       the workflow that never ran.
-- [ ] **Restore the `flate2`-free deviation** or add `flate2` once `cargo fetch`
-      works again, so vectors can be refreshed verbatim from upstream.
+- [ ] **Refresh vectors verbatim from upstream** now that `cargo fetch` works,
+      either by keeping the `flate2`-free deviation or adding `flate2`.
+- [ ] **Add `rust-hpke` as a second differential oracle** (post-1.85). Its
+      `MlKem1024P384` KATs are the acceptance criterion for our own port (#19).
+      Same shape as the rage decision: own the runtime, borrow the oracle.
 
 ## Blocked / adjacent
 
-`cargo fetch` currently fails workspace-wide on every branch including `main`:
-a transitive `wit-bindgen-core 0.51.0` is edition 2024, which Cargo 1.70 cannot
-parse. `check` / `build` / `test` / `clippy` are unaffected because the
-dependency is already vendored. This is why the CCTV harness was written to use
-only already-locked crates (`sha2`, `hex`) and why the two compressed vectors
-were pre-decompressed instead of adding `flate2`.
+~~`cargo fetch` fails workspace-wide on every branch including `main`~~ —
+**fixed 2026-09-09.** The WASI chain (`wit-bindgen`, `wit-bindgen-core`,
+`wasip2`) is edition 2024 and unparseable by Cargo 1.70, so any all-target
+prefetch aborted; `check` / `build` / `test` / `clippy` never noticed because
+those crates are target-gated to WASI. Resolved with two lockfile-only pins,
+`getrandom` 0.3.1 and `uuid` 1.11.0, verified from a clean clone on rustc
+1.70.0. Documented in the root `CHANGELOG.md`, the README MSRV policy, and as a
+build rule in `CLAUDE.md` so a routine `cargo update` does not silently undo it.
+
+The CCTV harness was nonetheless written to use only already-locked crates
+(`sha2`, `hex`), and the two compressed vectors were pre-decompressed rather
+than adding `flate2`. Worth keeping either way: the conformance harness carries
+no dependency footprint of its own.
 
 ## Next variant: MLKEM1024-P384
 
-The extensibility argument that justifies keeping our own runtime. Parameters
-per `hpke-pq.md` / CFRG CONCRETE-04:
+Tracked as issue #19. Note this is **no longer** the argument that justifies
+keeping our own runtime — `rust-hpke` already implements it. We keep our runtime
+for verified ML-KEM; see [`../design/hpke-import-vs-own.md`](../design/hpke-import-vs-own.md).
+
+Port estimate against our existing modules — **~650–750 lines**, nearly all
+structural mirroring:
+
+| Piece | Status |
+|---|---|
+| ML-KEM-1024 primitives | already exist (`ml_kem/mlkem1024.rs`, libcrux-verified); feature declared, not default |
+| P-384 classical half | missing entirely; ~100 lines mirroring `x25519.rs` / `x448.rs` |
+| `mlkem1024p384.rs` | ~560 lines mirroring `mlkem768x25519.rs` |
+| Combiner | label must be parameterised (`MLKEM1024-P384`) |
+
+**libcrux has no verified P-384**, so the classical half is RustCrypto `p384`
+either way. The verified-backend advantage applies only to the PQ half.
+
+Parameters per `hpke-pq.md` / CFRG CONCRETE-04:
 
 | Parameter | Value |
 |---|---|

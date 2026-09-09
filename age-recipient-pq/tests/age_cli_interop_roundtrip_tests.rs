@@ -12,8 +12,9 @@ const LOREM_FILE: &str = "tests/data/lorem.txt";
 
 #[test]
 fn test_create_and_verify_pq_encryption_with_cli() {
-    if !common::check_age_cli_version() {
-        eprintln!("SKIPPED: age CLI not available");
+    // This one genuinely shells out, so it needs the binary. In CI,
+    // AGE_INTEROP_REQUIRED=1 turns absence into a failure rather than a skip.
+    if !common::require_age_cli() {
         return;
     }
 
