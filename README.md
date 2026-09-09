@@ -85,6 +85,20 @@ upper-bound caps to stay within MSRV:
 These caps are declared as phantom `[workspace.dependencies]` so `cargo update` respects
 them automatically.
 
+Two further constraints are **lockfile-only**, because the crates involved are
+target-gated to WASI and cannot be capped through a manifest requirement:
+
+| Dep | Pin | Reason |
+|---|---|---|
+| `getrandom` | `0.3.1` | newer takes `wasi 0.14`, pulling edition-2024 `wasip2` |
+| `uuid` | `1.11.0` | newer takes `getrandom 0.4`, pulling edition-2024 `wit-bindgen-*` |
+
+Without them `cargo fetch` fails on 1.70 — Cargo cannot parse an edition-2024
+manifest even for a target it will never build. Ordinary `check` / `build` /
+`test` are unaffected, so the breakage is invisible to CI's normal jobs; if
+`cargo fetch` starts reporting *"this version of Cargo is older than the `2024`
+edition"*, restore these pins. The MSRV 1.85 bump removes the need for both.
+
 ## Specification
 
 - X-Wing KEM: [draft-connolly-cfrg-xwing-kem-09](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
