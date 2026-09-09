@@ -72,13 +72,35 @@ badges, and `libcrux-ml-kem` sits at `0.0.10` while the workspace is `0.0.5`. It
 is not a statement about ML-KEM's standing: FIPS 203 was finalised in August
 2024. Do not cite "ML-KEM is still experimental" as a reason for anything here.
 
-### Open sub-decision
+### Crate versions unify at `0.1.0`
 
-Whether the three crates unify on one version (`version.workspace = true`) or
-stay independently numbered (`0.0.7` / `0.0.6` / `0.0.2` today). Unifying makes
-`v0.1.0` unambiguous as a workspace tag, which suits git-tag distribution;
-libcrux does the opposite, but its crates have genuinely independent consumers
-where ours are path-linked and released together.
+**Decided.** At step 2 the three crates move to `version.workspace = true` and a
+single number, replacing today's `0.0.7` / `0.0.6` / `0.0.2`.
+
+They are not independently releasable in practice:
+
+- `age-pq-keys` and `age-plugin-pq` both depend on `age-pq-hpke` **by path**, so
+  a change there ships in the same commit as its consumers — there is no
+  version-resolution step that could pick a different combination.
+- Distribution is a git tag over the whole workspace. `v0.1.0` has to mean one
+  thing; three numbers make "which version is the 1.70 line?" ambiguous exactly
+  when the answer matters most.
+- With `publish = false`, per-crate precision buys nothing — no consumer is
+  resolving `age-pq-keys 0.0.6` against `age-pq-hpke 0.0.7` from a registry.
+
+The honest counter-argument is that unified versions publish releases for crates
+that did not change, so the number stops being evidence about a specific crate.
+Accepted: the changelogs carry that detail, and for a git-tagged workspace a
+coherent tag is worth more than per-crate precision.
+
+libcrux does the opposite — `libcrux-ml-kem` at `0.0.10` while its workspace is
+`0.0.5` — but its subcrates have genuinely independent consumers pulling
+individual algorithms from crates.io. That is not this workspace's shape.
+
+**Related cleanup:** hardcoded version strings must go at the same time, or the
+unified number gains another place to drift. `age-plugin-pq` already uses
+`env!("CARGO_PKG_VERSION")`; `age-pq-keys/examples/pq-keygen.rs` had a literal
+`"0.0.6"` and has been hand-realigned before (CHANGELOG 0.0.5). Fixed here.
 
 ## Why the MSRV bump and secure-gate 0.9 are the same task
 

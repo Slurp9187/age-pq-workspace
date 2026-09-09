@@ -7,7 +7,9 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("pq-keygen")
-        .version("0.0.6")
+        // Read from Cargo rather than hardcoded: a literal here has to be kept
+        // in sync by hand, and has drifted before (see CHANGELOG 0.0.5).
+        .version(env!("CARGO_PKG_VERSION"))
         .about("Generate a post-quantum hybrid ML-KEM-768 + X25519 key pair")
         .disable_version_flag(true)
         .after_help(
