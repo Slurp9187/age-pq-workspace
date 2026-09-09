@@ -53,11 +53,19 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   ```
 
   where `name` comes from the identity HRP (`AGE-PLUGIN-PQ-` → `pq`). Rename the
-  binary and plugin discovery breaks — silently, since age reports
-  plugin-not-found rather than failing to build, and no test in this workspace
-  invokes the plugin through age's own discovery path. The Cargo *package* could
-  be renamed while `[[bin]] name` stays put, but package ≠ binary is a trap for
-  the next person, so both stay as they are.
+  binary and plugin discovery breaks silently: age reports plugin-not-found
+  rather than failing to build. The Cargo *package* could be renamed while
+  `[[bin]] name` stays put, but package ≠ binary is a trap for the next person,
+  so both stay as they are.
+
+  Both halves of that coupling are now guarded rather than merely documented:
+
+  - Change the **HRP** and `identity_hrp_matches_the_binary_name_age_will_look_for`
+    (`age-plugin-pq/tests/integration.rs`) fails, naming the binary age would
+    then look for. It derives the expected name from the HRP the plugin itself
+    emits, so it needs no age binary.
+  - Rename the **bin target** and the same test fails to compile, because
+    `env!("CARGO_BIN_EXE_age-plugin-pq")` no longer resolves.
 - **MSRV is `1.70`** (workspace `rust-toolchain.toml`), and this is the **last
   release on it**. The next release moves to **MSRV 1.85** — that decision is
   made; it does not need re-litigating, but nothing in this release may depend

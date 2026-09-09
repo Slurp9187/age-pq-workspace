@@ -12,3 +12,4 @@
 # encrypted, regardless of platform.
 age-pq-keys/tests/data/**  binary
 age-pq-hpke/tests/data/**       binary
+age-plugin-pq/tests/data/**     binary

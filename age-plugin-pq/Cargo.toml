@@ -26,6 +26,9 @@ rand = { version = "0.9", features = ["std"] }
 time = { version = "0.3", features = ["formatting"] }
 secure-gate = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [[bin]]
 name = "age-plugin-pq"
 path = "src/main.rs"

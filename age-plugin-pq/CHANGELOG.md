@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`identity_hrp_matches_the_binary_name_age_will_look_for`** — asserts the
+  built binary is named what age will actually search for. age locates a plugin
+  by constructing `"age-plugin-" + name` from the identity HRP, so a rename of
+  either side breaks discovery *silently* (age reports plugin-not-found rather
+  than failing to build). The test derives one from the other, needs no age
+  binary, and turns a documented hazard into an executable assertion.
+
+### Fixed
+
+- **Integration tests no longer pass without running.** Both tests began by
+  hunting for the binary in `target/debug/` or on `PATH` and returning early if
+  they found neither — reporting success either way. They now use
+  `CARGO_BIN_EXE_age-plugin-pq`, which Cargo guarantees, so they always run. The
+  one test that shells out to the real age CLI is `#[ignore]`d, so it reports as
+  *ignored* rather than passing; CI runs it with `--include-ignored`.
+- **Scratch files no longer written into the fixture directory.** The round-trip
+  test wrote `tests/data/temp_*` under fixed names, which is not parallel-safe
+  and leaks the files when an assertion fires before cleanup. Now a `TempDir`.
+
+
 ### Changed (BREAKING, internal)
 
 - **`zeroize` replaced by `secure-gate`.** The direct dependency is gone; aliases
