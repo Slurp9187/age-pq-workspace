@@ -5,9 +5,9 @@ use crate::aliases::{AeadKey32, KdfBytes};
 use age_pq_hpke::{kdf::new_kdf, Error};
 use secure_gate::RevealSecret;
 
-pub const KEM_ID: u16 = 0x647a; // XWing768X25519
-pub const KDF_ID: u16 = 0x0001; // HKDF-SHA256
-pub const AEAD_ID: u16 = 0x0003; // ChaCha20Poly1305
+pub(crate) const KEM_ID: u16 = 0x647a; // XWing768X25519
+pub(crate) const KDF_ID: u16 = 0x0001; // HKDF-SHA256
+pub(crate) const AEAD_ID: u16 = 0x0003; // ChaCha20Poly1305
 const MODE: u8 = 0; // base mode
 
 fn suite_id() -> Vec<u8> {
@@ -25,7 +25,11 @@ fn suite_id() -> Vec<u8> {
 /// wrapped in [`KdfBytes`] on arrival so no PRK or OKM lives as a bare vector.
 /// The base nonce is public (it is XORed with the sequence number per message)
 /// and stays a plain array.
-pub fn derive_key_and_nonce(
+// `pub(crate)` rather than `pub`: this is a binary crate, so nothing outside can
+// reach it anyway, and it returns `AeadKey32` — a crate-private role. While that
+// was a `fixed_alias!` it expanded to the public `Fixed<[u8; 32]>`, so the
+// mismatch was invisible; as a nominal newtype the compiler names it.
+pub(crate) fn derive_key_and_nonce(
     shared_secret: &[u8],
     info: &[u8],
 ) -> Result<(AeadKey32, [u8; 12]), Error> {

@@ -10,7 +10,8 @@ use super::combiner;
 use super::ml_kem;
 use super::x25519;
 use crate::aliases::{
-    MlKem768Ciphertext1088, MlKem768PublicKey1184, Seed32, X25519PublicKey32, X25519Secret32,
+    MlKem768Ciphertext1088, MlKem768PublicKey1184, Seed32, X25519EncapsulationKey,
+    X25519EphemeralShare, X25519Scalar,
 };
 use crate::error::{Error, Result as CrateResult};
 use crate::kem::common::{
@@ -131,7 +132,7 @@ impl fmt::Debug for Ciphertext {
 
 /// Expands a wrapped 32-byte master seed into an ML-KEM-768 keypair and a
 /// wrapped X25519 scalar via [`expand_seed`].
-fn expand_key(seed: &Seed32) -> (MlKem768KeyPair, X25519Secret32) {
+fn expand_key(seed: &Seed32) -> (MlKem768KeyPair, X25519Scalar) {
     let (ml_seed, x_secret) = expand_seed(seed);
     let kp = ml_kem::keypair_from_seed(ml_seed);
     (kp, x_secret)
@@ -151,21 +152,17 @@ impl EncapsulationKey {
     fn encapsulate_inner(
         &self,
         ml_rand: Seed32,
-        ephemeral: X25519Secret32,
+        ephemeral: X25519Scalar,
     ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
         let (ct_m_bytes, ss_m) = ml_kem::encapsulate_with_seed(&self.pk_m, ml_rand)?;
         let (ct_x, ss_x) = x25519::encapsulate_to_public_key(ephemeral, &self.pk_x)?;
 
-        let ct_x_bytes = X25519PublicKey32::from(ct_x.to_bytes());
-        let pk_x_bytes = X25519PublicKey32::from(self.pk_x.to_bytes());
+        let ct_x_bytes = X25519EphemeralShare::from(ct_x.to_bytes());
+        let pk_x_bytes = X25519EncapsulationKey::from(self.pk_x.to_bytes());
 
-        // Tier-2: combiner takes four &[u8; 32]; 4-arg closure nesting would obscure.
-        let ss = combiner::combine_shared_secrets(
-            ss_m.expose_secret(),
-            ss_x.expose_secret(),
-            ct_x_bytes.expose_secret(),
-            pk_x_bytes.expose_secret(),
-        );
+        // Each argument is a distinct nominal type, so the four cannot be
+        // transposed — see `kem::combiner`.
+        let ss = combiner::combine_shared_secrets(&ss_m, &ss_x, &ct_x_bytes, &pk_x_bytes);
 
         Ok((
             Ciphertext::from_wrapped_components(MlKem768Ciphertext1088::from(ct_m_bytes), ct_x),
@@ -189,7 +186,7 @@ impl EncapsulationKey {
         rng: &mut R,
     ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
         let ml_rand = Seed32::from_rng(rng).map_err(|_| Error::RandomnessError)?;
-        let ephemeral = X25519Secret32::from_rng(rng).map_err(|_| Error::RandomnessError)?;
+        let ephemeral = X25519Scalar::from_rng(rng).map_err(|_| Error::RandomnessError)?;
         self.encapsulate_inner(ml_rand, ephemeral)
     }
 
@@ -227,7 +224,7 @@ impl EncapsulationKey {
         // Write each half directly into wrapper storage — no intermediate
         // [u8; 32] stack bindings.
         let ml_rand = Seed32::new_with(|out| out.copy_from_slice(&eseed[0..32]));
-        let ephemeral = X25519Secret32::new_with(|out| out.copy_from_slice(&eseed[32..64]));
+        let ephemeral = X25519Scalar::new_with(|out| out.copy_from_slice(&eseed[32..64]));
         self.encapsulate_inner(ml_rand, ephemeral)
     }
 }
@@ -341,16 +338,12 @@ impl DecapsulationKey {
         let (kp, x_secret) = expand_key(&self.seed);
         let ss_m = ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m);
         let (ss_x, pk_x) = x25519::decapsulate_from_private_seed(x_secret, &ct.ct_x)?;
-        let ct_x_bytes = X25519PublicKey32::from(ct.ct_x.to_bytes());
-        let pk_x_bytes = X25519PublicKey32::from(pk_x.to_bytes());
+        let ct_x_bytes = X25519EphemeralShare::from(ct.ct_x.to_bytes());
+        let pk_x_bytes = X25519EncapsulationKey::from(pk_x.to_bytes());
 
-        // Tier-2: combiner takes four &[u8; 32]; 4-arg closure nesting would obscure.
-        let ss = combiner::combine_shared_secrets(
-            ss_m.expose_secret(),
-            ss_x.expose_secret(),
-            ct_x_bytes.expose_secret(),
-            pk_x_bytes.expose_secret(),
-        );
+        // Each argument is a distinct nominal type, so the four cannot be
+        // transposed — see `kem::combiner`.
+        let ss = combiner::combine_shared_secrets(&ss_m, &ss_x, &ct_x_bytes, &pk_x_bytes);
 
         Ok(ss)
     }
