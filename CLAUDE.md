@@ -14,24 +14,30 @@ explicitly scopes itself.
 | `age-recipient-pq` | `age` recipient / identity wrapper around `age-hpke-pq`. Parses stanzas, performs file-key wrap/unwrap. |
 | `age-plugin-pq` | `age-plugin-*` binary that exposes the recipient layer over the age plugin protocol (stdio, newline-delimited base64). |
 
-**Secret-handling libraries differ by crate — verify before applying a rule.**
+**All three crates use `secure-gate`, inherited from the workspace.** This was
+previously split (`secrecy` + `zeroize` in the two upper crates) and is now
+unified — the secure-gate sections below bind every crate in full.
 
 | Crate | Secret handling |
 |-------|-----------------|
-| `age-hpke-pq` | workspace-pinned `secure-gate = "=0.8.0-rc.11"`, features `rand`, `ct-eq` |
-| `age-recipient-pq` | `secrecy = "0.10"` + `zeroize = "1.8"` — **no `secure-gate` dependency** |
-| `age-plugin-pq` | `zeroize = "1.8"` — **no `secure-gate` dependency** |
+| `age-hpke-pq` | `secure-gate = { workspace = true }` |
+| `age-recipient-pq` | `secure-gate = { workspace = true }` |
+| `age-plugin-pq` | `secure-gate = { workspace = true }` |
 
-The secure-gate sections below therefore bind `age-hpke-pq` in full. The other
-two crates touch secure-gate types only where `age-hpke-pq`'s public API hands
-them one (`SharedSecret` from `decap`, `KdfBytes` from the `Kdf` trait) and
-reach the access methods through `age-hpke-pq`'s `RevealSecret` re-export.
-Their own secret material uses `secrecy` / `zeroize` idioms instead, so apply
-the *principles* there (no unzeroized copies, no secrets in `Debug` or error
-payloads, constant-time comparison) rather than the literal API.
+The workspace pin is a git dependency, not a registry version:
 
-Unifying on one library across all three is an open question, not a settled
-rule. Do not migrate a crate as a side effect of another change.
+```toml
+secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "release/0.8", features = ["rand", "ct-eq"] }
+```
+
+`release/0.8` is the MSRV-1.70 backport line (`0.8.0-rc.12`); `main` is edition
+2024 / MSRV 1.85 and cannot be used until the cohort bump. **No encoding feature
+is enabled**, which is why the crates hand-roll bech32 — see issue #11.
+
+`secrecy` still appears in `age-recipient-pq`'s source, but only as `age`'s own
+re-export: `FileKey` is `age`'s type and keeps `age`'s accessor. Neither
+`secrecy` nor `zeroize` is a direct dependency of any crate here. `zeroize`
+appears once as an `x25519-dalek` feature, not as an API this workspace calls.
 
 ---
 
@@ -54,7 +60,7 @@ rule. Do not migrate a crate as a side effect of another change.
 
   | Item | Today (1.70) | After 1.85 |
   |------|--------------|------------|
-  | `secure-gate` | `=0.8.0-rc.11` backport line | mainline `0.9.x` (edition 2024, `rust-version = 1.85`) |
+  | `secure-gate` | git `release/0.8` (`0.8.0-rc.12`) backport line | mainline `0.9.x` (edition 2024, `rust-version = 1.85`) |
   | `half` | capped `>=2.0, <2.5` | cap removable (2.5+ needs 1.81) |
   | `unicode-ident` | capped `>=1.0, <1.0.23` | cap removable (1.0.23+ needs 1.71) |
   | Cargo `resolver` | `"2"` | `"3"` available |
@@ -70,6 +76,17 @@ rule. Do not migrate a crate as a side effect of another change.
   `panic = "abort"`.
 - **No `cargo clean` casually** — `libcrux-ml-kem` and downstream verified
   crypto deps are slow to rebuild.
+- **Do not `cargo update` freely on the 1.70 line.** Two lockfile-only pins keep
+  `cargo fetch` working: `getrandom` at `0.3.1` and `uuid` at `1.11.0`. Newer
+  versions pull `wasip2` / `wit-bindgen` / `wit-bindgen-core`, which are edition
+  2024 and unparseable by Cargo 1.70, breaking any all-target prefetch (and so
+  vendoring and offline builds). Nothing else notices, because those crates are
+  target-gated to WASI and never compile here — so the breakage is invisible to
+  `check` / `build` / `test` and will not show up in CI's normal jobs.
+
+  If `cargo fetch` starts failing with *"this version of Cargo is older than the
+  `2024` edition"*, this is the cause. Re-pin rather than chasing the manifest.
+  The 1.85 bump removes the need for both pins.
 - **No secrets in `static` or `lazy_static!`** — `Drop` does not run on statics.
   Const algorithm IDs, RFC version labels, and suite prefixes are fine
   (they aren't secrets); secret material never lives in a static.
