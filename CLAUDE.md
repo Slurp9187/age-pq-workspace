@@ -38,10 +38,28 @@ rule. Do not migrate a crate as a side effect of another change.
 ## Build rules — non-negotiable, workspace-wide
 
 - **`#![forbid(unsafe_code)]`** at every crate root. No exceptions.
-- **MSRV is `1.70`** (workspace `rust-toolchain.toml`). Never bump silently —
-  many deps in this workspace are capped (`half < 2.5`, `unicode-ident < 1.0.23`)
-  specifically to hold this pin. If a new feature would force an MSRV bump,
-  raise it as a separate decision PR.
+- **MSRV is `1.70`** (workspace `rust-toolchain.toml`), and this is the **last
+  release on it**. The next release moves to **MSRV 1.85** — that decision is
+  made; it does not need re-litigating, but nothing in this release may depend
+  on it. Until the bump lands, `1.70` still binds: many deps are capped
+  (`half < 2.5`, `unicode-ident < 1.0.23`) specifically to hold the pin, and
+  `secure-gate` is on the `0.8.0-rc.*` line, which exists solely as the
+  MSRV-1.70 backport of `main`.
+
+  **What the 1.85 bump unlocks** (checklist for that PR, not this one):
+
+  | Item | Today (1.70) | After 1.85 |
+  |------|--------------|------------|
+  | `secure-gate` | `=0.8.0-rc.11` backport line | mainline `0.9.x` (edition 2024, `rust-version = 1.85`) |
+  | `half` | capped `>=2.0, <2.5` | cap removable (2.5+ needs 1.81) |
+  | `unicode-ident` | capped `>=1.0, <1.0.23` | cap removable (1.0.23+ needs 1.71) |
+  | Cargo `resolver` | `"2"` | `"3"` available |
+  | Edition | 2021 | 2024 available |
+  | Workspace lint tables | omitted (need Cargo 1.74+) | available |
+
+  Moving to `secure-gate` `0.9.x` is the substantive half: the `0.8.0-rc.*`
+  line is a backport, so its changelog entries describe adaptations *away* from
+  `main`. Read `main`'s changelog, not the backport's, when planning it.
 - **`panic = "unwind"`** in every profile. `Drop` runs on unwind; `panic = "abort"`
   skips destructors, which skips secure-gate zeroization. The workspace
   `[profile.dev]` / `[profile.release]` / `[profile.bench]` must not set

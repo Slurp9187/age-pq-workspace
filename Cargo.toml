@@ -1,6 +1,6 @@
 [workspace]
 members = ["age-hpke-pq", "age-recipient-pq", "age-plugin-pq"]
-resolver = "2"   # MSRV 1.70 → resolver 2 is required; upgrade to 3 only when you bump to 1.85+
+resolver = "2"   # MSRV 1.70 → resolver 2 is required. LAST 1.70 RELEASE: move to "3" with the 1.85 bump.
 
 # Shared package metadata (inherited by every member)
 [workspace.package]
@@ -37,14 +37,18 @@ debug = true    # keep symbols for flamegraphs / profiling
 # Shared workspace lint tables require Cargo 1.74+; omitted so `cargo +1.70` stays warning-free.
 
 [workspace.dependencies]
+# The 0.8.0-rc.* line is the MSRV-1.70 backport of secure-gate's `main`.
+# With the 1.85 bump, move to mainline 0.9.x (edition 2024, rust-version 1.85).
 secure-gate = { version = "=0.8.0-rc.11", features = ["rand", "ct-eq"] }
 
 clap = { version = "=4.4.18", features = ["derive"] }
 
 # half 2.5.0+ requires rustc 1.81 (transitive via secure-gate); cap to stay at 1.70 MSRV.
+# Removable at MSRV 1.85.
 half = { version = ">=2.0, <2.5", default-features = false }
 
 # unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
+# Removable at MSRV 1.85.
 unicode-ident = ">=1.0, <1.0.23"
 
 proptest = "=1.5.0"
