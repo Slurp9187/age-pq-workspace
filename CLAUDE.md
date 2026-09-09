@@ -166,11 +166,14 @@ struct DecapsulationKey { seed: [u8; 32] }   // use Seed32
 let raw = exporter_secret.expose_secret().to_vec();
 move |ctx| use(&raw)   // raw is a long-lived unprotected secret
 
-// WRONG: returning raw Vec<u8> for plaintext, key material, or KDF output
-// across a public API boundary.
-pub fn open(...) -> Result<Vec<u8>, Error>    // use Plaintext
-pub fn export(...) -> Result<Vec<u8>, Error>  // use KdfBytes
-fn bytes(&self) -> Vec<u8>                    // use Seed32 / KdfBytes
+// WRONG: a wrapper in a *public* API signature. Public in/out types are
+// native Rust types — see "Wire boundary" below. Wrap internally instead.
+pub fn decap(&self, enc: &[u8]) -> Result<SharedSecret, Error>  // -> [u8; 32]
+fn labeled_expand(...) -> Result<KdfBytes, Error>               // -> Vec<u8>
+
+// WRONG: an internal buffer left unwrapped. Inside the crate, PRKs, OKMs,
+// seeds, and shared secrets live in wrappers for their whole lifetime.
+let prk: Vec<u8> = kdf.extract(...);          // use KdfBytes
 
 // WRONG: `==` on secret wrapper contents.
 secret_a.expose_secret() == secret_b.expose_secret()   // use ct_eq

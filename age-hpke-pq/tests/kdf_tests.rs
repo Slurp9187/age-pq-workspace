@@ -6,7 +6,7 @@
 //! - assert unsupported family operations return `InvalidOperationForKdf`
 
 use age_hpke_pq::{
-    kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, SecretLen, Shake128Kdf,
+    kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, Shake128Kdf,
     Shake256Kdf,
 };
 

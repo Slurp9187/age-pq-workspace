@@ -1,7 +1,7 @@
 // tests/derand_tests.rs
 
 use age_hpke_pq::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
-use age_hpke_pq::{ConstantTimeEq, RevealSecret};
+use age_hpke_pq::ConstantTimeEq;
 
 const EXPECTED_CT_FIRST_32: [u8; 32] = [
     54, 105, 219, 179, 32, 45, 144, 182, 129, 59, 255, 3, 160, 229, 52, 47, 115, 181, 184, 250,
@@ -23,9 +23,7 @@ fn test_derandomized_encapsulation() {
         .expect("Failed to encapsulate derand");
     // Assert against known values for strong regression checks
     assert_eq!(&ct.to_bytes()[..32], EXPECTED_CT_FIRST_32);
-    ss.with_secret(|bytes| {
-        assert_eq!(bytes, &EXPECTED_SS);
-    });
+    assert_eq!(ss, EXPECTED_SS);
 
     // Verify round-trip
     let sk = DecapsulationKey::from_seed(&seed);

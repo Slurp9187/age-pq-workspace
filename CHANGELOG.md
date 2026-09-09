@@ -10,6 +10,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **`age-hpke-pq`'s public API no longer exposes secure-gate types.** Eight
+  boundaries changed — see that crate's changelog for the table and migration
+  notes. Downstream effects inside this workspace: `age-plugin-pq`'s
+  `hpke_pq::derive_key_and_nonce` now parks each `Kdf` output in
+  `zeroize::Zeroizing` on arrival instead of reaching through `with_secret`,
+  and `age-plugin-pq` no longer imports `RevealSecret` at all — it consumes
+  `encap`, `decap`, and the `Kdf` trait without touching secure-gate's access
+  API. `age-recipient-pq` was unaffected; it never used these types.
+
 ### Changed
 
 - **`secure-gate` bumped `=0.8.0-rc.10` → `=0.8.0-rc.11`.** The one breaking

@@ -15,7 +15,7 @@ use crate::aliases::{
 use crate::error::{Error, Result as CrateResult};
 use crate::kem::common::{
     expand_seed, shake256_labeled_derive, Kem, PrivateKey, PublicKey, KEM_ID, MASTER_SEED_SIZE,
-    PRIVATE_KEY_SIZE,
+    PRIVATE_KEY_SIZE, SHARED_SECRET_SIZE,
 };
 use secure_gate::RevealSecret;
 
@@ -147,12 +147,12 @@ impl EncapsulationKey {
     ///
     /// 1. ML-KEM-768 encapsulate with `ml_rand_bytes`.
     /// 2. X25519 ephemeral DH with `ephemeral_bytes`.
-    /// 3. SHA3-256 combiner producing the final [`SharedSecret`](crate::SharedSecret).
+    /// 3. SHA3-256 combiner producing the final 32-byte shared secret.
     fn encapsulate_inner(
         &self,
         ml_rand: Seed32,
         ephemeral: X25519Secret32,
-    ) -> CrateResult<(Ciphertext, crate::SharedSecret)> {
+    ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
         let (ct_m_bytes, ss_m) = ml_kem::encapsulate_with_seed(&self.pk_m, ml_rand)?;
         let (ct_x, ss_x) = x25519::encapsulate_to_public_key(ephemeral, &self.pk_x);
 
@@ -187,7 +187,7 @@ impl EncapsulationKey {
     pub fn encapsulate<R: TryRngCore + TryCryptoRng>(
         &self,
         rng: &mut R,
-    ) -> CrateResult<(Ciphertext, crate::SharedSecret)> {
+    ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
         let ml_rand = Seed32::from_rng(rng).map_err(|_| Error::RandomnessError)?;
         let ephemeral = X25519Secret32::from_rng(rng).map_err(|_| Error::RandomnessError)?;
         self.encapsulate_inner(ml_rand, ephemeral)
@@ -223,7 +223,7 @@ impl EncapsulationKey {
     pub fn encapsulate_derand(
         &self,
         eseed: &[u8; 64],
-    ) -> CrateResult<(Ciphertext, crate::SharedSecret)> {
+    ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
         // Write each half directly into wrapper storage — no intermediate
         // [u8; 32] stack bindings.
         let ml_rand = Seed32::new_with(|out| out.copy_from_slice(&eseed[0..32]));
@@ -328,10 +328,13 @@ impl DecapsulationKey {
 
     /// Decapsulates a hybrid ciphertext and returns the shared secret.
     ///
+    /// Native `[u8; 32]` per the wire-boundary rule; wrap via
+    /// `SharedSecret::new(bytes)` if you want zeroize-on-drop.
+    ///
     /// Re-derives the ML-KEM keypair and X25519 scalar from the stored seed,
     /// then feeds both component shared secrets plus the X25519 ciphertext and
     /// public key into the SHA3-256 combiner.
-    pub fn decapsulate(&self, ct: &Ciphertext) -> CrateResult<crate::SharedSecret> {
+    pub fn decapsulate(&self, ct: &Ciphertext) -> CrateResult<[u8; SHARED_SECRET_SIZE]> {
         let (kp, x_secret) = expand_key(&self.seed);
         let ss_m = ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m);
         let (ss_x, pk_x) = x25519::decapsulate_from_private_seed(x_secret, &ct.ct_x);
@@ -508,7 +511,7 @@ impl PublicKey for XWingPublicKey {
     fn encap(
         &self,
         testing_randomness: Option<&[u8]>,
-    ) -> CrateResult<(Vec<u8>, crate::SharedSecret)> {
+    ) -> CrateResult<(Vec<u8>, [u8; SHARED_SECRET_SIZE])> {
         let (ct, ss) = if let Some(rand) = testing_randomness {
             if rand.len() >= 64 {
                 self.pk
@@ -548,7 +551,7 @@ impl PrivateKey for XWingPrivateKey {
         })
     }
 
-    fn decap(&self, enc: &[u8]) -> CrateResult<crate::SharedSecret> {
+    fn decap(&self, enc: &[u8]) -> CrateResult<[u8; SHARED_SECRET_SIZE]> {
         let ct = Ciphertext::try_from(enc)?;
         self.sk.decapsulate(&ct)
     }

@@ -22,6 +22,8 @@ pub const MASTER_SEED_SIZE: usize = 32;
 pub const PRIVATE_KEY_SIZE: usize = MASTER_SEED_SIZE;
 /// Size in bytes of ML-KEM seed material (`d || z`).
 pub const ML_KEM_SEED_SIZE: usize = 64;
+/// Size in bytes of the hybrid shared secret produced by encap / decap.
+pub const SHARED_SECRET_SIZE: usize = 32;
 
 /// Core KEM trait implemented by X-Wing variants.
 pub trait Kem {
@@ -58,10 +60,14 @@ pub trait PublicKey: Send + Sync + Any {
     /// Encapsulates to this public key and returns `(ciphertext, shared_secret)`.
     ///
     /// `testing_randomness`, when provided, is used only for deterministic tests.
+    ///
+    /// The shared secret is a native `[u8; 32]` per the workspace wire-boundary
+    /// rule; callers who want zeroize-on-drop wrap it via
+    /// `SharedSecret::new(bytes)`.
     fn encap(
         &self,
         testing_randomness: Option<&[u8]>,
-    ) -> CrateResult<(Vec<u8>, crate::SharedSecret)>;
+    ) -> CrateResult<(Vec<u8>, [u8; SHARED_SECRET_SIZE])>;
 }
 
 /// Trait implemented by X-Wing private keys.
@@ -76,7 +82,9 @@ pub trait PrivateKey: Send + Sync + Any {
     fn public_key(&self) -> Box<dyn PublicKey>;
 
     /// Decapsulates `enc` and returns the resulting hybrid shared secret.
-    fn decap(&self, enc: &[u8]) -> CrateResult<crate::SharedSecret>;
+    ///
+    /// Native `[u8; 32]`; see [`PublicKey::encap`].
+    fn decap(&self, enc: &[u8]) -> CrateResult<[u8; SHARED_SECRET_SIZE]>;
 }
 
 /// HPKE-style SHAKE256 labeled derive helper.

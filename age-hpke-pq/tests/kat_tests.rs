@@ -5,7 +5,7 @@
 //! - draft-ietf-hpke-pq-03 Appendix A test vectors
 
 use age_hpke_pq::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
-use age_hpke_pq::{kdf::Kdf, Error, HkdfSha256, RevealSecret, Shake256Kdf};
+use age_hpke_pq::{kdf::Kdf, Error, HkdfSha256, Shake256Kdf};
 use serde::Deserialize;
 
 use std::fs;
@@ -83,7 +83,7 @@ fn test_official_kat_vectors() {
             .try_into()
             .expect("Invalid ss length");
         assert_eq!(
-            ss_sender.expose_secret(),
+            &ss_sender,
             &ss_expected,
             "Shared secret mismatch (sender) in vector {}",
             i
@@ -92,7 +92,7 @@ fn test_official_kat_vectors() {
         // 5. Decapsulation round-trip
         let ss_receiver = sk.decapsulate(&ct).unwrap();
         assert_eq!(
-            ss_receiver.expose_secret(),
+            &ss_receiver,
             &ss_expected,
             "Shared secret mismatch (receiver) in vector {}",
             i
@@ -121,38 +121,38 @@ fn hkdf_sha256_rfc9180_key_schedule_vectors_match() -> Result<(), Error> {
         hex_decode("45ff1c2e220db587171952c0592d5f5ebe103f1561a2614e38f2ffd47e99e3f8");
 
     let secret = kdf.labeled_extract(&suite_id, Some(shared_secret.as_slice()), "secret", &[])?;
-    assert_eq!(secret.expose_secret().as_slice(), expected_secret.as_slice());
+    assert_eq!(secret.as_slice(), expected_secret.as_slice());
 
     let key = kdf.labeled_expand(
         &suite_id,
-        secret.expose_secret().as_slice(),
+        secret.as_slice(),
         "key",
         &key_schedule_context,
         16,
     )?;
-    assert_eq!(key.expose_secret().as_slice(), expected_key.as_slice());
+    assert_eq!(key.as_slice(), expected_key.as_slice());
 
     let base_nonce = kdf.labeled_expand(
         &suite_id,
-        secret.expose_secret().as_slice(),
+        secret.as_slice(),
         "base_nonce",
         &key_schedule_context,
         12,
     )?;
     assert_eq!(
-        base_nonce.expose_secret().as_slice(),
+        base_nonce.as_slice(),
         expected_base_nonce.as_slice()
     );
 
     let exporter_secret = kdf.labeled_expand(
         &suite_id,
-        secret.expose_secret().as_slice(),
+        secret.as_slice(),
         "exp",
         &key_schedule_context,
         32,
     )?;
     assert_eq!(
-        exporter_secret.expose_secret().as_slice(),
+        exporter_secret.as_slice(),
         expected_exporter_secret.as_slice()
     );
 
@@ -200,7 +200,7 @@ fn shake256_draft_hpke_pq_key_schedule_vector_matches() -> Result<(), Error> {
         expected_secret.len() as u16,
     )?;
     assert_eq!(
-        secret.expose_secret().as_slice(),
+        secret.as_slice(),
         expected_secret.as_slice()
     );
 

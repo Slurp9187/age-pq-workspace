@@ -1,15 +1,19 @@
 use crate::SharedSecret;
+use secure_gate::RevealSecret;
 use sha3::{Digest, Sha3_256};
 
 pub(crate) const X_WING_LABEL: &[u8] = br"\.//^\";
 
 /// Combines the PQ and traditional shared secrets into a single hybrid
-/// [`SharedSecret`] using SHA3-256.
+/// 32-byte shared secret using SHA3-256.
 ///
 /// This follows the hybrid KEM combiner in `hpke-pq.md`. The domain separator
 /// `X_WING_LABEL` is appended to bind the context and prevent cross-protocol
-/// attacks. The digest is written directly into `SharedSecret` via `new_with`,
-/// avoiding an intermediate plaintext stack copy.
+/// attacks. The digest is written directly into a `SharedSecret` wrapper via
+/// `new_with`, avoiding an intermediate plaintext stack copy, and consumed with
+/// `into_inner` at the return so the wrapper's storage is zeroized on the way
+/// out. The returned array is native per the wire-boundary rule; callers who
+/// want zeroize-on-drop wrap it via `SharedSecret::new(bytes)`.
 pub fn combine_shared_secrets(
     // ss_pq: Shared secret from ML-KEM (post-quantum KEM). This is the
     // output of ML-KEM encapsulation (for the sender) or decapsulation (for
@@ -33,8 +37,8 @@ pub fn combine_shared_secrets(
     // compute ss_t and is hashed into the combiner output so the derived
     // shared secret is bound to the intended recipient key.
     ek_t: &[u8; 32],
-) -> SharedSecret {
-    SharedSecret::new_with(|buf| {
+) -> [u8; 32] {
+    let ss = SharedSecret::new_with(|buf| {
         let mut hasher = Sha3_256::new();
         hasher.update(ss_pq);
         hasher.update(ss_t);
@@ -42,5 +46,7 @@ pub fn combine_shared_secrets(
         hasher.update(ek_t);
         hasher.update(X_WING_LABEL);
         buf.copy_from_slice(&hasher.finalize());
-    })
+    });
+    // Tier-3: consume the wrapper so its storage is zeroized as it is handed out.
+    *ss.into_inner()
 }

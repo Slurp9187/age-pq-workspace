@@ -1,7 +1,7 @@
 //! Unit tests for combiner.
 
 use age_hpke_pq::kem::combiner::combine_shared_secrets;
-use age_hpke_pq::{ConstantTimeEq, RevealSecret, SecretLen};
+use age_hpke_pq::ConstantTimeEq;
 use age_hpke_pq::SHARED_SECRET_SIZE;
 use sha3::{Digest, Sha3_256};
 
@@ -48,9 +48,7 @@ fn test_combiner_includes_label() {
         .finalize();
     let combined = combine_shared_secrets(&ss_pq, &ss_t, &ct_t, &pk_t);
 
-    combined.with_secret(|bytes| {
-        assert_ne!(plain_hash.as_slice(), bytes);
-    });
+    assert_ne!(plain_hash.as_slice(), &combined[..]);
 }
 
 #[test]
@@ -61,8 +59,6 @@ fn test_combiner_all_zero_inputs() {
     let pk_t = [0u8; 32];
     let result = combine_shared_secrets(&ss_pq, &ss_t, &ct_t, &pk_t);
     // Should still produce a non-zero hash due to the label
-    result.with_secret(|bytes| {
-        assert!(!bytes.iter().all(|&b| b == 0));
-    });
+    assert!(!result.iter().all(|&b| b == 0));
     assert_eq!(result.len(), SHARED_SECRET_SIZE);
 }
