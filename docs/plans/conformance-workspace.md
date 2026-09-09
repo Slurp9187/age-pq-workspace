@@ -22,8 +22,8 @@ A `conformance/` directory that is **excluded from the main workspace's
 ```toml
 # conformance/Cargo.toml
 [dependencies]
-age-hpke-pq       = { path = "../age-hpke-pq" }
-age-recipient-pq  = { path = "../age-recipient-pq" }
+age-pq-hpke       = { path = "../age-pq-hpke" }
+age-pq-keys  = { path = "../age-pq-keys" }
 age               = { git = "https://github.com/str4d/rage", rev = "5d33e3e" }
 
 [patch.crates-io]

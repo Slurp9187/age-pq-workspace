@@ -12,7 +12,7 @@ alwaysApply: false
 - **`[Unreleased]` section**: Every user-visible change gets a bullet under the appropriate subsection in the same commit or PR that introduces the change. Do not batch changelog entries for later.
 - **Allowed subsections** (in this order, include only those with entries): `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, `Docs`.
 - **Entry style**: Start with an imperative verb. Reference the module or area when not obvious.
-  - Example: `- Add constant-time comparison for SharedSecret32 in age-hpke-pq`
+  - Example: `- Add constant-time comparison for SharedSecret32 in age-pq-hpke`
 - **Do not** touch version headings, dates, or the `-dev` suffix. The maintainer handles release cuts manually after tagging.
 
 ### Package vs Workspace Scope

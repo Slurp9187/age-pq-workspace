@@ -10,6 +10,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **Crates renamed to a consistent `age-pq-*` prefix.**
+
+  | Was | Now | Why |
+  |---|---|---|
+  | `age-hpke-pq` | `age-pq-hpke` | prefix consistency |
+  | `age-recipient-pq` | `age-pq-keys` | "recipient" named one of five responsibilities, and the public half of a keypair at that — the crate also owns identities, key generation, the bech32 formats and the stanza wire format |
+  | `age-plugin-pq` | **unchanged** | protocol-mandated, see below |
+
+  `age-plugin-pq` keeps its name deliberately. age discovers plugins by
+  constructing the binary path as `"age-plugin-" + name`, where `name` comes
+  from the identity HRP (`AGE-PLUGIN-PQ-`). Renaming the binary would break
+  plugin discovery, and the failure is silent — age reports plugin-not-found
+  rather than failing to build.
+
+  Library paths change accordingly: `age_hpke_pq::` → `age_pq_hpke::` and
+  `age_recipient_pq::` → `age_pq_keys::`.
+
+  **No wire-format change.** Stanza tag, HRPs, KEM/KDF/AEAD identifiers and key
+  encodings are all untouched; existing keys and ciphertexts are unaffected.
+
+
 ### Fixed
 
 - **`cargo fetch` works again on MSRV 1.70.** It failed on every branch,
@@ -59,20 +82,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     settles an open API question — see below.
 
   Not adopted yet, and worth its own change: rc.12 adds `try_to_bech32_sized::<N>`
-  / `Bech32Sized`, a caller-chosen bech32 code length. Both `age-recipient-pq` and
+  / `Bech32Sized`, a caller-chosen bech32 code length. Both `age-pq-keys` and
   `age-plugin-pq` hand-roll a `Checksum` impl at `CODE_LENGTH = 8192` for exactly
   this reason, and that duplication now has an upstream answer.
 
 ### Changed (BREAKING)
 
-- **`age-hpke-pq`'s public API no longer exposes secure-gate types.** Eight
+- **`age-pq-hpke`'s public API no longer exposes secure-gate types.** Eight
   boundaries changed — see that crate's changelog for the table and migration
   notes. Downstream effects inside this workspace: `age-plugin-pq`'s
   `hpke_pq::derive_key_and_nonce` now parks each `Kdf` output in
   `zeroize::Zeroizing` on arrival instead of reaching through `with_secret`,
   and `age-plugin-pq` no longer imports `RevealSecret` at all — it consumes
   `encap`, `decap`, and the `Kdf` trait without touching secure-gate's access
-  API. `age-recipient-pq` was unaffected; it never used these types.
+  API. `age-pq-keys` was unaffected; it never used these types.
 
 ### Changed
 
@@ -80,7 +103,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   change that reaches this workspace is rc.11's #156, which moves `len()` /
   `byte_len()` / `is_empty()` off `RevealSecret` onto a new `SecretLen` trait so
   `RevealSecret` can be implemented for every inner type. Libraries, binaries,
-  and doctests were unaffected; three `age-hpke-pq` test files needed the new
+  and doctests were unaffected; three `age-pq-hpke` test files needed the new
   trait in scope. rc.11's other two breaking changes are inert here — no
   secure-gate encoding method is called anywhere in the workspace, and no
   `EncodedSecret` is ever constructed.
@@ -109,7 +132,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - `.gitattributes`: `* text=auto` baseline with `binary` overrides for
-  `age-recipient-pq/tests/data/**` and `age-hpke-pq/tests/data/**` so encrypted fixtures and
+  `age-pq-keys/tests/data/**` and `age-pq-hpke/tests/data/**` so encrypted fixtures and
   plaintext references are never subject to line-ending conversion on any platform.
 - `rust-toolchain.toml` pinning the workspace to channel `1.70` with `cargo`, `rustc`,
   `rust-std`, `clippy`, and `rustfmt` (minimal profile), so contributors get the MSRV toolchain
@@ -118,23 +141,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `secure-gate` workspace dependency bumped to `=0.8.0-rc.10` (supersedes `rc.9`; pinned
-  across `age-hpke-pq`, `age-plugin-pq`, and tests).
+  across `age-pq-hpke`, `age-plugin-pq`, and tests).
 - `Cargo.toml` `include` patterns rewritten as workspace-rooted absolute paths
   (`/CHANGELOG.md`, `/LICENSE*`, `/README.md`) so packaging picks up the workspace files
   unambiguously regardless of member-crate cwd.
-- `age-recipient-pq/Cargo.toml`: `age-hpke-pq` dependency switched from
-  `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-hpke-pq" }` for in-workspace
+- `age-pq-keys/Cargo.toml`: `age-pq-hpke` dependency switched from
+  `{ git = "...", tag = "v0.0.5" }` to `{ path = "../age-pq-hpke" }` for in-workspace
   development; the workspace `[patch]` table keeps the published git reference valid for
   downstream consumers without requiring changes to member `Cargo.toml` files.
 
 ### Fixed
 
-- `age-recipient-pq/tests/data/lorem.txt` re-written as pure LF (was committed with CRLF on
+- `age-pq-keys/tests/data/lorem.txt` re-written as pure LF (was committed with CRLF on
   Windows), fixing `test_decrypt_lorem_encrypted_with_age_cli` which compared decrypted bytes
   against the on-disk reference (the encrypted fixture was created from the LF version).
 - `age-plugin-pq`: `rand` dependency corrected from `0.8` to `0.9` to match the rest of the
   workspace (was the sole outlier still on the old series).
-- `age-hpke-pq/tests/error_tests.rs`: explicit type annotations (`0usize..2000usize`,
+- `age-pq-hpke/tests/error_tests.rs`: explicit type annotations (`0usize..2000usize`,
   `rng.random::<u8>()`) resolve type-inference ambiguity introduced by the `rand 0.9` API.
 
 ### Security
@@ -154,13 +177,13 @@ independent crates into a single Cargo workspace.
 ### Added
 
 - Root `Cargo.toml` establishing the workspace with three members:
-  `age-hpke-pq`, `age-recipient-pq`, and `age-plugin-pq`.
+  `age-pq-hpke`, `age-pq-keys`, and `age-plugin-pq`.
 - `resolver = "2"` (required for MSRV 1.70; upgrade to `"3"` when MSRV rises to 1.85+).
 - `[workspace.package]` block: shared `rust-version`, `edition`, `license`,
   `repository`, `homepage`, `authors`, `description`, `keywords`, `categories`,
   and `include` inherited by all members, eliminating per-crate duplication.
-- `[patch."https://github.com/Slurp9187/age-hpke-pq"]`: redirects any member's published-style
-  git dependency on `age-hpke-pq` to the local sibling path, enabling cross-crate development
+- `[patch."https://github.com/Slurp9187/age-pq-hpke"]`: redirects any member's published-style
+  git dependency on `age-pq-hpke` to the local sibling path, enabling cross-crate development
   without modifying member `Cargo.toml` files.
 - `[profile.dev] opt-level = 2`: avoids unusably slow crypto-math in debug builds.
 - `[profile.bench] debug = true`: retains symbols for flamegraph / profiling workflows.
@@ -182,8 +205,8 @@ independent crates into a single Cargo workspace.
 
 | Crate | Source tag | Notes |
 |---|---|---|
-| `age-hpke-pq` | `98316d9` (squashed) | Post-quantum HPKE core (ML-KEM-768 + X25519) |
-| `age-recipient-pq` | `a9a51a0` (squashed) | age recipient/identity wrapper |
+| `age-pq-hpke` | `98316d9` (squashed) | Post-quantum HPKE core (ML-KEM-768 + X25519) |
+| `age-pq-keys` | `a9a51a0` (squashed) | age recipient/identity wrapper |
 | `age-plugin-pq` | `7a99b0c` (squashed) | age plugin binary |
 
 Each subtree history was squashed into a single merge commit; full per-crate history is

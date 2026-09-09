@@ -1,4 +1,4 @@
-# Decision: keep `age-hpke-pq`, use rage and age-go as conformance oracles
+# Decision: keep `age-pq-hpke`, use rage and age-go as conformance oracles
 
 **Status:** decided · **Date:** 2026-09-08 · **Tracking:** issue #12
 
@@ -42,7 +42,7 @@ false.
 | HRPs | `age1pq`, `AGE-SECRET-KEY-PQ-`, plugin `AGE-PLUGIN-PQ-` | here |
 | `Nenc` / body | 1120 / 32 (16-byte file key + 16-byte tag) | here |
 
-Our normative source is [`age-hpke-pq/docs/hpke-pq.md`](../../age-hpke-pq/docs/hpke-pq.md),
+Our normative source is [`age-pq-hpke/docs/hpke-pq.md`](../../age-pq-hpke/docs/hpke-pq.md),
 a mirror of [filippo.io/hpke-pq](https://filippo.io/hpke-pq).
 
 **Cross-implementation results** (run by the peer session, not re-run here):

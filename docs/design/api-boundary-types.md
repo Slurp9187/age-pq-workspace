@@ -1,10 +1,10 @@
 # Design — types at the public API boundary
 
-Status: **Locked.** Implemented across `age-hpke-pq 0.0.7`,
-`age-recipient-pq 0.0.6`, `age-plugin-pq 0.0.2`.
+Status: **Locked.** Implemented across `age-pq-hpke 0.0.7`,
+`age-pq-keys 0.0.6`, `age-plugin-pq 0.0.2`.
 
 Supersedes the `DECIDE-2` / `DECIDE-5` / `DECIDE-6` entries in
-[`../plans/age-hpke-pq-secure-gate-hardening.md`](../plans/age-hpke-pq-secure-gate-hardening.md),
+[`../plans/age-pq-hpke-secure-gate-hardening.md`](../plans/age-pq-hpke-secure-gate-hardening.md),
 which reached the same conclusion for return types only. This record extends it
 to parameters and fields, and explains the one case where the opposite choice is
 correct.
@@ -16,7 +16,7 @@ correct.
 | **DECIDE-7** | **Public API *outputs* are native Rust types.** `[u8; 32]`, `Vec<u8>`, `String`. Implemented: the eight boundaries listed below. |
 | **DECIDE-8** | **Public API *parameters and fields* are native Rust types too.** A wrapper in an input position dictates the caller's discipline for material they already hold; it buys nothing the callee cannot get by wrapping on arrival. |
 | **DECIDE-9** | **Inside a crate, everything cryptographic stays wrapped** for its whole lifetime. The boundary is a boundary, not an excuse. |
-| **DECIDE-10** | **A crate's aliases are `pub(crate)`.** Consequence of 7–9: if nothing crosses the boundary wrapped, nothing outside needs the alias. `age-hpke-pq` re-exports its aliases `pub` only so callers can opt in for their own values. |
+| **DECIDE-10** | **A crate's aliases are `pub(crate)`.** Consequence of 7–9: if nothing crosses the boundary wrapped, nothing outside needs the alias. `age-pq-hpke` re-exports its aliases `pub` only so callers can opt in for their own values. |
 
 ### The eight boundaries this changed
 
@@ -75,7 +75,7 @@ takes a `secrecy` dependency, or reaches through `age::secrecy`, purely to read
 one of `age`'s types.
 
 This workspace is the proof. After migrating all three crates to `secure-gate`,
-`age-recipient-pq` has **zero** use for `secrecy` — and still carries
+`age-pq-keys` has **zero** use for `secrecy` — and still carries
 `use secrecy::ExposeSecret;`, solely for `FileKey`. Nothing else.
 
 Had `FileKey` carried an inherent accessor:

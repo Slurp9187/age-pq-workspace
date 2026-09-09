@@ -1,220 +1,267 @@
+//! Integration tests for the `age-plugin-pq` binary.
+//!
+//! Cargo builds the binary before running these and hands us its path in
+//! `CARGO_BIN_EXE_age-plugin-pq`, so nothing here searches `target/` or depends
+//! on the plugin being installed on `PATH`. The previous version did both, and
+//! silently reported success when it found neither.
+
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::path::Path;
+use std::process::{Command, Stdio};
 
-// Note: This test requires:
-// 1. The age CLI binary to be available in PATH
-// 2. The age-plugin-xwing binary to be available in PATH or in target/debug/
+use tempfile::TempDir;
 
-#[test]
-fn test_files_exist() {
-    // Simple test to verify test data exists
+/// Path to the freshly built plugin binary, supplied by Cargo.
+const PLUGIN_EXE: &str = env!("CARGO_BIN_EXE_age-plugin-pq");
+
+/// age 1.3.0 is the first release with native post-quantum support.
+const MIN_AGE_MAJOR: u32 = 1;
+const MIN_AGE_MINOR: u32 = 3;
+
+/// Asserts an age CLI of at least 1.3.0 is on `PATH`, returning its version.
+///
+/// Panics rather than skipping. Callers are `#[ignore]`d, so reaching this means
+/// the runner explicitly asked for the test, and a missing binary is a failure
+/// rather than a reason to report success.
+fn require_age_cli() -> String {
+    let output = Command::new("age")
+        .arg("--version")
+        .output()
+        .unwrap_or_else(|e| {
+            panic!(
+                "age CLI not found on PATH ({e}). This test is #[ignore]d and only runs when \
+                 explicitly requested. Install age >= {MIN_AGE_MAJOR}.{MIN_AGE_MINOR}.0 - \
+                 scripts/install-age.sh does it with a pinned, checksum-verified release."
+            )
+        });
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let version = raw.trim_start_matches('v');
+    let parts: Vec<&str> = version.split('.').collect();
+    let major: u32 = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let minor: u32 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
+    if major < MIN_AGE_MAJOR || (major == MIN_AGE_MAJOR && minor < MIN_AGE_MINOR) {
+        panic!(
+            "requires age CLI >= {MIN_AGE_MAJOR}.{MIN_AGE_MINOR}.0 \
+             (first release with native post-quantum support), found {raw:?}"
+        );
+    }
+    raw
+}
+
+/// Runs the plugin with `--keygen` and returns `(recipient, identity)`.
+fn keygen() -> (String, String) {
+    let out = Command::new(PLUGIN_EXE)
+        .arg("--keygen")
+        .output()
+        .expect("failed to run the plugin binary");
     assert!(
-        fs::metadata("tests/data/lorem.txt").is_ok(),
-        "lorem.txt not found"
+        out.status.success(),
+        "--keygen failed: {}",
+        String::from_utf8_lossy(&out.stderr)
     );
-    assert!(
-        fs::metadata("tests/data/age_go_identity.txt").is_ok(),
-        "age_go_identity.txt not found"
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let recipient = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("# public key: "))
+        .expect("no recipient line in --keygen output")
+        .trim()
+        .to_owned();
+    let identity = stdout
+        .lines()
+        .find(|l| l.starts_with("AGE-PLUGIN-"))
+        .expect("no plugin identity in --keygen output")
+        .trim()
+        .to_owned();
+    (recipient, identity)
+}
+
+/// An `age` command that can discover the plugin **this run just built**.
+///
+/// age spawns `age-plugin-pq` by name and resolves it through `PATH`, so the
+/// binary's directory has to be there. Do not rely on Cargo for this: Cargo adds
+/// the build directory to the *dynamic library* search path, which happens to be
+/// `PATH` on Windows but is `LD_LIBRARY_PATH` on Unix — so depending on it
+/// passes on Windows and fails on Linux CI. (It did.)
+///
+/// Prepending is deliberate: it guarantees age spawns the build from this run
+/// rather than an older copy installed globally.
+fn age_with_fresh_plugin_on_path() -> Command {
+    let plugin_dir = Path::new(PLUGIN_EXE)
+        .parent()
+        .expect("plugin path has a parent directory")
+        .to_path_buf();
+    let mut paths = vec![plugin_dir];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    let mut cmd = Command::new("age");
+    cmd.env(
+        "PATH",
+        std::env::join_paths(paths).expect("failed to build PATH with the plugin directory"),
     );
+    cmd
 }
 
 #[test]
-fn test_plugin_identity_conversion() {
-    // Test that the plugin can convert native identities to plugin format
-    // This is a core plugin functionality test that doesn't require age CLI
-
-    // Find the plugin binary
-    let plugin_path = if fs::metadata("target/debug/age-plugin-pq.exe").is_ok() {
-        "target/debug/age-plugin-pq.exe"
-    } else if fs::metadata("target/debug/age-plugin-pq").is_ok() {
-        "target/debug/age-plugin-pq"
-    } else if Command::new("age-plugin-pq")
-        .arg("--version")
-        .output()
-        .is_ok()
-    {
-        "age-plugin-pq"
-    } else {
-        println!("Skipping identity conversion test: age-plugin-pq binary not found");
-        return;
-    };
-
-    println!("Testing identity conversion with: {}", plugin_path);
-
-    // Use the native identity from our test data
-    let native_identity = fs::read_to_string("tests/data/age_go_identity.txt")
-        .expect("Failed to read tests/data/age_go_identity.txt")
-        .trim()
-        .to_string();
-
-    // Verify it's a native PQ identity
-    assert!(
-        native_identity.starts_with("AGE-SECRET-KEY-PQ-"),
-        "Test identity is not a native PQ identity"
-    );
-
-    // Convert to plugin format
-    println!("Converting: {}... (truncated)", &native_identity[..50]);
-    let convert_output = Command::new(plugin_path)
-        .args(["--identity"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn plugin for identity conversion");
-
-    // Write the native identity to stdin
-    {
-        let mut stdin = convert_output.stdin.as_ref().unwrap();
-        use std::io::Write;
-        stdin
-            .write_all(native_identity.as_bytes())
-            .expect("Failed to write to plugin stdin");
+fn test_data_fixtures_exist() {
+    for f in ["tests/data/lorem.txt", "tests/data/age_go_identity.txt"] {
+        assert!(fs::metadata(f).is_ok(), "{f} not found");
     }
-
-    let convert_result = convert_output
-        .wait_with_output()
-        .expect("Failed to wait for plugin");
-    assert!(
-        convert_result.status.success(),
-        "Identity conversion failed: {:?}",
-        String::from_utf8_lossy(&convert_result.stderr)
-    );
-
-    let plugin_identity = String::from_utf8_lossy(&convert_result.stdout)
-        .trim()
-        .to_string();
-    println!("Converted to: {}... (truncated)", &plugin_identity[..50]);
-
-    // Verify the conversion
-    assert!(
-        plugin_identity.starts_with("AGE-PLUGIN-PQ-"),
-        "Output is not a plugin identity"
-    );
-    assert!(
-        plugin_identity.len() > 20,
-        "Plugin identity seems too short"
-    );
-
-    // Verify it's different from the input (different HRP)
-    assert_ne!(
-        plugin_identity, native_identity,
-        "Plugin identity should be different from native identity"
-    );
-
-    println!("✅ Identity conversion test passed");
 }
 
+/// The binary's name is load-bearing, and nothing else checks it.
+///
+/// age locates a plugin by *constructing* the path `"age-plugin-" + name`,
+/// where `name` comes from the identity's HRP. If the binary is renamed - say
+/// for consistency with its `age-pq-*` siblings - or the HRP changes, discovery
+/// breaks **silently**: age reports the plugin as not found rather than failing
+/// to build, and no other test here goes through that path.
+///
+/// So derive the name age would look for from the HRP the plugin itself emits,
+/// and compare it against the binary Cargo just built. This keeps the coupling
+/// as an executable assertion instead of a comment someone has to notice.
 #[test]
-fn test_plugin_full_encrypt_decrypt_cycle() {
-    // Test the complete plugin workflow: generate keys, encrypt, decrypt
+fn identity_hrp_matches_the_binary_name_age_will_look_for() {
+    let (_recipient, identity) = keygen();
 
-    // Skip test if required binaries are not available
-    if Command::new("age").arg("--version").output().is_err() {
-        println!("Skipping full cycle test: age CLI not found in PATH");
-        return;
-    }
+    // Identity is `AGE-PLUGIN-<NAME>-1<data>`: the HRP, then bech32's `1`.
+    let after_prefix = identity
+        .strip_prefix("AGE-PLUGIN-")
+        .expect("plugin identity must start with AGE-PLUGIN-");
+    let name = after_prefix
+        .split('-')
+        .next()
+        .expect("HRP must have a name segment")
+        .to_ascii_lowercase();
+    let expected_binary = format!("age-plugin-{name}");
 
-    let original_plaintext =
-        fs::read("tests/data/lorem.txt").expect("Failed to read tests/data/lorem.txt");
+    let actual_binary = Path::new(PLUGIN_EXE)
+        .file_stem()
+        .expect("binary path has a file name")
+        .to_string_lossy()
+        .into_owned();
 
-    // Find the plugin binary
-    let plugin_path = if fs::metadata("target/debug/age-plugin-pq.exe").is_ok() {
-        "target/debug/age-plugin-pq.exe"
-    } else if fs::metadata("target/debug/age-plugin-pq").is_ok() {
-        "target/debug/age-plugin-pq"
-    } else if Command::new("age-plugin-pq")
-        .arg("--version")
-        .output()
-        .is_ok()
-    {
-        "age-plugin-pq"
-    } else {
-        println!("Skipping full cycle test: age-plugin-pq binary not found");
-        return;
-    };
-
-    println!("Testing full plugin cycle with: {}", plugin_path);
-
-    // Generate a plugin keypair
-    let keygen_output = Command::new(plugin_path)
-        .args(["--keygen"])
-        .output()
-        .expect("Failed to generate plugin keypair");
-
-    assert!(
-        keygen_output.status.success(),
-        "Keygen failed: {:?}",
-        String::from_utf8_lossy(&keygen_output.stderr)
-    );
-
-    let keygen_stdout = String::from_utf8_lossy(&keygen_output.stdout);
-    let lines: Vec<&str> = keygen_stdout.lines().collect();
-
-    // Extract recipient and identity from keygen output
-    // Format: ["# created: ...", "# public key: age1pq...", "AGE-PLUGIN-PQ-..."]
-    let recipient_line = lines
-        .get(1)
-        .and_then(|line| line.strip_prefix("# public key: "))
-        .expect("Could not extract recipient from keygen output");
-    let identity_line = lines.last().expect("No identity found in keygen output");
-
-    // Write to temp files
-    let recipient_file = "tests/data/temp_recipient.txt";
-    let identity_file = "tests/data/temp_identity.key";
-    let encrypted_file = "tests/data/temp_encrypted.age";
-
-    fs::write(recipient_file, recipient_line).expect("Failed to write recipient file");
-    fs::write(identity_file, identity_line).expect("Failed to write identity file");
-
-    // Encrypt with age CLI using plugin recipient
-    let encrypt_output = Command::new("age")
-        .args([
-            "--encrypt",
-            "-R",
-            recipient_file,
-            "-o",
-            encrypted_file,
-            "tests/data/lorem.txt",
-        ])
-        .output()
-        .expect("Failed to encrypt");
-
-    assert!(
-        encrypt_output.status.success(),
-        "Encryption failed: {:?}",
-        String::from_utf8_lossy(&encrypt_output.stderr)
-    );
-
-    // Decrypt with age CLI using plugin identity
-    let decrypt_output = Command::new("age")
-        .args([
-            "--decrypt",
-            "-i",
-            identity_file,
-            "-o",
-            "tests/data/temp_decrypted.txt",
-            encrypted_file,
-        ])
-        .output()
-        .expect("Failed to decrypt");
-
-    assert!(
-        decrypt_output.status.success(),
-        "Decryption failed: {:?}",
-        String::from_utf8_lossy(&decrypt_output.stderr)
-    );
-
-    // Verify the decrypted content
-    let decrypted =
-        fs::read("tests/data/temp_decrypted.txt").expect("Failed to read decrypted file");
     assert_eq!(
-        decrypted, original_plaintext,
-        "Round-trip encryption/decryption failed"
+        actual_binary,
+        expected_binary,
+        "age derives the plugin binary name from the identity HRP, so with \
+         AGE-PLUGIN-{}- it will look for `{expected_binary}` - but this crate builds \
+         `{actual_binary}`. age would report the plugin as not found. Either rename the \
+         binary back or change the HRP to match.",
+        name.to_ascii_uppercase(),
+    );
+}
+
+/// Converting a native identity to plugin format needs only our own binary.
+#[test]
+fn plugin_converts_native_identity_to_plugin_format() {
+    let native = fs::read_to_string("tests/data/age_go_identity.txt")
+        .expect("failed to read tests/data/age_go_identity.txt")
+        .trim()
+        .to_owned();
+    assert!(
+        native.starts_with("AGE-SECRET-KEY-PQ-"),
+        "fixture is not a native PQ identity"
     );
 
-    // Cleanup
-    let _ = fs::remove_file(recipient_file);
-    let _ = fs::remove_file(identity_file);
-    let _ = fs::remove_file(encrypted_file);
-    let _ = fs::remove_file("tests/data/temp_decrypted.txt");
+    let mut child = Command::new(PLUGIN_EXE)
+        .arg("--identity")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn the plugin");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin piped")
+        .write_all(native.as_bytes())
+        .expect("failed to write to plugin stdin");
+
+    let out = child.wait_with_output().expect("failed to wait for plugin");
+    assert!(
+        out.status.success(),
+        "identity conversion failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let converted = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    assert!(
+        converted.starts_with("AGE-PLUGIN-PQ-"),
+        "output is not a plugin identity"
+    );
+    assert_ne!(converted, native, "conversion must change the HRP");
+}
+
+/// Full round trip through the real age CLI: plugin discovery, the recipient
+/// wire format and the stanza, exercised together.
+///
+/// `#[ignore]` because it shells out to a binary that may not be installed; a
+/// normal `cargo test` reports it as ignored rather than silently passing. CI
+/// runs it with `--include-ignored`.
+///
+/// This genuinely exercises **plugin discovery by name**: age spawns
+/// `age-plugin-pq` itself and resolves it through `PATH`, which
+/// `age_with_fresh_plugin_on_path` points at the binary built by this run.
+///
+/// Nothing needs to be installed, and nothing should be: a globally installed
+/// plugin would be shadowed by the fresh one here, which is the intent — this
+/// must test the current build, not whatever is on the machine.
+///
+/// `identity_hrp_matches_the_binary_name_age_will_look_for` covers the naming
+/// half of the same coupling with no age binary at all.
+#[test]
+#[ignore = "requires age CLI >= 1.3; run with --include-ignored"]
+fn full_encrypt_decrypt_cycle_through_the_age_cli() {
+    let age_version = require_age_cli();
+    eprintln!("plugin round trip against age {age_version}");
+
+    let plaintext = fs::read("tests/data/lorem.txt").expect("failed to read lorem.txt");
+    let (recipient, identity) = keygen();
+
+    // Scratch files go in a temp dir, not tests/data: fixed names under the
+    // fixture directory are not parallel-safe and leak on a failed assertion.
+    let dir = TempDir::new().expect("failed to create temp dir");
+    let recipient_file = dir.path().join("recipient.txt");
+    let identity_file = dir.path().join("identity.key");
+    let encrypted_file = dir.path().join("lorem.age");
+    let decrypted_file = dir.path().join("lorem.out");
+    fs::write(&recipient_file, recipient).expect("failed to write recipient");
+    fs::write(&identity_file, identity).expect("failed to write identity");
+
+    let encrypt = age_with_fresh_plugin_on_path()
+        .arg("--encrypt")
+        .arg("-R")
+        .arg(&recipient_file)
+        .arg("-o")
+        .arg(&encrypted_file)
+        .arg("tests/data/lorem.txt")
+        .output()
+        .expect("failed to run age --encrypt");
+    assert!(
+        encrypt.status.success(),
+        "encryption failed: {}",
+        String::from_utf8_lossy(&encrypt.stderr)
+    );
+
+    let decrypt = age_with_fresh_plugin_on_path()
+        .arg("--decrypt")
+        .arg("-i")
+        .arg(&identity_file)
+        .arg("-o")
+        .arg(&decrypted_file)
+        .arg(&encrypted_file)
+        .output()
+        .expect("failed to run age --decrypt");
+    assert!(
+        decrypt.status.success(),
+        "decryption failed (age must be able to spawn age-plugin-pq): {}",
+        String::from_utf8_lossy(&decrypt.stderr)
+    );
+
+    let decrypted = fs::read(&decrypted_file).expect("failed to read decrypted output");
+    assert_eq!(
+        decrypted, plaintext,
+        "round trip did not reproduce the plaintext"
+    );
 }

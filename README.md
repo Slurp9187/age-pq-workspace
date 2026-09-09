@@ -3,6 +3,17 @@
 Post-quantum hybrid encryption crates for [age](https://age-encryption.org) /
 [rage](https://github.com/str4d/rage), combining ML-KEM-768 with X25519.
 
+**Provenance.** These crates were written for the **encrypted-file-vault**
+project and are **not published to crates.io** (`publish = false` is set
+workspace-wide and enforced). They implement public specifications — RFC 9180,
+`draft-ietf-hpke-pq-03`, and the [C2SP age format](https://c2sp.org/age) — and
+contain nothing vault-specific, so they are usable independently. Consume them
+as a git dependency pinned to a tag or exact revision.
+
+`age-plugin-pq` is the piece most likely to be useful on its own: it works with
+**any** age implementation that supports the plugin protocol, including the Go
+`age` CLI, not just this workspace.
+
 > **Warning** — These crates have not been independently audited. Use at your
 > own risk and evaluate the security properties carefully before deploying in
 > production.
@@ -11,8 +22,8 @@ Post-quantum hybrid encryption crates for [age](https://age-encryption.org) /
 
 | Crate | Description |
 |---|---|
-| [`age-hpke-pq`](age-hpke-pq/) | X-Wing hybrid KEM (ML-KEM-768 + X25519) with full HPKE support. Uses formally verified `libcrux-ml-kem`, constant-time operations, and automatic secret zeroization. |
-| [`age-recipient-pq`](age-recipient-pq/) | age-compatible `HybridRecipient` / `HybridIdentity` types — generate, serialize, parse, encrypt, and decrypt with post-quantum keys. |
+| [`age-pq-hpke`](age-pq-hpke/) | X-Wing hybrid KEM (ML-KEM-768 + X25519) with full HPKE support. Uses formally verified `libcrux-ml-kem`, constant-time operations, and automatic secret zeroization. |
+| [`age-pq-keys`](age-pq-keys/) | age-compatible `HybridRecipient` / `HybridIdentity` types — generate, serialize, parse, encrypt, and decrypt with post-quantum keys. |
 | [`age-plugin-pq`](age-plugin-pq/) | age plugin binary (`age-plugin-pq`) implementing the v1 plugin protocol: `--keygen`, `--identity`, and state-machine mode for the age CLI. |
 
 ## Quick start
@@ -35,8 +46,8 @@ These crates are not published on crates.io. Pin to a tag or exact revision:
 
 ```toml
 [dependencies]
-age-hpke-pq      = { git = "https://github.com/Slurp9187/age-hpke-pq",      tag = "v0.0.5" }
-age-recipient-pq = { git = "https://github.com/Slurp9187/age-recipient-pq",  tag = "v0.0.4" }
+age-pq-hpke      = { git = "https://github.com/Slurp9187/age-pq-hpke",      tag = "v0.0.5" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-keys",  tag = "v0.0.4" }
 ```
 
 ## Requirements
@@ -53,8 +64,8 @@ age-pq-workspace/
 ├── Cargo.toml          # workspace root (shared metadata, deps, lints, profiles)
 ├── Cargo.lock          # authoritative lockfile
 ├── .gitattributes      # line-ending rules; test fixtures marked binary
-├── age-hpke-pq/        # HPKE + KEM core
-├── age-recipient-pq/   # age recipient / identity library
+├── age-pq-hpke/        # HPKE + KEM core
+├── age-pq-keys/   # age recipient / identity library
 └── age-plugin-pq/      # age plugin binary
 ```
 
@@ -71,6 +82,28 @@ age-pq-workspace/
   consistent lint baseline (RustCrypto/KEMs style; `unsafe_code = "deny"`).
 - **Build profiles** — `opt-level = 2` in dev (crypto math is unusably slow at O0);
   debug symbols retained in bench for profiling.
+
+## Running the tests
+
+```sh
+cargo test --workspace
+```
+
+Interop tests that shell out to the real Go `age` CLI are `#[ignore]`d, so the
+command above reports them as *ignored* rather than pretending they passed. To
+run them:
+
+```sh
+./scripts/install-age.sh ~/.local/bin      # pinned version, sha256-verified
+cargo test --workspace -- --include-ignored
+```
+
+age **1.3.0 or newer** is required — that is the first release with native
+post-quantum support, and Ubuntu packages something far older. If the binary is
+missing when you ask for these tests, they fail rather than skip.
+
+Everything else, including the C2SP CCTV conformance vectors, runs with no
+external binary.
 
 ## MSRV policy
 

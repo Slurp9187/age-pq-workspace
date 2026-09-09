@@ -11,7 +11,7 @@ a wrong-accept. That ratio is the argument for the whole conformance strategy in
 
 ## How it survived: the workflow never ran
 
-The only CI workflow was tracked at `age-hpke-pq/.github/workflows/ci.yml`.
+The only CI workflow was tracked at `age-pq-hpke/.github/workflows/ci.yml`.
 **GitHub Actions only reads `.github/workflows/` at the repository root.** There
 was no root `.github/`, no submodules, and no nested `.git`. `gh run list`
 returned zero runs — the file had never executed once.
@@ -29,8 +29,8 @@ without testing anything.
 
 19 files, vendored from rage's tree at `5d33e3e` (upstream: C2SP/CCTV age
 testkit), living in
-[`age-recipient-pq/tests/data/testkit/`](../../age-recipient-pq/tests/data/testkit/)
-and driven by [`tests/testkit.rs`](../../age-recipient-pq/tests/testkit.rs).
+[`age-pq-keys/tests/data/testkit/`](../../age-pq-keys/tests/data/testkit/)
+and driven by [`tests/testkit.rs`](../../age-pq-keys/tests/testkit.rs).
 
 The harness runs each vector through `age::Decryptor` with our `HybridIdentity`
 — the same path official age and rage exercise — and compares the outcome
@@ -85,12 +85,12 @@ must be checked *before* any decryption is attempted.
 Seven vectors, two code sites — they clustered, which is why keeping our own
 implementation stayed affordable.
 
-**1. `age-hpke-pq/src/kem/x25519.rs`** — added `Error::X25519DiffieHellmanFailed`
+**1. `age-pq-hpke/src/kem/x25519.rs`** — added `Error::X25519DiffieHellmanFailed`
 and a `was_contributory()` check to both `decapsulate_from_private_seed` and
 `encapsulate_to_public_key` (the latter for symmetry with x448; the
 attacker-controlled path is decapsulation). Both now return `CrateResult`.
 
-**2. `age-recipient-pq/src/lib.rs::unwrap_stanza`** — rewritten to match age-go's
+**2. `age-pq-keys/src/lib.rs::unwrap_stanza`** — rewritten to match age-go's
 `pq.go` semantics exactly:
 
 | Condition | Result |
@@ -123,7 +123,7 @@ extra-argument rejection.
 ## Re-running and refreshing
 
 ```sh
-cargo test -p age-recipient-pq --test testkit
+cargo test -p age-pq-keys --test testkit
 ```
 
 To refresh vectors from upstream, re-copy the `hybrid_*` and `armor_hybrid`

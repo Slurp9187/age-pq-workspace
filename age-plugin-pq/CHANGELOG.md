@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`identity_hrp_matches_the_binary_name_age_will_look_for`** — asserts the
+  built binary is named what age will actually search for. age locates a plugin
+  by constructing `"age-plugin-" + name` from the identity HRP, so a rename of
+  either side breaks discovery *silently* (age reports plugin-not-found rather
+  than failing to build). The test derives one from the other, needs no age
+  binary, and turns a documented hazard into an executable assertion.
+
+### Fixed
+
+- **Integration tests no longer pass without running.** Both tests began by
+  hunting for the binary in `target/debug/` or on `PATH` and returning early if
+  they found neither — reporting success either way. They now use
+  `CARGO_BIN_EXE_age-plugin-pq`, which Cargo guarantees, so they always run. The
+  one test that shells out to the real age CLI is `#[ignore]`d, so it reports as
+  *ignored* rather than passing; CI runs it with `--include-ignored`.
+- **Scratch files no longer written into the fixture directory.** The round-trip
+  test wrote `tests/data/temp_*` under fixed names, which is not parallel-safe
+  and leaks the files when an assertion fires before cleanup. Now a `TempDir`.
+
+
 ### Changed (BREAKING, internal)
 
 - **`zeroize` replaced by `secure-gate`.** The direct dependency is gone; aliases
@@ -53,14 +75,14 @@ Pre-release / experimental crate versioning (`0.0.x`).
 - This `CHANGELOG.md`.
 - Post-quantum `age-plugin-pq` binary: `RecipientPluginV1` and `IdentityPluginV1` for ML-KEM-768 + X25519 hybrid recipients compatible with the official age plugin protocol (`mlkem768x25519` stanzas, `postquantum` label).
 - CLI: `--keygen`, `--keygen-native`, `--identity` (native `AGE-SECRET-KEY-PQ-` → plugin `AGE-PLUGIN-PQ-`), `--version`, and `--age-plugin` state-machine mode with `AGEPLUGIN_HALF_PLUGIN` split modes.
-- `src/hpke_pq.rs`: HPKE base-mode key schedule (HKDF-SHA256, ChaCha20-Poly1305 suite) wired to `age-hpke-pq`’s KDF, matching the Go reference plugin’s wire format.
+- `src/hpke_pq.rs`: HPKE base-mode key schedule (HKDF-SHA256, ChaCha20-Poly1305 suite) wired to `age-pq-hpke`’s KDF, matching the Go reference plugin’s wire format.
 - Integration tests under `tests/` (encrypt/decrypt cycle, identity conversion; optional age CLI when present).
-- Workspace membership with `age-hpke-pq` and `age-recipient-pq`; root `Cargo.lock` is authoritative (per-crate `Cargo.lock` not used).
+- Workspace membership with `age-pq-hpke` and `age-pq-keys`; root `Cargo.lock` is authoritative (per-crate `Cargo.lock` not used).
 
 ### Changed
 
-- Dependency: `pq-xwing-hpke` (broken `../pq-xwing-hpke` path) replaced with `age-hpke-pq = { path = "../age-hpke-pq" }`.
-- `bech32` upgraded from 0.9 to 0.11; long hybrid public keys use a custom `HybridRecipientBech32` checksum (`CODE_LENGTH = 8192`), aligned with `age-recipient-pq` and official age v1.3+ encodings.
+- Dependency: `pq-xwing-hpke` (broken `../pq-xwing-hpke` path) replaced with `age-pq-hpke = { path = "../age-pq-hpke" }`.
+- `bech32` upgraded from 0.9 to 0.11; long hybrid public keys use a custom `HybridRecipientBech32` checksum (`CODE_LENGTH = 8192`), aligned with `age-pq-keys` and official age v1.3+ encodings.
 - `secrecy` removed as a direct dependency (secrets accessed via `age_core::secrecy`).
 - `rust-version = "1.70"` and repository URL set to `https://github.com/Slurp9187/age-plugin-pq`.
 - `.gitignore`: `Cargo.lock` commented out so the workspace lockfile applies.
