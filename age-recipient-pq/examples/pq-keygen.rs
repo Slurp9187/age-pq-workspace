@@ -7,7 +7,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("pq-keygen")
-        .version("0.0.5")
+        .version("0.0.6")
         .about("Generate a post-quantum hybrid ML-KEM-768 + X25519 key pair")
         .disable_version_flag(true)
         .after_help(
