@@ -120,6 +120,7 @@ dependencies = [
  "clap",
  "proptest",
  "secure-gate",
+ "sha2",
  "tempfile",
  "time",
  "unicode-ident",
@@ -1638,7 +1639,7 @@ dependencies = [
 [[package]]
 name = "secure-gate"
 version = "0.8.0-rc.12"
-source = "git+https://github.com/Slurp9187/secure-gate?branch=release/0.8#05ad60ff3c044d79f15a318fd56492046d9b9383"
+source = "git+https://github.com/Slurp9187/secure-gate?branch=release/0.8#c34a0b703d62222b1d12069b34d412f1fee064a7"
 dependencies = [
  "base16ct",
  "base32ct",

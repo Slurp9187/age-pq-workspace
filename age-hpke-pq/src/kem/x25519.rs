@@ -43,36 +43,51 @@ pub(crate) fn public_key_from_seed(seed: X25519Secret32) -> X25519PublicKey {
 
 /// Computes sender-side X25519 encapsulation output `(ct_x, ss_x)`.
 ///
+/// Fails if the recipient public key is a low-order point, which would make
+/// the shared secret the all-zero non-contributory value.
+///
 /// Consumes the ephemeral seed — single-shot use, the wrapper has no role
 /// past this call.
 pub(crate) fn encapsulate_to_public_key(
     ephemeral_seed: X25519Secret32,
     recipient_pk: &X25519PublicKey,
-) -> (X25519PublicKey, SharedSecret32) {
+) -> CrateResult<(X25519PublicKey, SharedSecret32)> {
     let ephemeral = static_secret_from_seed(ephemeral_seed);
     let ct_x = X25519PublicKey::from(&ephemeral);
     let dh = ephemeral.diffie_hellman(recipient_pk);
+    if !dh.was_contributory() {
+        return Err(Error::X25519DiffieHellmanFailed);
+    }
     // Tier-2: x25519_dalek::SharedSecret::as_bytes returns &[u8; 32].
     // `dh` is ZeroizeOnDrop and dies at end of statement; the bytes land
     // directly in SharedSecret32 storage via new_with.
     let ss = SharedSecret32::new_with(|out| out.copy_from_slice(dh.as_bytes()));
-    (ct_x, ss)
+    Ok((ct_x, ss))
 }
 
 /// Computes recipient-side X25519 decapsulation output `(ss_x, pk_x)`.
+///
+/// Fails if `ct_x` is a low-order point, which would make the shared secret
+/// the all-zero non-contributory value.
 ///
 /// Consumes the private seed — callers re-derive it from the master seed
 /// on each decapsulation, so the wrapper has no role past this call.
 pub(crate) fn decapsulate_from_private_seed(
     private_seed: X25519Secret32,
     ct_x: &X25519PublicKey,
-) -> (SharedSecret32, X25519PublicKey) {
+) -> CrateResult<(SharedSecret32, X25519PublicKey)> {
     let sk_x = static_secret_from_seed(private_seed);
     let pk_x = X25519PublicKey::from(&sk_x);
     let dh = sk_x.diffie_hellman(ct_x);
+    // An attacker-supplied low-order `ct_x` drives the DH output to all-zero,
+    // which would pin the classical half of the hybrid to a known constant.
+    // `was_contributory` is x25519-dalek's constant-time check for exactly that.
+    if !dh.was_contributory() {
+        return Err(Error::X25519DiffieHellmanFailed);
+    }
     // Tier-2: x25519_dalek::SharedSecret::as_bytes returns &[u8; 32].
     let ss = SharedSecret32::new_with(|out| out.copy_from_slice(dh.as_bytes()));
-    (ss, pk_x)
+    Ok((ss, pk_x))
 }
 
 /// Parses and validates an X25519 public key.

@@ -154,7 +154,7 @@ impl EncapsulationKey {
         ephemeral: X25519Secret32,
     ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
         let (ct_m_bytes, ss_m) = ml_kem::encapsulate_with_seed(&self.pk_m, ml_rand)?;
-        let (ct_x, ss_x) = x25519::encapsulate_to_public_key(ephemeral, &self.pk_x);
+        let (ct_x, ss_x) = x25519::encapsulate_to_public_key(ephemeral, &self.pk_x)?;
 
         let ct_x_bytes = X25519PublicKey32::from(ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(self.pk_x.to_bytes());
@@ -340,7 +340,7 @@ impl DecapsulationKey {
     pub fn decapsulate(&self, ct: &Ciphertext) -> CrateResult<[u8; SHARED_SECRET_SIZE]> {
         let (kp, x_secret) = expand_key(&self.seed);
         let ss_m = ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m);
-        let (ss_x, pk_x) = x25519::decapsulate_from_private_seed(x_secret, &ct.ct_x);
+        let (ss_x, pk_x) = x25519::decapsulate_from_private_seed(x_secret, &ct.ct_x)?;
         let ct_x_bytes = X25519PublicKey32::from(ct.ct_x.to_bytes());
         let pk_x_bytes = X25519PublicKey32::from(pk_x.to_bytes());
 

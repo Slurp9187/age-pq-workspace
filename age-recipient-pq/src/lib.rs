@@ -32,8 +32,10 @@
 //! - **Rage Integration**: `age`'s own types (`FileKey`, `Stanza`) are used unchanged at the
 //!   trait boundary, so `secrecy` still appears wherever `age` dictates it — `FileKey` is
 //!   `age`'s type and keeps `age`'s accessor. Everything this crate owns uses `secure-gate`.
-//! - **Legacy Support**: Supports both new and legacy stanza formats for backward compatibility
-//!   with older PQ implementations.
+//! - **Strict stanza validation**: A stanza carrying the `mlkem768x25519` tag must have exactly
+//!   one argument, a canonical-base64 `enc` of 1120 bytes, and a 32-byte body. Anything else is
+//!   a header failure, matching age and rage. Conformance is enforced by the C2SP CCTV testkit
+//!   vectors in `tests/testkit.rs`.
 //!
 //! ## Usage
 //!
@@ -62,7 +64,7 @@ mod aliases;
 
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
-use age_hpke_pq::hpke::{new_sender, open};
+use age_hpke_pq::hpke::{new_recipient, new_sender};
 use age_hpke_pq::kem::{Kem, MlKem768X25519};
 use age_hpke_pq::{aead::new_aead, kdf::new_kdf};
 use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
@@ -113,6 +115,25 @@ const PQ_LABEL: &[u8] = b"age-encryption.org/mlkem768x25519"; // From plugin/age
 const KDF_ID: u16 = 0x0001; // HKDF-SHA256
 /// The AEAD ID for HPKE, corresponding to ChaCha20Poly1305.
 const AEAD_ID: u16 = 0x0003; // ChaCha20Poly1305
+
+/// Size of the stanza's `enc` argument: ML-KEM-768 ciphertext (1088) plus the
+/// X25519 ephemeral share (32). A stanza claiming our tag with any other
+/// length is malformed, not "addressed to someone else".
+const ENC_SIZE: usize = 1120;
+
+/// Size of the stanza body: the 16-byte age file key plus the 16-byte
+/// ChaCha20-Poly1305 tag. Checked *before* decrypting, which is the
+/// partitioning-oracle mitigation the age spec requires.
+const STANZA_BODY_SIZE: usize = 32;
+
+/// A stanza that claims our tag but is malformed fails the whole header.
+///
+/// Returning `None` here would mean "not for this identity, try the next one",
+/// which lets a tampered header be silently skipped instead of rejected. age
+/// and rage both treat this as fatal; the CCTV testkit enforces it.
+fn header_failure() -> Option<Result<FileKey, age::DecryptError>> {
+    Some(Err(age::DecryptError::InvalidHeader))
+}
 
 /// A post-quantum hybrid recipient for encryption, using ML-KEM-768 and X25519.
 ///
@@ -337,47 +358,67 @@ impl FromStr for HybridIdentity {
 
 impl AgeIdentity for HybridIdentity {
     fn unwrap_stanza(&self, stanza: &Stanza) -> Option<Result<FileKey, age::DecryptError>> {
+        // A different stanza kind genuinely is not ours: skip it, and let another
+        // identity try. Everything past this point is a stanza claiming our tag,
+        // so malformed input is a header failure, not a miss.
         if stanza.tag != STANZA_TAG {
             return None;
         }
-        let enc: Vec<u8>;
-        if stanza.args.len() == 2 && stanza.args[0] == STANZA_TAG {
-            enc = match BASE64_STANDARD_NO_PAD.decode(&stanza.args[1]) {
-                Ok(b) => b,
-                Err(_) => return None,
-            };
-        } else if stanza.args.len() == 1 {
-            enc = match BASE64_STANDARD_NO_PAD.decode(&stanza.args[0]) {
-                Ok(b) => b,
-                Err(_) => return None,
-            };
-        } else {
-            return None;
+
+        // Exactly one argument (the base64 `enc`). The old code also accepted a
+        // two-argument form that repeated the tag; no age implementation emits
+        // that, and accepting it made `hybrid_extra_argument` decrypt-adjacent
+        // instead of rejected.
+        if stanza.args.len() != 1 {
+            return header_failure();
         }
+        // Canonical unpadded base64 only — the engine rejects trailing bits.
+        let enc = match BASE64_STANDARD_NO_PAD.decode(&stanza.args[0]) {
+            Ok(b) => b,
+            Err(_) => return header_failure(),
+        };
+        if enc.len() != ENC_SIZE {
+            return header_failure();
+        }
+        // Length-check the body before any decryption is attempted.
+        if stanza.body.len() != STANZA_BODY_SIZE {
+            return header_failure();
+        }
+
         let kem = MlKem768X25519;
         let sk = match self.seed.with_secret(|seed| kem.new_private_key(seed)) {
             Ok(s) => s,
-            Err(_) => return None,
+            Err(_) => return header_failure(),
         };
         let kdf = match new_kdf(KDF_ID) {
             Ok(k) => k,
-            Err(_) => return None,
+            Err(_) => return header_failure(),
         };
         let aead = match new_aead(AEAD_ID) {
             Ok(a) => a,
-            Err(_) => return None,
+            Err(_) => return header_failure(),
         };
-        let mut ct = enc;
-        ct.extend_from_slice(&stanza.body);
+
+        // Set up and open as two steps so the failure modes stay distinguishable.
+        // Decapsulation failure means the stanza itself is invalid (for example a
+        // low-order X25519 share) and is fatal; AEAD failure means the file simply
+        // is not addressed to this identity, which is a skip. Collapsing both into
+        // `None` is what let `hybrid_low_order` through.
+        let mut recipient = match new_recipient(sk, &enc, kdf, aead, PQ_LABEL) {
+            Ok(r) => r,
+            Err(_) => return header_failure(),
+        };
         // `open` returns a native Vec at the API boundary; wrap the decrypted file key
         // on arrival so it is wiped on drop whichever way this function exits.
-        let file_key_bytes = match open(sk, kdf, aead, PQ_LABEL, &[], &ct) {
+        let file_key_bytes = match recipient.open(&[], &stanza.body) {
             Ok(f) => FileKeyBytes::new(f),
             Err(_) => return None,
         };
         let file_key = match file_key_bytes.with_secret(|b| <[u8; 16]>::try_from(b.as_slice())) {
             Ok(arr) => FileKey::new(Box::new(arr)),
-            Err(_) => return None,
+            // Unreachable given the body-length check above; treat a surprise as
+            // malformed rather than silently skipping.
+            Err(_) => return header_failure(),
         };
         Some(Ok(file_key))
     }

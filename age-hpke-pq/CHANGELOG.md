@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **X25519 now rejects the all-zero (non-contributory) Diffie-Hellman output.**
+  An attacker-supplied low-order `ct_x` drove the shared secret to a known
+  constant, collapsing the classical half of the hybrid KEM, and the resulting
+  file decrypted successfully — official age and rage reject it. Both
+  `decapsulate_from_private_seed` and `encapsulate_to_public_key` now check
+  `SharedSecret::was_contributory()` and return the new
+  `Error::X25519DiffieHellmanFailed`; both consequently return `Result`. The
+  equivalent check already existed on the X448 path. Covered by the C2SP CCTV
+  `hybrid_low_order` and `hybrid_identity` vectors. See
+  `docs/design/cctv-conformance.md` and issue #13.
+
 ### Changed (internal)
 
 - **`zeroize` replaced by `secure-gate`; the direct dependency is gone.** The six
