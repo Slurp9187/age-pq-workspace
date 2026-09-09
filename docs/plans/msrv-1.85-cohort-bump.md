@@ -19,6 +19,66 @@ motivation — this workspace is the remaining upstream blocker for
 |----|----------|
 | **DECIDE-11** | **MSRV moves 1.70 → 1.85 in the next release.** Decided; does not need re-litigating. The CLAUDE.md rule "raise an MSRV bump as a separate decision PR" is satisfied by this document plus issue #2. |
 | **DECIDE-12** | **The bump and the `secure-gate` 0.9 upgrade are one piece of work,** not two. See below — they are the same constraint. |
+| **DECIDE-13** | **The version lines split *at* the bump, not before.** 1.70 work continues on `0.0.x`; the final 1.70 state is tagged `v0.1.0`, and the 1.85 line opens at `0.2.0`. See below. |
+
+## DECIDE-13 — the version-line split
+
+`0.0.x` stays while the 1.70 line is still changing (#11 rewrites the bech32
+path, #3 renamed public types). Graduating to `0.1.0` early would mean cutting
+`0.1.1` immediately for work that belongs in `0.1.0`.
+
+**Order matters.** The `v0.1.0` tag has to be cut from the last 1.70 commit,
+*before* the bump touches anything — bump first and version after, and there is
+no clean point left to tag:
+
+1. Finish the remaining 1.70 work on `0.0.x` (#11, and the age-go half of #15).
+2. Set the crate versions to `0.1.0`, commit, **tag `v0.1.0`**. That tag is the
+   frozen MSRV-1.70 line.
+3. Only then start #2. `main` becomes `0.2.0`.
+4. Create `release/0.1` **lazily** — branch it from the tag if and when a patch
+   is actually needed. Nothing to maintain until then, and the tag marks the
+   boundary either way.
+
+### Why not keep `0.0.x` for the maintenance line
+
+Cargo treats every `0.0.z` as mutually incompatible: `^0.0.8` resolves to exactly
+`>=0.0.8, <0.0.9`. There is no patch channel — a security fix shipped as `0.0.9`
+reaches nobody pinned to `0.0.8` without an explicit dependency edit. `^0.1`
+picks up `0.1.1` automatically. Keeping `0.0.x` would defeat the reason for
+having a maintenance line at all.
+
+Note the caveat: these crates are `publish = false` and distributed by git, so a
+consumer pinning `tag = "v0.1.0"` bypasses SemVer ranges entirely and the number
+becomes documentation. The *branch* is then the patch channel — which is exactly
+how this workspace consumes secure-gate (`branch = "release/0.8"`). The number
+still earns its place as signalling: `0.1.0 → 0.1.1` says "compatible fix";
+`0.0.8 → 0.0.9` says nothing.
+
+`0.1.0` does not claim stability. Under SemVer `0.x` explicitly means anything
+may break at a minor bump; it claims only that compatible and incompatible
+changes are now distinguished, which is the minimum needed for a maintenance
+line.
+
+### Precedent
+
+secure-gate does this already — `release/0.8` is the MSRV-1.70 backport line
+while `main` is `0.9` (edition 2024, MSRV 1.85). Mirroring the structure of our
+own dependency keeps the relationship legible.
+
+**Not** modelled on libcrux, despite the surface similarity of its `0.0.x`
+releases. libcrux's versioning tracks *its own* API and formal-verification
+maturity — its README grades subcrates with `pre-verification` / `verified`
+badges, and `libcrux-ml-kem` sits at `0.0.10` while the workspace is `0.0.5`. It
+is not a statement about ML-KEM's standing: FIPS 203 was finalised in August
+2024. Do not cite "ML-KEM is still experimental" as a reason for anything here.
+
+### Open sub-decision
+
+Whether the three crates unify on one version (`version.workspace = true`) or
+stay independently numbered (`0.0.7` / `0.0.6` / `0.0.2` today). Unifying makes
+`v0.1.0` unambiguous as a workspace tag, which suits git-tag distribution;
+libcrux does the opposite, but its crates have genuinely independent consumers
+where ours are path-linked and released together.
 
 ## Why the MSRV bump and secure-gate 0.9 are the same task
 
