@@ -127,13 +127,18 @@ Every `expose_secret` should pass the sniff test: *could this be a
 use Tier 1.
 
 **Tier 3 — `into_inner` (consumption).**
-For moving a value into an API that takes `T` (or `[u8; N]`) by value when
-the wrapper will not be needed again. Returns `InnerSecret<T>`, which
-derefs to `&T` and zeroizes on drop — so the secret remains zeroize-protected
-through the hand-off. Prefer Tier 3 over `with_secret(|s| *s)` at FFI
-boundaries that take owned arrays: the explicit consumption is clearer, the
-zeroization is automatic, and you don't need a manual `clamped.zeroize()`
-after a transformation.
+For moving a value into an API that takes `T` (or `[u8; N]`) by value when the
+wrapper will not be needed again. Since secure-gate `0.8.0-rc.12` it returns the
+**plain value** and `InnerSecret<T>` is gone: the wrapper's own storage is
+zeroized as the value leaves, but **protection ends at that call** rather than
+following the value into the caller.
+
+Read that as a boundary marker, not a downgrade. `into_inner` is the one call
+that says "this secret is leaving wrapper protection now", and it is greppable.
+Prefer it over `with_secret(|s| *s)` at FFI boundaries taking owned arrays: the
+consumption is explicit, and you don't need a manual `clamped.zeroize()` after a
+transformation. Where the receiving type is itself zeroize-aware
+(`x25519_dalek::StaticSecret`, `x448::Secret`), coverage is continuous anyway.
 
 Tier-3 examples in this workspace:
 
@@ -146,8 +151,8 @@ Tier-3 examples in this workspace:
 bound is `Self::Inner: Sized + SentinelValue + Zeroize`, and the impl is
 `impl<T: Default, const N: usize> SentinelValue for [T; N]` — the `Default`
 bound sits on the *element* type, so every array length qualifies on MSRV
-1.70. `into_inner` replaces the wrapper's contents with an inert sentinel and
-hands the caller an `InnerSecret<T>` that zeroizes on drop.
+1.70. `into_inner` replaces the wrapper's contents with an inert sentinel,
+zeroizes that storage, and hands the caller the plain value.
 
 | Wrapper shape | Tier-3 (`into_inner`) | Tier-2 (`with_secret`) |
 |--------------|----------------------|------------------------|
@@ -162,9 +167,9 @@ wrappers above 32 bytes (`MlKemSeed64` = 64, `X448Secret56` = 56,
 in the rc.11 migration. If you meet one in an old branch, it is stale —
 promote it rather than propagating it.
 
-`InnerSecret<T>` derefs to `&T` but has **no** `DerefMut`, so any mutation
-(scalar clamping, for instance) must happen on the wrapper *before*
-consumption. See `kem/x25519.rs::static_secret_from_seed` for the pattern.
+Any mutation (scalar clamping, for instance) must happen on the wrapper
+*before* consumption — `into_inner` leaves no wrapper to mutate through. See
+`kem/x25519.rs::static_secret_from_seed` for the pattern.
 
 Audit Tier 3 separately — `into_inner` does not appear in an
 `expose_secret` grep sweep. The Tier-2 boundary inventory below tags each

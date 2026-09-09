@@ -39,7 +39,12 @@ debug = true    # keep symbols for flamegraphs / profiling
 [workspace.dependencies]
 # The 0.8.0-rc.* line is the MSRV-1.70 backport of secure-gate's `main`.
 # With the 1.85 bump, move to mainline 0.9.x (edition 2024, rust-version 1.85).
-secure-gate = { version = "=0.8.0-rc.11", features = ["rand", "ct-eq"] }
+#
+# TEMPORARY: git source. rc.12 is not on crates.io yet (final polish in flight),
+# and a git dependency makes every crate here unpublishable — `cargo publish`
+# rejects them. Swap back to a `version = "=0.8.0-rc.12"` registry pin before
+# cutting the release. Cargo.lock pins the exact rev regardless of the branch.
+secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "release/0.8", features = ["rand", "ct-eq"] }
 
 clap = { version = "=4.4.18", features = ["derive"] }
 

@@ -12,8 +12,9 @@ pub(crate) const X_WING_LABEL: &[u8] = br"\.//^\";
 /// attacks. The digest is written directly into a `SharedSecret` wrapper via
 /// `new_with`, avoiding an intermediate plaintext stack copy, and consumed with
 /// `into_inner` at the return so the wrapper's storage is zeroized on the way
-/// out. The returned array is native per the wire-boundary rule; callers who
-/// want zeroize-on-drop wrap it via `SharedSecret::new(bytes)`.
+/// out. Protection ends at that call — the returned array is native per the
+/// wire-boundary rule; callers who want zeroize-on-drop wrap it via
+/// `SharedSecret::new(bytes)`.
 pub fn combine_shared_secrets(
     // ss_pq: Shared secret from ML-KEM (post-quantum KEM). This is the
     // output of ML-KEM encapsulation (for the sender) or decapsulation (for
@@ -47,6 +48,7 @@ pub fn combine_shared_secrets(
         hasher.update(X_WING_LABEL);
         buf.copy_from_slice(&hasher.finalize());
     });
-    // Tier-3: consume the wrapper so its storage is zeroized as it is handed out.
-    *ss.into_inner()
+    // Tier-3: consume the wrapper. Its storage is zeroized as the value leaves;
+    // protection ends here, which is the boundary this function returns across.
+    ss.into_inner()
 }

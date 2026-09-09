@@ -10,6 +10,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`secure-gate` moved to a git dependency on `release/0.8` (`0.8.0-rc.12`).**
+  rc.12 is not on crates.io yet, so this is temporary: **a git dependency makes
+  every crate here unpublishable** — `cargo publish` rejects them. Swap back to a
+  `version = "=0.8.0-rc.12"` registry pin before cutting the release. `Cargo.lock`
+  pins the exact rev regardless of the branch.
+
+  Two rc.12 changes reach this workspace:
+
+  - **`into_inner` returns the plain value; `InnerSecret<T>` is deleted.** Six
+    call sites drop their `let owned = …; f(*owned)` dance for a direct
+    `f(x.into_inner())`. Protection now ends at that call rather than following
+    the value into the caller — which is what those sites wanted anyway, since
+    each hands off to an API taking the array by value, and the two curve sites
+    hand off to `StaticSecret` / `x448::Secret`, both zeroize-on-drop. CLAUDE.md's
+    Tier-3 section is rewritten accordingly: `into_inner` is now best read as a
+    greppable boundary marker — "this secret is leaving wrapper protection here".
+  - **Every encoder returns `EncodedSecret`; the `*_zeroizing` twins are gone.**
+    No call sites here (this workspace uses the `bech32` crate directly), but it
+    settles an open API question — see below.
+
+  Not adopted yet, and worth its own change: rc.12 adds `try_to_bech32_sized::<N>`
+  / `Bech32Sized`, a caller-chosen bech32 code length. Both `age-recipient-pq` and
+  `age-plugin-pq` hand-roll a `Checksum` impl at `CODE_LENGTH = 8192` for exactly
+  this reason, and that duplication now has an upstream answer.
+
 ### Changed (BREAKING)
 
 - **`age-hpke-pq`'s public API no longer exposes secure-gate types.** Eight

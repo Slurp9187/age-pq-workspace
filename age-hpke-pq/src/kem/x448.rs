@@ -27,11 +27,10 @@ pub fn clamp_x448_scalar(scalar: &mut [u8; X448_KEY_SIZE]) {
 pub(crate) fn secret_from_seed(seed: X448Secret56) -> X448Secret {
     let mut s = seed;
     s.with_secret_mut(clamp_x448_scalar);
-    // Tier-3: x448::Secret::from takes [u8; 56] by value. InnerSecret is
-    // Deref-only (no DerefMut), so the clamp above runs on the wrapper.
-    let owned = s.into_inner();
-    X448Secret::from(*owned)
-    // `owned` drops here, zeroizing the (clamped) scalar.
+    // Tier-3: x448::Secret::from takes [u8; 56] by value. `into_inner` zeroizes
+    // the wrapper's storage and returns the plain array, so the clamp above has
+    // to run on the wrapper while one still exists.
+    X448Secret::from(s.into_inner())
 }
 
 /// Derives an X448 public key from a wrapped seed.
