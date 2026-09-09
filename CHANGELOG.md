@@ -26,6 +26,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`panic = "unwind"` is now stated explicitly** in `[profile.dev]` and
+  `[profile.release]`. It was already the effective behaviour via Rust's
+  default, but it is a security property rather than a preference: `panic =
+  "abort"` skips destructors, which skips secure-gate's zeroization, leaving
+  secrets in memory past a panic. Spelling it out means a later size-motivated
+  switch has to be a deliberate edit.
+
+
 
 - **`publish = false` on all three crates**, inherited from `[workspace.package]`.
   These are experimental and distributed by git tag; none has ever been on

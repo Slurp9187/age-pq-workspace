@@ -32,8 +32,18 @@ age-hpke-pq = { path = "age-hpke-pq" }
 
 # Optional: if any other crate depends on one of the others via git, add more patches here.
 
+# `panic = "unwind"` is stated explicitly rather than left to the default: it is a
+# security property, not a preference. `panic = "abort"` skips destructors, which
+# skips secure-gate's zeroization, so a secret would survive in memory past a
+# panic. Spelling it out means a later size-motivated switch to "abort" has to be
+# a deliberate edit of this line.
+
 [profile.dev]
 opt-level = 2   # crypto math is painfully slow in unoptimized debug builds
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
 
 [profile.bench]
 debug = true    # keep symbols for flamegraphs / profiling
