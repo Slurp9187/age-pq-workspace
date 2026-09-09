@@ -78,7 +78,6 @@ dependencies = [
  "unicode-ident",
  "x25519-dalek",
  "x448",
- "zeroize",
 ]
 
 [[package]]
@@ -105,8 +104,8 @@ dependencies = [
  "chacha20poly1305",
  "clap",
  "rand 0.9.2",
+ "secure-gate",
  "time",
- "zeroize",
 ]
 
 [[package]]
@@ -120,11 +119,10 @@ dependencies = [
  "bech32 0.11.1",
  "clap",
  "proptest",
- "secrecy",
+ "secure-gate",
  "tempfile",
  "time",
  "unicode-ident",
- "zeroize",
 ]
 
 [[package]]

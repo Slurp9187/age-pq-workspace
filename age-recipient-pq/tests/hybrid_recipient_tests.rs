@@ -1,4 +1,4 @@
-use age::{secrecy::ExposeSecret, Encryptor, Recipient};
+use age::{Encryptor, Recipient};
 use age_recipient_pq::{HybridIdentity, HybridRecipient};
 use std::io::{Read, Seek, Write};
 use tempfile::NamedTempFile;
@@ -17,7 +17,7 @@ fn hybrid_recipient_keypair_generation_and_file_encryption() {
     // Save identity to a temporary file
     let mut temp_identity = NamedTempFile::new().expect("Failed to create temp file for identity");
     temp_identity
-        .write_all(identity.to_string().expose_secret().as_bytes())
+        .write_all(identity.to_string().as_bytes())
         .expect("Failed to write identity");
 
     // Encrypt some plaintext to a temporary file
@@ -96,16 +96,13 @@ fn hybrid_recipient_key_generation_and_serialization() {
     assert!(pub_str.len() > 100); // Long PQ keys
 
     let priv_str = identity.to_string();
-    assert!(priv_str.expose_secret().starts_with("AGE-SECRET-KEY-PQ-1"));
-    assert!(priv_str.expose_secret().len() > 50);
+    assert!(priv_str.starts_with("AGE-SECRET-KEY-PQ-1"));
+    assert!(priv_str.len() > 50);
 
     // Parse back
     let parsed_recipient = HybridRecipient::parse(&pub_str).unwrap();
     assert_eq!(recipient.to_string(), parsed_recipient.to_string());
 
-    let parsed_identity = HybridIdentity::parse(priv_str.expose_secret()).unwrap();
-    assert_eq!(
-        identity.to_string().expose_secret(),
-        parsed_identity.to_string().expose_secret()
-    );
+    let parsed_identity = HybridIdentity::parse(&priv_str).unwrap();
+    assert_eq!(identity.to_string(), parsed_identity.to_string());
 }

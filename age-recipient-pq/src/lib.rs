@@ -1,63 +1,67 @@
-/// # age-recipient-pq
-///
-/// This crate implements a post-quantum hybrid recipient and identity for the [`age`] encryption
-/// tool, designed for potential integration into the official `rage` CLI and libraries.
-///
-/// ## Overview
-///
-/// The age encryption format supports pluggable recipients and identities for different
-/// cryptographic primitives. This crate provides an [`HybridRecipient`] and [`HybridIdentity`]
-/// that combine post-quantum key encapsulation mechanisms (ML-KEM-768) with traditional
-/// elliptic-curve cryptography (X25519) for enhanced security against quantum attacks.
-///
-/// The implementation is based on the age-hpke-pq crate, which provides HPKE (Hybrid Public Key
-/// Encryption) primitives, and uses the same cryptographic parameters as the age-go plugin for
-/// compatibility.
-///
-/// ## Security
-///
-/// - **Post-Quantum Security**: Leverages ML-KEM-768 (formerly Kyber-768), a lattice-based KEM
-///   standardized by NIST, to resist attacks from large-scale quantum computers.
-/// - **Hybrid Design**: Combines PQ security with X25519 for efficiency and backward compatibility.
-/// - **Zeroization**: Sensitive secrets (like private keys) are wrapped in `SecretBox` from the
-///   `secrecy` crate, ensuring they are zeroized when dropped.
-/// - **Secret Management**: Uses `secrecy` for compatibility with the `age` ecosystem, where
-///   secrets are exposed only when necessary and zeroized promptly.
-///
-/// ## Compatibility
-///
-/// - **Age Format**: Fully compatible with the age file format and stanza structure.
-/// - **Rage Integration**: Designed to align with Rage's use of `secrecy` for secret handling,
-///   avoiding external dependencies like `secure-gate` to maximize adoption chances.
-/// - **Legacy Support**: Supports both new and legacy stanza formats for backward compatibility
-///   with older PQ implementations.
-///
-/// ## Usage
-///
-/// ```rust,no_run
-/// use age_recipient_pq::{HybridRecipient, HybridIdentity};
-/// use age::secrecy::ExposeSecret;
-/// use std::str::FromStr;
-/// // Generate a new recipient and identity pair
-/// let (recipient, identity) = HybridRecipient::generate().unwrap();
-///
-/// // Serialize to strings for storage
-/// let recipient_str = recipient.to_string();
-/// let secret_str = identity.to_string();
-/// let identity_str = secret_str.expose_secret().clone();
-///
-/// // Parse back
-/// let recipient = HybridRecipient::from_str(&recipient_str).unwrap();
-/// let identity = HybridIdentity::from_str(&identity_str).unwrap();
-/// ```
-///
-/// See the documentation for [`HybridRecipient`] and [`HybridIdentity`] for more details.
-///
-/// [`age`]: https://docs.rs/age/
-/// [`rage`]: https://github.com/str4d/rage
+//! # age-recipient-pq
+//!
+//! This crate implements a post-quantum hybrid recipient and identity for the [`age`] encryption
+//! tool, designed for potential integration into the official `rage` CLI and libraries.
+//!
+//! ## Overview
+//!
+//! The age encryption format supports pluggable recipients and identities for different
+//! cryptographic primitives. This crate provides an [`HybridRecipient`] and [`HybridIdentity`]
+//! that combine post-quantum key encapsulation mechanisms (ML-KEM-768) with traditional
+//! elliptic-curve cryptography (X25519) for enhanced security against quantum attacks.
+//!
+//! The implementation is based on the age-hpke-pq crate, which provides HPKE (Hybrid Public Key
+//! Encryption) primitives, and uses the same cryptographic parameters as the age-go plugin for
+//! compatibility.
+//!
+//! ## Security
+//!
+//! - **Post-Quantum Security**: Leverages ML-KEM-768 (formerly Kyber-768), a lattice-based KEM
+//!   standardized by NIST, to resist attacks from large-scale quantum computers.
+//! - **Hybrid Design**: Combines PQ security with X25519 for efficiency and backward compatibility.
+//! - **Zeroization**: Sensitive secrets (private-key seeds, decoded bech32 payloads, the
+//!   decrypted file key) are held in [`secure-gate`] wrappers, which zeroize on drop and
+//!   redact in `Debug`. Access requires an explicit `with_secret` / `expose_secret` call.
+//! - **Secret Management**: Secrets stay wrapped for their whole lifetime inside the crate.
+//!   Public API in/out types are native Rust types — callers who want zeroize-on-drop wrap
+//!   the value themselves.
+//!
+//! ## Compatibility
+//!
+//! - **Age Format**: Fully compatible with the age file format and stanza structure.
+//! - **Rage Integration**: `age`'s own types (`FileKey`, `Stanza`) are used unchanged at the
+//!   trait boundary, so `secrecy` still appears wherever `age` dictates it — `FileKey` is
+//!   `age`'s type and keeps `age`'s accessor. Everything this crate owns uses `secure-gate`.
+//! - **Legacy Support**: Supports both new and legacy stanza formats for backward compatibility
+//!   with older PQ implementations.
+//!
+//! ## Usage
+//!
+//! ```rust,no_run
+//! use age_recipient_pq::{HybridRecipient, HybridIdentity};
+//! use std::str::FromStr;
+//! // Generate a new recipient and identity pair
+//! let (recipient, identity) = HybridRecipient::generate().unwrap();
+//!
+//! // Serialize to strings for storage. `identity.to_string()` carries the private
+//! // key as a plain `String`; wrap it (`zeroize::Zeroizing`, `secure_gate::Dynamic`)
+//! // if your threat model wants the buffer wiped on drop.
+//! let recipient_str = recipient.to_string();
+//! let identity_str = identity.to_string();
+//!
+//! // Parse back
+//! let recipient = HybridRecipient::from_str(&recipient_str).unwrap();
+//! let identity = HybridIdentity::from_str(&identity_str).unwrap();
+//! ```
+//!
+//! See the documentation for [`HybridRecipient`] and [`HybridIdentity`] for more details.
+//!
+//! [`age`]: https://docs.rs/age/
+//! [`rage`]: https://github.com/str4d/rage
+mod aliases;
+
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
-use age_core::secrecy::SecretString;
 use age_hpke_pq::hpke::{new_sender, open};
 use age_hpke_pq::kem::{Kem, MlKem768X25519};
 use age_hpke_pq::{aead::new_aead, kdf::new_kdf};
@@ -65,10 +69,14 @@ use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
 use bech32::primitives::checksum::Checksum;
 use bech32::primitives::decode::CheckedHrpstring;
 use bech32::{encode, Bech32, Hrp};
-use secrecy::{ExposeSecret, SecretBox};
+// `ExposeSecret` here is `age`'s (re-exported `secrecy`) trait, needed for `FileKey`.
+// secure-gate wrappers are read through `RevealSecret` / `RevealSecretMut` instead, so
+// the two never compete: each method resolves on its own receiver type.
+use crate::aliases::{FileKeyBytes, IdentityEncoding, Seed32, SeedBytes};
+use secrecy::ExposeSecret;
+use secure_gate::{RevealSecret, RevealSecretMut};
 use std::collections::HashSet;
 use std::str::FromStr;
-use zeroize::Zeroizing;
 
 /// Custom checksum that matches classic Bech32 (BIP-173) exactly,
 /// including the original theoretical maximum code length of 4096 characters.
@@ -128,20 +136,18 @@ impl HybridRecipient {
         let kem = MlKem768X25519;
         let sk = kem.generate_key()?;
         let pk = sk.public_key();
-        // Zeroizing covers the private-key seed Vec until it's copied into SecretBox.
-        let seed_bytes = Zeroizing::new(sk.bytes()?);
-        let seed: [u8; 32] = seed_bytes
-            .as_slice()
-            .try_into()
+        // `PrivateKey::bytes` hands back a native Vec at the API boundary; wrap it
+        // on arrival so the seed is never an unprotected buffer inside this crate.
+        let seed_bytes = SeedBytes::new(sk.bytes()?);
+        let seed = seed_bytes
+            .with_secret(|b| Seed32::try_from(b.as_slice()))
             .map_err(|_| "Invalid seed length")?;
         let pub_key_bytes = pk.bytes();
         Ok((
             Self {
                 pub_key: pub_key_bytes,
             },
-            HybridIdentity {
-                seed: SecretBox::new(Box::new(seed)),
-            },
+            HybridIdentity { seed },
         ))
     }
 
@@ -240,7 +246,7 @@ impl AgeRecipient for HybridRecipient {
 
 /// A post-quantum hybrid identity for decryption, holding the private key seed.
 pub struct HybridIdentity {
-    seed: SecretBox<[u8; 32]>,
+    seed: Seed32,
 }
 
 impl HybridIdentity {
@@ -267,38 +273,52 @@ impl HybridIdentity {
             )));
         }
 
-        // Zeroizing covers the parsed seed Vec until it's copied into SecretBox.
-        let seed_bytes: Zeroizing<Vec<u8>> = Zeroizing::new(checked.byte_iter().collect());
-        let seed: [u8; 32] = seed_bytes.as_slice().try_into().map_err(|_| {
-            age::DecryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid seed length",
-            ))
-        })?;
+        // The bech32 payload is the private key; wrap it before it is validated.
+        let seed_bytes = SeedBytes::new(checked.byte_iter().collect::<Vec<u8>>());
+        let seed = seed_bytes
+            .with_secret(|b| Seed32::try_from(b.as_slice()))
+            .map_err(|_| {
+                age::DecryptError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Invalid seed length",
+                ))
+            })?;
 
-        Ok(Self {
-            seed: SecretBox::new(Box::new(seed)),
-        })
+        Ok(Self { seed })
     }
 
     /// Serializes the identity to its bech32-encoded string representation (uppercase).
-    pub fn to_string(&self) -> SecretString {
+    ///
+    /// # Security
+    ///
+    /// The returned `String` **is the private key**. Public API outputs are native Rust
+    /// types per the workspace wire-boundary rule, so this buffer is not zeroized on
+    /// drop. Wrap it if that matters to you:
+    ///
+    /// ```rust,no_run
+    /// # use age_recipient_pq::HybridRecipient;
+    /// use secure_gate::Dynamic;
+    /// # let (_r, identity) = HybridRecipient::generate().unwrap();
+    /// // Zeroized on drop, redacted in `Debug`.
+    /// let encoded: Dynamic<String> = Dynamic::new(identity.to_string());
+    /// ```
+    #[allow(clippy::inherent_to_string)]
+    pub fn to_string(&self) -> String {
         let hrp = Hrp::parse("age-secret-key-pq-").expect("static valid HRP");
-        // The bech32-encoded string carries the private key; keep it zeroize-covered
-        // until it's handed off to SecretString. `make_ascii_uppercase` mutates in
-        // place so no second unprotected copy is produced.
-        let mut encoded = Zeroizing::new(
-            encode::<Bech32>(hrp, self.seed.expose_secret())
-                .expect("encoding with valid data never fails"),
-        );
-        encoded.make_ascii_uppercase();
-        SecretString::from(core::mem::take(&mut *encoded))
+        // Build and case-normalize inside the wrapper so the only unprotected copy is
+        // the one handed to the caller. `make_ascii_uppercase` mutates in place, so no
+        // second buffer is produced along the way.
+        let mut encoded = IdentityEncoding::new(self.seed.with_secret(|seed| {
+            encode::<Bech32>(hrp, seed).expect("encoding with valid data never fails")
+        }));
+        encoded.with_secret_mut(|s| s.make_ascii_uppercase());
+        encoded.with_secret(|s| s.clone())
     }
 
     /// Derives the public recipient from this identity.
     pub fn to_public(&self) -> Result<HybridRecipient, Box<dyn std::error::Error>> {
         let kem = MlKem768X25519;
-        let sk = kem.new_private_key(self.seed.expose_secret())?;
+        let sk = self.seed.with_secret(|seed| kem.new_private_key(seed))?;
         let pk = sk.public_key();
         let pub_key_bytes = pk.bytes();
         Ok(HybridRecipient {
@@ -335,7 +355,7 @@ impl AgeIdentity for HybridIdentity {
             return None;
         }
         let kem = MlKem768X25519;
-        let sk = match kem.new_private_key(self.seed.expose_secret()) {
+        let sk = match self.seed.with_secret(|seed| kem.new_private_key(seed)) {
             Ok(s) => s,
             Err(_) => return None,
         };
@@ -349,12 +369,13 @@ impl AgeIdentity for HybridIdentity {
         };
         let mut ct = enc;
         ct.extend_from_slice(&stanza.body);
-        // Zeroizing covers the decrypted file-key Vec until it's copied into FileKey.
+        // `open` returns a native Vec at the API boundary; wrap the decrypted file key
+        // on arrival so it is wiped on drop whichever way this function exits.
         let file_key_bytes = match open(sk, kdf, aead, PQ_LABEL, &[], &ct) {
-            Ok(f) => Zeroizing::new(f),
+            Ok(f) => FileKeyBytes::new(f),
             Err(_) => return None,
         };
-        let file_key = match file_key_bytes.as_slice().try_into() {
+        let file_key = match file_key_bytes.with_secret(|b| <[u8; 16]>::try_from(b.as_slice())) {
             Ok(arr) => FileKey::new(Box::new(arr)),
             Err(_) => return None,
         };

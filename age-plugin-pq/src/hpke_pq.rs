@@ -1,8 +1,9 @@
 // src/hpke_pq.rs
 //! Age-specific HPKE utilities for the post-quantum hybrid plugin.
 
+use crate::aliases::{AeadKey32, KdfBytes};
 use age_hpke_pq::{kdf::new_kdf, Error};
-use zeroize::Zeroizing;
+use secure_gate::RevealSecret;
 
 pub const KEM_ID: u16 = 0x647a; // XWing768X25519
 pub const KDF_ID: u16 = 0x0001; // HKDF-SHA256
@@ -18,34 +19,43 @@ fn suite_id() -> Vec<u8> {
     sid
 }
 
+/// Runs the RFC 9180 Base-mode key schedule and returns the AEAD key and base nonce.
+///
+/// The `Kdf` trait returns native `Vec<u8>` at the API boundary; every output is
+/// wrapped in [`KdfBytes`] on arrival so no PRK or OKM lives as a bare vector.
+/// The base nonce is public (it is XORed with the sequence number per message)
+/// and stays a plain array.
 pub fn derive_key_and_nonce(
     shared_secret: &[u8],
     info: &[u8],
-) -> Result<([u8; 32], [u8; 12]), Error> {
+) -> Result<(AeadKey32, [u8; 12]), Error> {
     let sid = suite_id();
     let kdf = new_kdf(KDF_ID)?;
 
-    // The `Kdf` trait returns native `Vec<u8>` at the API boundary. This crate
-    // does not depend on secure-gate, so every PRK / OKM is parked in
-    // `Zeroizing` on arrival rather than living as a bare vector.
-    let psk_id_hash = Zeroizing::new(kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?);
-    let info_hash = Zeroizing::new(kdf.labeled_extract(&sid, None, "info_hash", info)?);
+    let psk_id_hash = KdfBytes::new(kdf.labeled_extract(&sid, None, "psk_id_hash", &[])?);
+    let info_hash = KdfBytes::new(kdf.labeled_extract(&sid, None, "info_hash", info)?);
 
     let mut ks_context = Vec::new();
     ks_context.push(MODE);
-    ks_context.extend_from_slice(&psk_id_hash);
-    ks_context.extend_from_slice(&info_hash);
+    psk_id_hash.with_secret(|bytes| ks_context.extend_from_slice(bytes));
+    info_hash.with_secret(|bytes| ks_context.extend_from_slice(bytes));
 
-    let secret = Zeroizing::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
+    let secret = KdfBytes::new(kdf.labeled_extract(&sid, Some(shared_secret), "secret", &[])?);
 
-    let key_vec = Zeroizing::new(kdf.labeled_expand(&sid, &secret, "key", &ks_context, 32)?);
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&key_vec);
+    let key = secret.with_secret(|prk| {
+        kdf.labeled_expand(&sid, prk, "key", &ks_context, 32)
+            .map(KdfBytes::new)
+    })?;
+    let key = key
+        .with_secret(|bytes| AeadKey32::try_from(bytes.as_slice()))
+        .map_err(|_| Error::InvalidLength)?;
 
-    let nonce_vec =
-        Zeroizing::new(kdf.labeled_expand(&sid, &secret, "base_nonce", &ks_context, 12)?);
+    let nonce = secret.with_secret(|prk| {
+        kdf.labeled_expand(&sid, prk, "base_nonce", &ks_context, 12)
+            .map(KdfBytes::new)
+    })?;
     let mut base_nonce = [0u8; 12];
-    base_nonce.copy_from_slice(&nonce_vec);
+    nonce.with_secret(|bytes| base_nonce.copy_from_slice(bytes));
 
     Ok((key, base_nonce))
 }

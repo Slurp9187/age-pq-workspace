@@ -16,11 +16,16 @@ use bech32::primitives::decode::CheckedHrpstring;
 use bech32::{encode as bech32_encode, Bech32, Hrp};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit, Nonce};
 use clap::{CommandFactory, Parser};
-use rand::{rngs::OsRng, TryRngCore};
+use rand::rngs::OsRng;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use zeroize::{Zeroize, Zeroizing};
+mod aliases;
+
+use crate::aliases::{
+    FileKeyBytes, IdentityEncoding, SecretText, Seed32, SeedBytes, SharedSecret32,
+};
+use secure_gate::{RevealSecret, RevealSecretMut, SecretLen};
 
 mod hpke_pq;
 use hpke_pq::derive_key_and_nonce;
@@ -146,23 +151,26 @@ impl RecipientPluginV1 for RecipientPlugin {
         let mut errors = vec![];
 
         for (recip_idx, pk) in self.recipients.iter().enumerate() {
-            let (ct, mut ss) = pk
+            let (ct, ss) = pk
                 .encapsulate(&mut OsRng)
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "encapsulation failed"))?;
 
-            let (mut key_bytes, base_nonce) = derive_key_and_nonce(&ss, PQ_LABEL)
+            // `encapsulate` hands back a native [u8; 32]; wrap it so the shared
+            // secret is wiped on drop rather than by hand at each exit.
+            let ss = SharedSecret32::from(ss);
+            let (key, base_nonce) = ss
+                .with_secret(|s| derive_key_and_nonce(s, PQ_LABEL))
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "key derivation failed"))?;
 
-            // Feed the key into the cipher directly via `new_from_slice`; the
-            // previous `Key::from(key_bytes)` step materialised a non-Zeroize
-            // `GenericArray` outer binding holding the key bytes until end of
-            // scope. The cipher copies the bytes into its own zeroize-on-drop
-            // state, so once we zeroize `key_bytes` the only live copy is the
-            // cipher's internal one.
-            let aead = ChaCha20Poly1305::new_from_slice(&key_bytes)
+            // Feed the key into the cipher via `new_from_slice`; `Key::from(..)`
+            // would materialise a non-Zeroize `GenericArray` binding holding the
+            // key bytes until end of scope. The cipher copies into its own
+            // zeroize-on-drop state, and `key` wipes itself when it drops.
+            let aead = key
+                .with_secret(|k| ChaCha20Poly1305::new_from_slice(k))
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "invalid AEAD key"))?;
-            key_bytes.zeroize();
-            ss.zeroize();
+            drop(key);
+            drop(ss);
             let ct_b64 = STANDARD_NO_PAD.encode(ct.to_bytes());
 
             let mut ok = true;
@@ -221,13 +229,10 @@ impl IdentityPluginV1 for IdentityPlugin {
                 message: "seed must be 32 bytes".into(),
             });
         }
-        let mut seed = [0u8; 32];
-        seed.copy_from_slice(bytes);
-        let sk = DecapsulationKey::from_seed(&seed);
-        // `from_seed` copied the bytes into its own `Seed32` wrapper; zeroize
-        // the local stack copy so the only live copy of the private key is
-        // inside the wrapper.
-        seed.zeroize();
+        // `new_with` writes straight into the wrapper's storage, so the seed
+        // never exists as a bare local; it is wiped when `seed` drops.
+        let seed = Seed32::new_with(|out| out.copy_from_slice(bytes));
+        let sk = seed.with_secret(DecapsulationKey::from_seed);
         self.identities.push(sk);
         Ok(())
     }
@@ -280,53 +285,46 @@ impl IdentityPluginV1 for IdentityPlugin {
                 };
 
                 for sk in &self.identities {
-                    let mut ss = match sk.decapsulate(&ct) {
-                        Ok(s) => s,
+                    // Every binding below is a secure-gate wrapper, so each of the
+                    // `continue` paths in this loop wipes its secrets on drop. The
+                    // previous shape needed a hand-written `.zeroize()` at each of
+                    // the six exits and had to keep them in sync.
+                    let ss = match sk.decapsulate(&ct) {
+                        Ok(s) => SharedSecret32::from(s),
                         Err(_) => continue,
                     };
 
-                    let (mut key_bytes, base_nonce) = match derive_key_and_nonce(&ss, PQ_LABEL) {
-                        Ok(r) => r,
-                        Err(_) => {
-                            ss.zeroize();
-                            continue;
-                        }
-                    };
+                    let (key, base_nonce) =
+                        match ss.with_secret(|s| derive_key_and_nonce(s, PQ_LABEL)) {
+                            Ok(r) => r,
+                            Err(_) => continue,
+                        };
 
                     let nonce_bytes = compute_nonce(&base_nonce, file_idx as u64);
                     let nonce = Nonce::from(nonce_bytes);
-                    // Same shape as wrap_file_keys: feed `key_bytes` into the
-                    // cipher via `new_from_slice` to avoid the non-Zeroize
-                    // `Key` (GenericArray) outer binding.
-                    let aead = match ChaCha20Poly1305::new_from_slice(&key_bytes) {
+                    // Same shape as wrap_file_keys: `new_from_slice` avoids the
+                    // non-Zeroize `Key` (GenericArray) outer binding.
+                    let aead = match key.with_secret(|k| ChaCha20Poly1305::new_from_slice(k)) {
                         Ok(a) => a,
-                        Err(_) => {
-                            key_bytes.zeroize();
-                            ss.zeroize();
-                            continue;
-                        }
+                        Err(_) => continue,
                     };
-                    key_bytes.zeroize();
+                    drop(key);
 
-                    // The decrypted body is the 16-byte FileKey. Wrap the Vec
-                    // in Zeroizing so the heap buffer is zeroized when it
-                    // drops, before the bytes are copied into FileKey.
+                    // The decrypted body is the 16-byte FileKey.
                     let plaintext = match aead.decrypt(&nonce, &*stanza.body) {
-                        Ok(p) => Zeroizing::new(p),
-                        Err(_) => {
-                            ss.zeroize();
-                            continue;
-                        }
+                        Ok(p) => FileKeyBytes::new(p),
+                        Err(_) => continue,
                     };
-
-                    ss.zeroize();
+                    drop(ss);
 
                     if plaintext.len() != 16 {
                         continue;
                     }
 
-                    let mut fk = [0u8; 16];
-                    fk.copy_from_slice(&plaintext);
+                    let fk = match plaintext.with_secret(|p| <[u8; 16]>::try_from(p.as_slice())) {
+                        Ok(arr) => arr,
+                        Err(_) => continue,
+                    };
                     let file_key = FileKey::new(Box::new(fk));
 
                     results.insert(file_idx, Ok(file_key));
@@ -413,14 +411,13 @@ fn main() -> io::Result<()> {
 }
 
 fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
-    // `seed` carries the private key; Zeroizing covers it across all paths,
-    // including the `?`-driven early returns below.
-    let mut seed = Zeroizing::new([0u8; 32]);
-    OsRng
-        .try_fill_bytes(&mut seed[..])
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    // `from_rng` fills the wrapper's own storage straight from the CSPRNG, so the
+    // seed never exists as an unprotected buffer. It is wiped on drop, including
+    // on the `?`-driven early returns below.
+    let seed = Seed32::from_rng(&mut OsRng)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-    let sk = DecapsulationKey::from_seed(&seed);
+    let sk = seed.with_secret(DecapsulationKey::from_seed);
     let pk = sk
         .encapsulation_key()
         .map_err(|_| io::Error::new(io::ErrorKind::Other, "keygen failed"))?;
@@ -444,26 +441,25 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
     // Bech32-encoded private key carries the seed; keep the String wrapped
     // until it's embedded in the final output buffer (which is itself wrapped).
     // `make_ascii_uppercase` mutates in place so no second unprotected copy.
-    let mut identity = Zeroizing::new(
-        bech32_encode::<Bech32>(identity_hrp, seed.as_ref())
+    let mut identity = IdentityEncoding::new(
+        seed.with_secret(|s| bech32_encode::<Bech32>(identity_hrp, s))
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?,
     );
-    identity.make_ascii_uppercase();
+    identity.with_secret_mut(|s| s.make_ascii_uppercase());
 
-    let output_text = Zeroizing::new(format!(
-        "# created: {created}\n# public key: {recipient}\n{}",
-        identity.as_str()
-    ));
+    let output_text = SecretText::new(
+        identity.with_secret(|id| format!("# created: {created}\n# public key: {recipient}\n{id}")),
+    );
 
     if let Some(path) = output {
         if std::path::Path::new(&path).exists() {
             eprintln!("Warning: {path} exists – refusing to overwrite");
         } else {
-            std::fs::write(&path, &*output_text)?;
+            output_text.with_secret(|t| std::fs::write(&path, t))?;
             eprintln!("Public key: {recipient}");
         }
     } else {
-        println!("{}", output_text.as_str());
+        output_text.with_secret(|t| println!("{t}"));
     }
 
     Ok(())
@@ -472,56 +468,56 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
 fn convert_native_identities() -> io::Result<()> {
     // `input` holds the entire stdin buffer — potentially multiple native PQ
     // private keys in bech32 form. Wrap so the heap buffer zeroizes on drop.
-    let mut input = Zeroizing::new(String::new());
-    io::stdin().read_to_string(&mut input)?;
+    let mut input = SecretText::new(String::new());
+    input.with_secret_mut(|buf| io::stdin().read_to_string(buf))?;
 
-    for line in input.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    // One borrow for the whole loop rather than re-opening the wrapper per line.
+    input.with_secret(|input| -> io::Result<()> {
+        for line in input.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            let parsed = CheckedHrpstring::new::<Bech32>(line)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid bech32"))?;
+
+            if !parsed
+                .hrp()
+                .as_str()
+                .eq_ignore_ascii_case(NATIVE_IDENTITY_HRP)
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "not a native PQ identity",
+                ));
+            }
+
+            // Per-line decoded seed bytes; wrap so the heap Vec zeroizes when it
+            // falls out of scope at the end of the iteration.
+            let bytes = SeedBytes::new(parsed.byte_iter().collect::<Vec<u8>>());
+            let seed = bytes
+                .with_secret(|b| Seed32::try_from(b.as_slice()))
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "wrong seed length"))?;
+
+            let sk = seed.with_secret(DecapsulationKey::from_seed);
+            let _pk = sk.encapsulation_key().map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "invalid key derivation")
+            })?;
+
+            let plugin_hrp = Hrp::parse(IDENTITY_BECH32_HRP)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            // Re-encoded plugin-format private key; same wrap-and-mutate-in-place
+            // pattern as keygen to avoid the second plaintext String from
+            // `to_uppercase()`.
+            let mut plugin_identity = IdentityEncoding::new(
+                seed.with_secret(|s| bech32_encode::<Bech32>(plugin_hrp, s))
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?,
+            );
+            plugin_identity.with_secret_mut(|s| s.make_ascii_uppercase());
+            plugin_identity.with_secret(|s| println!("{s}"));
         }
 
-        let parsed = CheckedHrpstring::new::<Bech32>(line)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid bech32"))?;
-
-        if !parsed
-            .hrp()
-            .as_str()
-            .eq_ignore_ascii_case(NATIVE_IDENTITY_HRP)
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "not a native PQ identity",
-            ));
-        }
-
-        // Per-line decoded seed bytes; wrap so the heap Vec zeroizes when it
-        // falls out of scope at the end of the iteration.
-        let bytes: Zeroizing<Vec<u8>> = Zeroizing::new(parsed.byte_iter().collect());
-        let seed: Zeroizing<[u8; 32]> = Zeroizing::new(
-            bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "wrong seed length"))?,
-        );
-
-        let sk = DecapsulationKey::from_seed(&seed);
-        let _pk = sk
-            .encapsulation_key()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid key derivation"))?;
-
-        let plugin_hrp = Hrp::parse(IDENTITY_BECH32_HRP)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        // Re-encoded plugin-format private key; same wrap-and-mutate-in-place
-        // pattern as keygen to avoid the second plaintext String from
-        // `to_uppercase()`.
-        let mut plugin_identity = Zeroizing::new(
-            bech32_encode::<Bech32>(plugin_hrp, seed.as_ref())
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?,
-        );
-        plugin_identity.make_ascii_uppercase();
-        println!("{}", plugin_identity.as_str());
-    }
-
-    Ok(())
+        Ok(())
+    })
 }

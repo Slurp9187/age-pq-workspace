@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed (BREAKING)
+
+- **`secrecy` and `zeroize` replaced by `secure-gate`.** Both direct dependencies
+  are gone. `secrecy` still appears in the source, but only as `age`'s own
+  re-export: `FileKey` is `age`'s type and keeps `age`'s accessor, which is not
+  ours to change. Everything this crate owns is now a secure-gate wrapper, and
+  the aliases live in the new `src/aliases.rs` per the workspace convention.
+
+  | Was | Now |
+  |-----|-----|
+  | `HybridIdentity { seed: SecretBox<[u8; 32]> }` | `Seed32` |
+  | `Zeroizing<Vec<u8>>` seed/file-key scratch | `SeedBytes` / `FileKeyBytes` |
+  | `Zeroizing<String>` bech32 buffer | `IdentityEncoding` |
+
+- **`HybridIdentity::to_string` returns `String`, not `SecretString`.** Public API
+  outputs are native Rust types per the workspace wire-boundary rule. **The
+  returned `String` is the private key and is not zeroized on drop** — wrap it
+  yourself if that matters:
+
+  ```rust
+  let encoded: secure_gate::Dynamic<String> = secure_gate::Dynamic::new(identity.to_string());
+  ```
+
+  Migration: drop the `.expose_secret()` at the call site.
+
+### Fixed
+
+- The crate-level documentation block used `///` and so attached itself to the
+  following `use` statement rather than the crate. It produced four identical
+  doctests and never appeared as crate docs. Converted to `//!`.
+
+### Removed
+
+- The doc claim that this crate avoids `secure-gate` "to maximize adoption
+  chances" for upstream `rage`. Upstream has its own post-quantum work in a
+  pre-release branch, so the constraint that motivated it no longer applies.
+
 ## [0.0.5] - 2026-05-10
 
 ### Changed

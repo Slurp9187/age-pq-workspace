@@ -1,10 +1,9 @@
 use age_recipient_pq::HybridRecipient;
 use clap::{Arg, ArgAction, Command};
-use secrecy::ExposeSecret;
+use secure_gate::{Dynamic, RevealSecret};
 use std::io::Write;
 use std::path::Path;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use zeroize::Zeroizing;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("pq-keygen")
@@ -63,13 +62,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (recipient, identity) = HybridRecipient::generate()?;
 
     let created = OffsetDateTime::now_utc().format(&Rfc3339)?;
-    // Carries the bech32-encoded private identity key; `Zeroizing` wipes the
-    // heap buffer on drop instead of leaving it for the allocator to reuse.
-    let output_text = Zeroizing::new(format!(
+    // Carries the bech32-encoded private identity key. `to_string` hands back a
+    // plain String at the API boundary, so wrap it here: the Dynamic wipes the heap
+    // buffer on drop instead of leaving it for the allocator to reuse.
+    let output_text: Dynamic<String> = Dynamic::new(format!(
         "# created: {}\n# public key: {}\n{}",
         created,
         recipient.to_string(),
-        identity.to_string().expose_secret()
+        identity.to_string()
     ));
 
     if split {
@@ -101,9 +101,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::fs::create_dir_all(parent)?;
             }
 
-            std::fs::write(&keypair_path, output_text.as_bytes())?;
+            output_text.with_secret(|s| std::fs::write(&keypair_path, s.as_bytes()))?;
             std::fs::write(&recipient_path, recipient.to_string())?;
-            std::fs::write(&identity_path, identity.to_string().expose_secret())?;
+            std::fs::write(&identity_path, identity.to_string())?;
             println!(
                 "Keypair output to: {}, {}, and {}",
                 keypair_path, recipient_path, identity_path
@@ -122,12 +122,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
         let mut file = std::fs::File::create(path)?;
-        file.write_all(output_text.as_bytes())?;
+        output_text.with_secret(|s| file.write_all(s.as_bytes()))?;
         // Print public key to stderr if outputting to file
         eprintln!("Public key: {}", recipient.to_string());
     } else {
         // Output to stdout
-        println!("{}", &*output_text);
+        output_text.with_secret(|s| println!("{}", s));
     }
 
     Ok(())

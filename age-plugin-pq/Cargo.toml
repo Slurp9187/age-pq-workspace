@@ -23,7 +23,7 @@ bech32 = "0.11"
 clap = { workspace = true }
 rand = { version = "0.9", features = ["std"] }
 time = { version = "0.3", features = ["formatting"] }
-zeroize = "1.8"
+secure-gate = { workspace = true }
 
 [[bin]]
 name = "age-plugin-pq"
