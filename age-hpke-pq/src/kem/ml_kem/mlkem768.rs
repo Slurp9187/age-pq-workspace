@@ -22,9 +22,7 @@ pub const MLKEM768_CT_SIZE: usize = 1088;
 pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem768KeyPair {
     // Tier-3: libcrux generate_key_pair takes the [u8; 64] `d || z` seed by
     // value. `into_inner` works at any length (SentinelValue, not Default).
-    let owned = seed.into_inner();
-    mlkem768_generate_key_pair(*owned)
-    // `owned` drops here, zeroizing the seed.
+    mlkem768_generate_key_pair(seed.into_inner())
 }
 
 /// Encapsulates to an ML-KEM-768 public key using caller-supplied randomness.
@@ -38,8 +36,7 @@ pub(crate) fn encapsulate_with_seed(
 ) -> CrateResult<([u8; MLKEM768_CT_SIZE], SharedSecret32)> {
     let pk_m = pk_m.with_secret(|bytes| MlKem768PublicKey::from(*bytes));
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
-    let r = randomness.into_inner();
-    let (ct_m, ss_m) = encapsulate(&pk_m, *r);
+    let (ct_m, ss_m) = encapsulate(&pk_m, randomness.into_inner());
     let ct_m_bytes: [u8; MLKEM768_CT_SIZE] = ct_m
         .as_ref()
         .try_into()

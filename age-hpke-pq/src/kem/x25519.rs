@@ -22,16 +22,17 @@ pub fn clamp_x25519_scalar(scalar: &mut [u8; CURVE_SEED_SIZE]) {
 /// and `x25519_dalek::StaticSecret` is itself `ZeroizeOnDrop`, so the
 /// secret bytes are zeroize-covered end-to-end. We clamp in place via
 /// `with_secret_mut` (Tier-1 mutable) on the wrapper, then consume the
-/// wrapper via `into_inner` (Tier-3) to feed `StaticSecret::from`.
+/// wrapper via `into_inner` (Tier-3) to feed `StaticSecret::from`. Clamping
+/// must precede consumption — `into_inner` yields a plain value, so there is
+/// no wrapper left to mutate through afterwards.
 pub(crate) fn static_secret_from_seed(seed: X25519Secret32) -> StaticSecret {
     let mut s = seed;
     s.with_secret_mut(clamp_x25519_scalar);
     // Tier-3: x25519_dalek::StaticSecret::from takes [u8; 32] by value.
-    // InnerSecret is Deref-only (no DerefMut), so any mutation must
-    // happen on the wrapper above before consumption.
-    let owned = s.into_inner();
-    StaticSecret::from(*owned)
-    // `owned` drops here, zeroizing the (clamped) buffer.
+    // `into_inner` zeroizes the wrapper's storage and hands back the plain
+    // array; `StaticSecret` is itself ZeroizeOnDrop, so the clamped scalar
+    // stays covered on the far side of the hand-off.
+    StaticSecret::from(s.into_inner())
 }
 
 /// Derives an X25519 public key from a wrapped seed.

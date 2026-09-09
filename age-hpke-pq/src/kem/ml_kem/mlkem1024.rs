@@ -22,8 +22,7 @@ pub const MLKEM1024_CT_SIZE: usize = 1568;
 /// Derives an ML-KEM-1024 key pair from a wrapped 64-byte (`d || z`) seed.
 pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem1024KeyPair {
     // Tier-3: seed taken by value — see mlkem768.rs.
-    let owned = seed.into_inner();
-    mlkem1024_generate_key_pair(*owned)
+    mlkem1024_generate_key_pair(seed.into_inner())
 }
 
 /// Encapsulates to an ML-KEM-1024 public key using caller-supplied randomness.
@@ -33,8 +32,7 @@ pub(crate) fn encapsulate_with_seed(
 ) -> CrateResult<([u8; MLKEM1024_CT_SIZE], SharedSecret32)> {
     let pk_m = pk_m.with_secret(|bytes| MlKem1024PublicKey::from(*bytes));
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
-    let r = randomness.into_inner();
-    let (ct_m, ss_m) = encapsulate(&pk_m, *r);
+    let (ct_m, ss_m) = encapsulate(&pk_m, randomness.into_inner());
     let ct_m_bytes: [u8; MLKEM1024_CT_SIZE] = ct_m
         .as_ref()
         .try_into()

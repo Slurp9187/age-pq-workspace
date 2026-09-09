@@ -4,6 +4,10 @@ resolver = "2"   # MSRV 1.70 → resolver 2 is required. LAST 1.70 RELEASE: move
 
 # Shared package metadata (inherited by every member)
 [workspace.package]
+# Experimental crates, distributed by git tag. Never published to crates.io, and
+# `publish = false` makes that a hard error rather than a convention: `cargo
+# publish` and `cargo package --list` refuse instead of half-succeeding.
+publish = false
 rust-version = "1.70"
 edition = "2021"          # or whatever your crates already use
 license = "MIT OR Apache-2.0"   # adjust to your actual license
@@ -39,7 +43,12 @@ debug = true    # keep symbols for flamegraphs / profiling
 [workspace.dependencies]
 # The 0.8.0-rc.* line is the MSRV-1.70 backport of secure-gate's `main`.
 # With the 1.85 bump, move to mainline 0.9.x (edition 2024, rust-version 1.85).
-secure-gate = { version = "=0.8.0-rc.11", features = ["rand", "ct-eq"] }
+#
+# Git source: rc.12 is not on crates.io. That is fine here — these crates are
+# experimental and distributed by git tag, never published to crates.io (see
+# `publish = false` above), so a git dependency costs nothing. Cargo.lock pins
+# the exact rev regardless of the branch.
+secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "release/0.8", features = ["rand", "ct-eq"] }
 
 clap = { version = "=4.4.18", features = ["derive"] }
 
