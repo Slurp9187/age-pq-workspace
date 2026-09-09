@@ -2,6 +2,11 @@
 
 Rust implementation of the X-Wing hybrid post-quantum KEM (ML-KEM-768 + X25519) with full HPKE support.
 
+> **Provenance** — written for the **encrypted-file-vault** project and **not
+> published to crates.io**. It implements public specifications (RFC 9180,
+> `draft-ietf-hpke-pq-03`) and contains nothing vault-specific, so it stands on
+> its own; use it as a git dependency pinned to a tag or exact revision.
+
 ## Features
 
 - Hybrid PQ/classical security (ML-KEM-768 + X25519)

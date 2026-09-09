@@ -25,10 +25,6 @@ include = [
     "/README.md",
 ]
 
-# Redirect the git dependency in age-pq-keys (and any other cross-crate git deps)
-# to the local path so you can develop everything together.
-[patch."https://github.com/Slurp9187/age-pq-hpke"]
-age-pq-hpke = { path = "age-pq-hpke" }
 
 # Optional: if any other crate depends on one of the others via git, add more patches here.
 

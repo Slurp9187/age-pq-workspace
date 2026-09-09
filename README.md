@@ -3,6 +3,17 @@
 Post-quantum hybrid encryption crates for [age](https://age-encryption.org) /
 [rage](https://github.com/str4d/rage), combining ML-KEM-768 with X25519.
 
+**Provenance.** These crates were written for the **encrypted-file-vault**
+project and are **not published to crates.io** (`publish = false` is set
+workspace-wide and enforced). They implement public specifications — RFC 9180,
+`draft-ietf-hpke-pq-03`, and the [C2SP age format](https://c2sp.org/age) — and
+contain nothing vault-specific, so they are usable independently. Consume them
+as a git dependency pinned to a tag or exact revision.
+
+`age-plugin-pq` is the piece most likely to be useful on its own: it works with
+**any** age implementation that supports the plugin protocol, including the Go
+`age` CLI, not just this workspace.
+
 > **Warning** — These crates have not been independently audited. Use at your
 > own risk and evaluate the security properties carefully before deploying in
 > production.

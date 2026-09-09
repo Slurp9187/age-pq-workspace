@@ -4,7 +4,15 @@
 
 This crate has not been independently reviewed and audited by the `age` + `rage` maintainers. Use at your own risk, and consider its security properties carefully.
 
-A Rust library providing post-quantum hybrid recipients and identities compatible with the age encryption format.
+The key layer for post-quantum hybrid encryption with age: recipient **and**
+identity types, keypair generation, the bech32 key formats and their HRPs, and
+the `mlkem768x25519` stanza wire format together with its validation.
+
+> **Provenance** — written for the **encrypted-file-vault** project and **not
+> published to crates.io**. It implements the public
+> [C2SP age format](https://c2sp.org/age) and contains nothing vault-specific,
+> so it stands on its own; use it as a git dependency pinned to a tag or exact
+> revision.
 
 ## Compatibility
 
