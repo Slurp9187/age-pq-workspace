@@ -46,3 +46,56 @@ pub fn require_age_cli() -> String {
     }
     raw
 }
+
+/// The `PATH` entries that remain after removing every directory containing an
+/// `age-plugin-*` binary.
+///
+/// This matters more than it looks. Cargo puts the build output directory
+/// (`target/debug`) on `PATH` for test processes, so `age-plugin-pq` — built by
+/// this very workspace — is reachable by default. If an identity in these tests
+/// ever routed through that plugin, "interoperability with the Go age CLI"
+/// would silently become "interoperability with our own code", and the test
+/// would keep passing while proving nothing.
+///
+/// Identities here are native (`AGE-SECRET-KEY-PQ-`), so age handles them
+/// itself. Rather than trust that, we remove the plugin from reach so the
+/// native path is the *only* one available.
+///
+/// The plugin's own tests deliberately do the opposite — see
+/// `age-plugin-pq/tests/integration.rs`, where Cargo putting the fresh binary
+/// on `PATH` is exactly what makes discovery testable.
+#[allow(dead_code)]
+pub fn plugin_free_path() -> Vec<std::path::PathBuf> {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|dir| !contains_age_plugin(dir))
+        .collect()
+}
+
+/// Builds an `age` command that cannot reach any age plugin.
+#[allow(dead_code)]
+pub fn age_command_without_plugins() -> Command {
+    let mut cmd = Command::new("age");
+    match std::env::join_paths(plugin_free_path()) {
+        Ok(path) => {
+            cmd.env("PATH", path);
+        }
+        // Refuse to fall back to the unfiltered PATH: a silently circular test
+        // is worse than a failing one.
+        Err(e) => panic!("could not rebuild a plugin-free PATH: {e}"),
+    }
+    cmd
+}
+
+/// True if `dir` holds anything named `age-plugin-*`.
+#[allow(dead_code)]
+pub fn contains_age_plugin(dir: &std::path::Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries
+        .filter_map(Result::ok)
+        .any(|e| e.file_name().to_string_lossy().starts_with("age-plugin-"))
+}

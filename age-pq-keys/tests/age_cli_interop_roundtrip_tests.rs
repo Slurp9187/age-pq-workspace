@@ -3,7 +3,6 @@ use age_pq_keys::HybridRecipient;
 use std::fs;
 use std::io::Write;
 use std::iter::once;
-use std::process::Command;
 use tempfile::NamedTempFile;
 
 mod common;
@@ -53,8 +52,18 @@ fn test_create_and_verify_pq_encryption_with_cli() {
     // Save decrypted to temp file
     let temp_decrypted = NamedTempFile::new().unwrap();
 
-    // Run age CLI to decrypt to file (assert success)
-    let output = Command::new("age")
+    // The identity must be age's *native* format. If this ever became
+    // AGE-PLUGIN-PQ-, age would route to our own plugin and this test would
+    // quietly stop being cross-implementation evidence.
+    assert!(
+        identity_str.starts_with("AGE-SECRET-KEY-PQ-"),
+        "interop must use age's native identity format, got: {:.24}...",
+        identity_str
+    );
+
+    // Decrypt with a PATH that cannot reach any age plugin, so age is forced
+    // down its own native code path. See common::age_command_without_plugins.
+    let output = common::age_command_without_plugins()
         .args([
             "-d",
             "-i",
@@ -74,4 +83,29 @@ fn test_create_and_verify_pq_encryption_with_cli() {
 
     // Verify decrypted file matches lorem.txt exactly byte-for-byte
     assert_eq!(fs::read(temp_decrypted.path()).unwrap(), plaintext);
+}
+
+/// Self-test for the safeguard above.
+///
+/// A filter that quietly matched nothing would restore the exact circularity it
+/// exists to prevent, and every test would still pass. So assert both halves:
+/// the unfiltered `PATH` *does* reach an age plugin under `cargo test` (proving
+/// the hazard is real and the filter is not vacuous), and the filtered one does
+/// not (proving the filter works).
+#[test]
+fn plugin_free_path_actually_removes_the_plugin() {
+    let all: Vec<_> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let reachable_before = all.iter().any(|d| common::contains_age_plugin(d));
+    assert!(
+        reachable_before,
+        "expected an age-plugin-* binary on PATH under `cargo test` (Cargo adds          target/debug). If this ever stops holding, the filter below is vacuous          and this safeguard proves nothing — investigate rather than deleting it."
+    );
+
+    let filtered = common::plugin_free_path();
+    assert!(
+        !filtered.iter().any(|d| common::contains_age_plugin(d)),
+        "an age plugin is still reachable after filtering; the interop test          could route through our own plugin instead of age's native code"
+    );
 }

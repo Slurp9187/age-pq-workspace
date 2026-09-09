@@ -66,6 +66,25 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
     emits, so it needs no age binary.
   - Rename the **bin target** and the same test fails to compile, because
     `env!("CARGO_BIN_EXE_age-plugin-pq")` no longer resolves.
+
+- **Never let an interop test reach our own plugin.** Cargo puts the build
+  output directory (`target/debug`) on `PATH` for every test process, so
+  `age-plugin-pq` is reachable by default. If a test in `age-pq-keys` handed
+  `age` an `AGE-PLUGIN-PQ-` identity, age would spawn *our* plugin and
+  "interoperability with the Go age CLI" would silently become
+  "interoperability with our own code" — still green, proving nothing.
+
+  `age-pq-keys/tests/common.rs::age_command_without_plugins` strips every
+  directory containing an `age-plugin-*` binary from the child's `PATH`, and
+  the interop test asserts its identity is the native `AGE-SECRET-KEY-PQ-`
+  form. `plugin_free_path_actually_removes_the_plugin` guards the guard: it
+  asserts a plugin *is* reachable before filtering, so the filter can never
+  pass vacuously.
+
+  `age-plugin-pq`'s own tests deliberately do the opposite — there, Cargo
+  putting the fresh binary on `PATH` is what makes discovery testable, and it
+  means age exercises the build from this run rather than a stale global
+  install. Do not "fix" that by installing the plugin system-wide.
 - **MSRV is `1.70`** (workspace `rust-toolchain.toml`), and this is the **last
   release on it**. The next release moves to **MSRV 1.85** — that decision is
   made; it does not need re-litigating, but nothing in this release may depend

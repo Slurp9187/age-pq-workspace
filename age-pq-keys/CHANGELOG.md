@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Interop tests can no longer route through our own age plugin.** Cargo puts
+  `target/debug` on `PATH` for test processes, so `age-plugin-pq` was reachable
+  whenever these ran. The identities used are native (`AGE-SECRET-KEY-PQ-`), so
+  age handled them itself — verified by re-running with the plugin hidden — but
+  nothing *enforced* that. Had the identity format ever changed, the test would
+  have quietly stopped being cross-implementation evidence while still passing.
+
+  `age` is now invoked with every directory containing an `age-plugin-*` binary
+  stripped from `PATH`, and the test asserts the native identity format.
+  `plugin_free_path_actually_removes_the_plugin` guards the guard by asserting a
+  plugin *is* reachable before filtering, so the filter cannot pass vacuously.
+
+
 ### Changed (BREAKING)
 
 - **Crate renamed `age-recipient-pq` → `age-pq-keys`.** Import paths change from
