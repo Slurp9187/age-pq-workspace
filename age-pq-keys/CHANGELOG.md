@@ -115,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
-- `docs/pq-recipient-upgrade-instructions.md` still contains legacy `pq_xwing_hpke` import examples; migrate using `age_pq_hpke` and the paths in `src/lib.rs` instead.
+- `docs/age-pq-keys-upgrade-instructions.md` still contains legacy `pq_xwing_hpke` import examples; migrate using `age_pq_hpke` and the paths in `src/lib.rs` instead.
 
 ### Upstream `age-pq-hpke` v0.0.4 (consumer summary)
 
