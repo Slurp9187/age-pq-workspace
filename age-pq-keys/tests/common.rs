@@ -1,54 +1,36 @@
 use std::process::Command;
 
-/// Setting this makes a missing `age` CLI a hard failure instead of a skip.
-///
-/// A skipped test reports as **passed**. Without this gate an interop suite is
-/// green whether or not it ever ran, which is indistinguishable, in any
-/// dashboard, from a suite that actually passed. CI sets it; local runs
-/// generally do not, so developers without the binary still get a useful run.
-const REQUIRED_ENV: &str = "AGE_INTEROP_REQUIRED";
-
 /// Minimum age CLI version: 1.3.0 is the first release with native
 /// post-quantum support (`mlkem768x25519`).
 const MIN_MAJOR: u32 = 1;
 const MIN_MINOR: u32 = 3;
 
-/// Returns the reported version string, or `None` if the binary is absent or
-/// unrunnable.
-fn age_cli_version() -> Option<String> {
-    let output = Command::new("age").arg("--version").output().ok()?;
-    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if raw.is_empty() {
-        return None;
-    }
-    Some(raw)
-}
-
-/// Returns `true` when the caller should proceed with an age-CLI interop test.
+/// Asserts an age CLI of at least 1.3.0 is on `PATH`, returning its version.
 ///
-/// * binary present and new enough — `true`
-/// * binary present but too old — panics; that is a misconfigured environment,
-///   not a reason to silently pass
-/// * binary absent — panics when `AGE_INTEROP_REQUIRED` is set, otherwise
-///   prints a skip notice and returns `false`
-#[allow(dead_code)] // not every test binary that includes this module uses it
-pub fn require_age_cli() -> bool {
-    let raw = match age_cli_version() {
-        Some(v) => v,
-        None => {
-            if std::env::var_os(REQUIRED_ENV).is_some() {
-                panic!(
-                    "age CLI not found, but {REQUIRED_ENV} is set. Install age \
-                     >= {MIN_MAJOR}.{MIN_MINOR}.0 or unset {REQUIRED_ENV} to skip."
-                );
-            }
-            eprintln!(
-                "SKIPPED: age CLI not available (set {REQUIRED_ENV}=1 to make this a failure)"
-            );
-            return false;
-        }
-    };
+/// This **panics** rather than skipping. Tests that need the binary are marked
+/// `#[ignore]`, so reaching this function means the runner explicitly asked for
+/// them (`--include-ignored`) — at which point a missing binary is a failure,
+/// not a reason to report success.
+///
+/// The previous design auto-detected the binary and returned `false` to skip.
+/// That was worse than it looked: the libtest harness captures stderr for
+/// passing tests, so the `SKIPPED` notice was never displayed, and a developer
+/// without the binary saw a plain `ok`. `#[ignore]` puts the same information
+/// in the result line itself, where it cannot be swallowed.
+#[allow(dead_code)] // not every test binary including this module uses it
+pub fn require_age_cli() -> String {
+    let output = Command::new("age")
+        .arg("--version")
+        .output()
+        .unwrap_or_else(|e| {
+            panic!(
+                "age CLI not found on PATH ({e}). These tests are #[ignore]d and only run when \
+             explicitly requested. Install age >= {MIN_MAJOR}.{MIN_MINOR}.0 — \
+             scripts/install-age.sh does it with a pinned, checksum-verified release."
+            )
+        });
 
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let version = raw.trim_start_matches('v');
     let parts: Vec<&str> = version.split('.').collect();
     if parts.len() < 2 {
@@ -59,8 +41,8 @@ pub fn require_age_cli() -> bool {
     if major < MIN_MAJOR || (major == MIN_MAJOR && minor < MIN_MINOR) {
         panic!(
             "these tests require age CLI >= {MIN_MAJOR}.{MIN_MINOR}.0 \
-             (native post-quantum support), found {raw:?}"
+             (first release with native post-quantum support), found {raw:?}"
         );
     }
-    true
+    raw
 }

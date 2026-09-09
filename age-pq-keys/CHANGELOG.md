@@ -22,9 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a skipped test reports as **passed** — so the only cross-implementation
   coverage in the workspace was green whether or not it executed.
 
-  `AGE_INTEROP_REQUIRED=1` now turns a missing binary into a failure; CI sets it
-  and installs age v1.3.2. Without the variable the tests still skip, so
-  contributors without the binary keep a useful local run.
+  The test that genuinely shells out is now `#[ignore]`d, so a normal
+  `cargo test` reports it as **ignored** — in the result line and the count,
+  where libtest cannot swallow it. CI runs it with `--include-ignored`, and at
+  that point a missing binary is a hard failure.
+
+  An earlier attempt gated this on an `AGE_INTEROP_REQUIRED` environment
+  variable and skipped otherwise. That was still wrong locally: libtest captures
+  stderr for passing tests, so the `SKIPPED` notice was never displayed and a
+  developer without the binary saw a plain `ok`. `#[ignore]` is the built-in
+  mechanism for exactly this and needs no custom machinery.
 
   Separately, `test_decrypt_lorem_encrypted_with_age_cli` **never invoked the
   `age` binary at all** — it decrypts a stored Go age CLI v1.3.1 fixture using

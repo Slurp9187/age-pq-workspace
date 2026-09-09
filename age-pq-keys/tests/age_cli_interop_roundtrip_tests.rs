@@ -10,13 +10,18 @@ mod common;
 
 const LOREM_FILE: &str = "tests/data/lorem.txt";
 
+/// Encrypts with this crate and decrypts with the **real Go age CLI**, proving
+/// the ciphertext we produce is readable by another implementation.
+///
+/// `#[ignore]` because it shells out to a binary that is not guaranteed to be
+/// installed. A normal `cargo test` reports it as `ignored` — visibly, in the
+/// result line — rather than silently passing. CI runs it via
+/// `--include-ignored`, where a missing binary is a hard failure.
 #[test]
+#[ignore = "requires age CLI >= 1.3 on PATH; run with --include-ignored"]
 fn test_create_and_verify_pq_encryption_with_cli() {
-    // This one genuinely shells out, so it needs the binary. In CI,
-    // AGE_INTEROP_REQUIRED=1 turns absence into a failure rather than a skip.
-    if !common::require_age_cli() {
-        return;
-    }
+    let age_version = common::require_age_cli();
+    eprintln!("interop against age {age_version}");
 
     // Generate PQ keys (same as binary)
     let (recipient, identity) = HybridRecipient::generate().unwrap();

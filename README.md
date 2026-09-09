@@ -83,6 +83,28 @@ age-pq-workspace/
 - **Build profiles** — `opt-level = 2` in dev (crypto math is unusably slow at O0);
   debug symbols retained in bench for profiling.
 
+## Running the tests
+
+```sh
+cargo test --workspace
+```
+
+Interop tests that shell out to the real Go `age` CLI are `#[ignore]`d, so the
+command above reports them as *ignored* rather than pretending they passed. To
+run them:
+
+```sh
+./scripts/install-age.sh ~/.local/bin      # pinned version, sha256-verified
+cargo test --workspace -- --include-ignored
+```
+
+age **1.3.0 or newer** is required — that is the first release with native
+post-quantum support, and Ubuntu packages something far older. If the binary is
+missing when you ask for these tests, they fail rather than skip.
+
+Everything else, including the C2SP CCTV conformance vectors, runs with no
+external binary.
+
 ## MSRV policy
 
 MSRV is **Rust 1.70**, matching `age 0.11.2`. Two transitive dependencies require
