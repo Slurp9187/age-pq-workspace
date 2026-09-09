@@ -4,8 +4,8 @@ Status: **Locked.** Implemented across `age-hpke-pq 0.0.7`,
 `age-recipient-pq 0.0.6`, `age-plugin-pq 0.0.2`.
 
 Supersedes the `DECIDE-2` / `DECIDE-5` / `DECIDE-6` entries in
-[`../plans/age-hpke-pq-secure-gate-hardening.md`](../plans/age-hpke-pq-secure-gate-hardening.md),
-which reached the same conclusion for return types only. This record extends it
+`docs/plans/age-hpke-pq-secure-gate-hardening.md` (untracked — `.gitignore:8`
+excludes `**/plan*/`), which reached the same conclusion for return types only. This record extends it
 to parameters and fields, and explains the one case where the opposite choice is
 correct.
 
