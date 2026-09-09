@@ -16,8 +16,7 @@ age-pq-hpke = { path = "../age-pq-hpke" }
 age = "0.11"
 age-core = "0.11"
 base64 = "0.22"
-bech32 = "0.11"
-secure-gate = { workspace = true }
+secure-gate = { workspace = true, features = ["encoding-bech32"] }
 # unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
 unicode-ident = { workspace = true }
 

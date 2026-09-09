@@ -419,7 +419,7 @@ escape points. Anything outside this list is suspect.
 | Call | Reason |
 |------|--------|
 | `age::Recipient::wrap_file_key` / `age::Identity::unwrap_stanza` | Trait expects `&FileKey` / returns `Vec<Stanza>` |
-| `bech32::encode` / `decode` | If used directly; prefer secure-gate's `to_bech32m_zeroizing` instead |
+| ~~`bech32::encode` / `decode`~~ | **Removed in #11.** Neither crate depends on `bech32` directly any more; encoding goes through secure-gate's `try_to_bech32*` / `try_from_bech32*`. (The `*_zeroizing` twins this row recommended no longer exist either — they were dropped in secure-gate rc.12 in favour of `EncodedSecret`.) |
 | `base64::engine::*::encode_into_slice` / `decode` | If used directly; prefer secure-gate equivalents |
 
 **`age-plugin-pq`:**

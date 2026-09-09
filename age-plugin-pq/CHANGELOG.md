@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **bech32 encoding moved to secure-gate** (#11), removing a `bech32::Checksum`
+  impl that was byte-identical to the one in `age-pq-keys` — the duplication the
+  issue was about. Encoded output is unchanged. `bech32` is no longer a direct
+  dependency, and the dead `SeedBytes` alias went with it.
+- `--identity` conversion now decodes via `Seed32::try_from_bech32`, which
+  validates the length in the same step and never materialises the seed in a
+  heap `Vec`.
+- Identity case is applied inside the encoder (`Case::Upper`) rather than as a
+  separate `make_ascii_uppercase` step, so there is no second buffer and no
+  separate step for a refactor to drop.
+
+
 ### Added
 
 - **`identity_hrp_matches_the_binary_name_age_will_look_for`** — asserts the

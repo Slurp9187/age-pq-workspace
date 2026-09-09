@@ -65,46 +65,46 @@ mod aliases;
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
 use age_pq_hpke::hpke::{new_recipient, new_sender};
+use age_pq_hpke::kem::mlkem768x25519::MLKEM768X25519_ENCAPSULATION_KEY_SIZE;
 use age_pq_hpke::kem::{Kem, MlKem768X25519};
 use age_pq_hpke::{aead::new_aead, kdf::new_kdf};
 use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
-use bech32::primitives::checksum::Checksum;
-use bech32::primitives::decode::CheckedHrpstring;
-use bech32::{encode, Bech32, Hrp};
 // `ExposeSecret` here is `age`'s (re-exported `secrecy`) trait, needed for `FileKey`.
 // secure-gate wrappers are read through `RevealSecret` / `RevealSecretMut` instead, so
 // the two never compete: each method resolves on its own receiver type.
-use crate::aliases::{FileKeyBytes, IdentityEncoding, Seed32, SeedBytes};
+use crate::aliases::{FileKeyBytes, RecipientBytes, Seed32, SeedBytes};
 use secrecy::ExposeSecret;
-use secure_gate::{RevealSecret, RevealSecretMut};
+use secure_gate::{bech32_code_length, Case, RevealSecret, ToBech32};
 use std::collections::HashSet;
 use std::str::FromStr;
 
-/// Custom checksum that matches classic Bech32 (BIP-173) exactly,
-/// including the original theoretical maximum code length of 4096 characters.
+/// Human-readable part of an `age1pq` recipient.
+const RECIPIENT_HRP: &str = "age1pq";
+
+/// Human-readable part of a native hybrid identity.
+const IDENTITY_HRP: &str = "age-secret-key-pq-";
+
+/// Bech32 code length for an `age1pq` recipient, derived from the key size.
 ///
-/// This is the "standard" long variant from early implementations:
-/// - Full compatibility with official age v1.3+ (uses classic Bech32 constants)
-/// - Proper 6-character checksum with error detection
-/// - CODE_LENGTH = 8192 (payload up to ~4090 chars / ~2556 bytes)
+/// A recipient is 1216 bytes, which encodes to 1959 characters - far past
+/// standard bech32's 90-character limit, which is why a caller-chosen code
+/// length is needed at all.
 ///
-/// Your ~1959-char hybrid public keys fit easily (plenty of headroom).
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum HybridRecipientBech32 {}
-
-impl Checksum for HybridRecipientBech32 {
-    type MidstateRepr = u32;
-
-    // The "standard" theoretical max from early BIP-173 discussions/impls
-    const CODE_LENGTH: usize = 8192;
-
-    const CHECKSUM_LENGTH: usize = 6;
-
-    const GENERATOR_SH: [u32; 5] = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
-
-    // Classic constant (matches official age)
-    const TARGET_RESIDUE: u32 = 1;
-}
+/// **This is a length gate, not a strength parameter.** It never enters the
+/// checksum computation, so the encoded output is byte-identical at any
+/// sufficient value; the hand-rolled `CODE_LENGTH = 8192` this replaced
+/// produced the same bytes. What it changes is that over-long input is rejected
+/// on length rather than processed.
+///
+/// The bech32 checksum is a BCH code proven to detect up to 4 errors within
+/// 1023 characters. At 1959 we are past that bound and no choice of code length
+/// restores it - that is inherent to bech32-encoding a 1216-byte key, not a
+/// decision made here. The checksum is still computed and verified; it simply
+/// stops promising what BIP-173 proves. (The comment this replaced claimed
+/// error detection, claimed a 4096 maximum while setting 8192, and carried a
+/// byte estimate off by roughly half.)
+const RECIPIENT_CODE_LENGTH: usize =
+    bech32_code_length(RECIPIENT_HRP.len(), MLKEM768X25519_ENCAPSULATION_KEY_SIZE);
 
 /// The stanza tag identifying this post-quantum hybrid recipient in the age file format.
 /// This tag is "mlkem768x25519" to indicate ML-KEM-768 combined with X25519.
@@ -140,8 +140,13 @@ fn header_failure() -> Option<Result<FileKey, age::DecryptError>> {
 /// This struct holds the public key bytes and provides methods to wrap file keys in the age format.
 /// It implements [`age::Recipient`] for integration with the age encryption tool.
 pub struct HybridRecipient {
-    /// The public key bytes, consisting of the ML-KEM-768 public key concatenated with the X25519 public key.
-    pub pub_key: Vec<u8>,
+    /// ML-KEM-768 public key concatenated with the X25519 public key.
+    ///
+    /// Private, and always exactly `MLKEM768X25519_ENCAPSULATION_KEY_SIZE`
+    /// bytes. This was a `pub` field with no validation anywhere, which made
+    /// the `expect` in [`Self::to_string`] reachable by assigning a longer
+    /// vector. Validating once here is what lets that `expect` be honest.
+    pub_key: Vec<u8>,
 }
 
 impl HybridRecipient {
@@ -177,35 +182,49 @@ impl HybridRecipient {
     /// The expected format is a Bech32-encoded string with HRP "age1pq" and the public key as data.
     /// Uses the classic Bech32 checksum (higher length limit).
     pub fn parse(s: &str) -> Result<Self, age::EncryptError> {
-        let checked = CheckedHrpstring::new::<HybridRecipientBech32>(s).map_err(|e| {
-            age::EncryptError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-        })?;
+        let bytes =
+            RecipientBytes::try_from_bech32_sized::<RECIPIENT_CODE_LENGTH>(s, RECIPIENT_HRP)
+                // Static message rather than the decode error: bech32's own
+                // Display echoes input-derived characters, and error payloads
+                // in this workspace stay free of caller data.
+                .map_err(|_| {
+                    age::EncryptError::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "malformed age1pq recipient",
+                    ))
+                })?;
+        Self::from_bytes(bytes.into_inner())
+    }
 
-        let expected_hrp = Hrp::parse("age1pq").map_err(|_| {
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid HRP",
-            ))
-        })?;
-
-        if checked.hrp() != expected_hrp {
+    /// Wraps raw public-key bytes, validating the length.
+    ///
+    /// The only way to build a `HybridRecipient` from bytes. See the field
+    /// comment for why the length check is not optional.
+    pub fn from_bytes(pub_key: Vec<u8>) -> Result<Self, age::EncryptError> {
+        if pub_key.len() != MLKEM768X25519_ENCAPSULATION_KEY_SIZE {
             return Err(age::EncryptError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "wrong HRP for hybrid recipient",
+                "hybrid recipient must be exactly 1216 bytes",
             )));
         }
-
-        let pub_key = checked.byte_iter().collect();
-
         Ok(Self { pub_key })
+    }
+
+    /// The raw public-key bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.pub_key
     }
 
     /// Serializes the recipient to its canonical string format (lowercase HRP).
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        let hrp = Hrp::parse("age1pq").expect("static valid HRP");
-        encode::<HybridRecipientBech32>(hrp, &self.pub_key)
-            .expect("encoding with valid data never fails")
+        // Infallible because `pub_key` is length-validated at construction and
+        // RECIPIENT_CODE_LENGTH is derived from that same length.
+        self.pub_key
+            .try_to_bech32_sized::<RECIPIENT_CODE_LENGTH>(RECIPIENT_HRP, Case::Lower)
+            .expect("a length-validated recipient always encodes")
+            // The recipient is public data; this is not a protection downgrade.
+            .into_inner()
     }
 }
 
@@ -276,35 +295,16 @@ impl HybridIdentity {
     /// The format uses HRP "AGE-SECRET-KEY-PQ-" (case-insensitive) and contains the 32-byte seed.
     /// Uses the classic Bech32 checksum (higher length limit).
     pub fn parse(s: &str) -> Result<Self, age::DecryptError> {
-        let checked = CheckedHrpstring::new::<Bech32>(s).map_err(|e| {
-            age::DecryptError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-        })?;
-
-        let expected_hrp = Hrp::parse("age-secret-key-pq-").map_err(|_| {
+        // Decodes straight into the wrapper's own storage. The path this
+        // replaced collected the payload into a heap `Vec<u8>` first, then
+        // validated its length.
+        // The error must not carry any of `s` - `s` is the private key.
+        let seed = Seed32::try_from_bech32(s, IDENTITY_HRP).map_err(|_| {
             age::DecryptError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "invalid HRP",
+                "malformed hybrid identity",
             ))
         })?;
-
-        if checked.hrp() != expected_hrp {
-            return Err(age::DecryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "wrong HRP for hybrid identity",
-            )));
-        }
-
-        // The bech32 payload is the private key; wrap it before it is validated.
-        let seed_bytes = SeedBytes::new(checked.byte_iter().collect::<Vec<u8>>());
-        let seed = seed_bytes
-            .with_secret(|b| Seed32::try_from(b.as_slice()))
-            .map_err(|_| {
-                age::DecryptError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Invalid seed length",
-                ))
-            })?;
-
         Ok(Self { seed })
     }
 
@@ -325,15 +325,13 @@ impl HybridIdentity {
     /// ```
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        let hrp = Hrp::parse("age-secret-key-pq-").expect("static valid HRP");
-        // Build and case-normalize inside the wrapper so the only unprotected copy is
-        // the one handed to the caller. `make_ascii_uppercase` mutates in place, so no
-        // second buffer is produced along the way.
-        let mut encoded = IdentityEncoding::new(self.seed.with_secret(|seed| {
-            encode::<Bech32>(hrp, seed).expect("encoding with valid data never fails")
-        }));
-        encoded.with_secret_mut(|s| s.make_ascii_uppercase());
-        encoded.with_secret(|s| s.clone())
+        // `Case::Upper` is applied inside the encoder, on the buffer it already
+        // owns - no second allocation, and no separate uppercase step that a
+        // later refactor could drop.
+        self.seed
+            .try_to_bech32(IDENTITY_HRP, Case::Upper)
+            .expect("a 32-byte seed always encodes")
+            .into_inner()
     }
 
     /// Derives the public recipient from this identity.
@@ -342,9 +340,8 @@ impl HybridIdentity {
         let sk = self.seed.with_secret(|seed| kem.new_private_key(seed))?;
         let pk = sk.public_key();
         let pub_key_bytes = pk.bytes();
-        Ok(HybridRecipient {
-            pub_key: pub_key_bytes,
-        })
+        HybridRecipient::from_bytes(pub_key_bytes)
+            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
     }
 }
 

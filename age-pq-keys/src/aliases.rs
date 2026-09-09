@@ -18,6 +18,12 @@ fixed_newtype!(
 );
 
 dynamic_newtype!(
+    pub(crate) RecipientBytes,
+    Vec<u8>,
+    "Decoded bech32 payload of an `age1pq` recipient, in transit before it is length-validated into a `HybridRecipient`. Public data - wrapped for the named role and the decode constructors, not for secrecy."
+);
+
+dynamic_newtype!(
     pub(crate) SeedBytes,
     Vec<u8>,
     "Variable-length seed material in transit, before it is validated into a `Seed32`: \
