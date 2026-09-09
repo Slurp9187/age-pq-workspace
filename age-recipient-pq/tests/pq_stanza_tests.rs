@@ -50,8 +50,12 @@ fn pq_stanza_unwrap_invalid_tag() {
     assert!(result.is_none()); // Should not match
 }
 
+/// A stanza that claims our tag but is malformed must fail the header, not be
+/// skipped. `None` means "not addressed to this identity"; using it for
+/// malformed input lets a tampered header slip past. See `tests/testkit.rs`
+/// (`hybrid_not_canonical_enc`) for the CCTV vector covering this.
 #[test]
-fn pq_stanza_unwrap_malformed_ciphertext() {
+fn pq_stanza_unwrap_malformed_ciphertext_is_header_failure() {
     let (_, identity) = HybridRecipient::generate().unwrap();
     let malformed_stanza = Stanza {
         tag: "mlkem768x25519".to_string(),
@@ -59,8 +63,47 @@ fn pq_stanza_unwrap_malformed_ciphertext() {
         body: vec![0; 32],
     };
 
-    let result = identity.unwrap_stanzas(&[malformed_stanza]);
-    assert!(result.is_none()); // Should fail gracefully
+    // `FileKey` has no `Debug` (it is secret), so describe each arm instead.
+    match identity.unwrap_stanzas(&[malformed_stanza]) {
+        Some(Err(age::DecryptError::InvalidHeader)) => {}
+        Some(Err(e)) => panic!("expected InvalidHeader, got {e:?}"),
+        Some(Ok(_)) => panic!("expected InvalidHeader, but the stanza decrypted"),
+        None => panic!("expected InvalidHeader, but the stanza was skipped"),
+    }
+}
+
+/// The counterpart to the test above: a stanza with a *different* tag is
+/// genuinely not ours, so it is skipped rather than failing the file.
+#[test]
+fn pq_stanza_unwrap_foreign_tag_is_skipped() {
+    let (_, identity) = HybridRecipient::generate().unwrap();
+    let foreign = Stanza {
+        tag: "X25519".to_string(),
+        args: vec!["whatever".to_string()],
+        body: vec![0; 32],
+    };
+
+    assert!(identity.unwrap_stanzas(&[foreign]).is_none());
+}
+
+/// Exactly one argument is required. The two-argument form that repeated the
+/// tag was accepted historically; no age implementation emits it, and
+/// accepting it diverges from the spec (CCTV `hybrid_extra_argument`).
+#[test]
+fn pq_stanza_unwrap_rejects_extra_argument() {
+    let (_, identity) = HybridRecipient::generate().unwrap();
+    let extra = Stanza {
+        tag: "mlkem768x25519".to_string(),
+        args: vec!["mlkem768x25519".to_string(), "AAAA".to_string()],
+        body: vec![0; 32],
+    };
+
+    match identity.unwrap_stanzas(&[extra]) {
+        Some(Err(age::DecryptError::InvalidHeader)) => {}
+        Some(Err(e)) => panic!("expected InvalidHeader, got {e:?}"),
+        Some(Ok(_)) => panic!("expected InvalidHeader, but the stanza decrypted"),
+        None => panic!("expected InvalidHeader, but the stanza was skipped"),
+    }
 }
 
 // #[test]

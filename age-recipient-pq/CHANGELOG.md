@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Stanza validation hardened to match the age specification.** A stanza
+  carrying the `mlkem768x25519` tag must now have exactly one argument, a
+  canonical-base64 `enc` of 1120 bytes, and a 32-byte body — the body length is
+  checked *before* any decryption is attempted, which is the partitioning-oracle
+  mitigation the spec requires. Failures of this kind now produce a fatal
+  `InvalidHeader` instead of `None`; returning `None` meant "not addressed to
+  this identity", so tampered headers were silently skipped rather than
+  rejected. Decapsulation failure is fatal while AEAD-open failure remains a
+  skip, matching age-go's `pq.go`. Six C2SP CCTV vectors covered this. See
+  `docs/design/cctv-conformance.md` and issue #13.
+
+### Removed (BREAKING)
+
+- **The legacy two-argument stanza form is no longer accepted.** Stanzas that
+  repeated the tag as `args[0]` were previously tolerated for "backward
+  compatibility with older PQ implementations". No age implementation emits that
+  form, and accepting it diverged from the spec (CCTV `hybrid_extra_argument`).
+
+### Added
+
+- **C2SP CCTV conformance harness** (`tests/testkit.rs`) running the 19
+  `hybrid_*` / `armor_hybrid` vectors through `age::Decryptor`. 19/19 pass.
+
 ### Changed (BREAKING)
 
 - **`secrecy` and `zeroize` replaced by `secure-gate`.** Both direct dependencies

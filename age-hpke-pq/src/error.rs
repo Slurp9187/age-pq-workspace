@@ -59,6 +59,15 @@ pub enum Error {
     #[error("Invalid X25519 private key")]
     InvalidX25519PrivateKey,
 
+    /// X25519 Diffie-Hellman produced the all-zero (non-contributory) shared
+    /// secret, which means the peer's public key was a low-order point.
+    ///
+    /// Accepting this would collapse the classical half of the hybrid KEM to a
+    /// known constant, so it is rejected. Official age and rage reject it too;
+    /// the CCTV `hybrid_low_order` and `hybrid_identity` vectors cover it.
+    #[error("X25519 Diffie-Hellman failed (non-contributory shared secret)")]
+    X25519DiffieHellmanFailed,
+
     /// Invalid X448 public key format.
     #[error("Invalid X448 public key")]
     InvalidX448PublicKey,
