@@ -1,6 +1,8 @@
 //! ML-KEM-768 primitive helpers used by the hybrid X-Wing KEM.
 
-use crate::aliases::{MlKem768Ciphertext1088, MlKem768PublicKey1184, MlKemSeed64, Seed32, SharedSecret32};
+use crate::aliases::{
+    MlKem768Ciphertext1088, MlKem768PublicKey1184, MlKemSeed64, Seed32, SharedSecret32,
+};
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem768::{
     decapsulate, encapsulate, generate_key_pair as mlkem768_generate_key_pair, MlKem768Ciphertext,
@@ -38,8 +40,10 @@ pub(crate) fn encapsulate_with_seed(
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
     let r = randomness.into_inner();
     let (ct_m, ss_m) = encapsulate(&pk_m, *r);
-    let ct_m_bytes: [u8; MLKEM768_CT_SIZE] =
-        ct_m.as_ref().try_into().map_err(|_| Error::ArraySizeError)?;
+    let ct_m_bytes: [u8; MLKEM768_CT_SIZE] = ct_m
+        .as_ref()
+        .try_into()
+        .map_err(|_| Error::ArraySizeError)?;
     Ok((ct_m_bytes, SharedSecret32::from(ss_m)))
 }
 

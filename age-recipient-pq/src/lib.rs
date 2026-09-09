@@ -55,7 +55,6 @@
 ///
 /// [`age`]: https://docs.rs/age/
 /// [`rage`]: https://github.com/str4d/rage
-
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
 use age_core::secrecy::SecretString;

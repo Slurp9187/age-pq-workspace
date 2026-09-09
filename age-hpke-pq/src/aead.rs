@@ -119,7 +119,10 @@ impl CipherAead for ChaChaCipher {
         // Tier-2: ChaNonce::from_slice takes &[u8]. The wrapped nonce stays
         // alive for the duration of the call; no intermediate array binding.
         let cipher_nonce = ChaNonce::from_slice(nonce.expose_secret());
-        let payload = Payload { msg: plaintext, aad };
+        let payload = Payload {
+            msg: plaintext,
+            aad,
+        };
         self.cipher
             .encrypt(cipher_nonce, payload)
             .map_err(|_| Error::EncryptionFailed)
@@ -129,7 +132,10 @@ impl CipherAead for ChaChaCipher {
         let nonce = Nonce12::try_from(nonce).map_err(|_| Error::InvalidLength)?;
         // Tier-2: ChaNonce::from_slice takes &[u8].
         let cipher_nonce = ChaNonce::from_slice(nonce.expose_secret());
-        let payload = Payload { msg: ciphertext, aad };
+        let payload = Payload {
+            msg: ciphertext,
+            aad,
+        };
         self.cipher
             .decrypt(cipher_nonce, payload)
             .map_err(|_| Error::DecryptionFailed)

@@ -6,8 +6,7 @@
 //! - assert unsupported family operations return `InvalidOperationForKdf`
 
 use age_hpke_pq::{
-    kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, Shake128Kdf,
-    Shake256Kdf,
+    kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, Shake128Kdf, Shake256Kdf,
 };
 
 fn assert_hkdf_extract_output_len<K: Kdf>(kdf: K, expected_len: usize) -> Result<(), Error> {
@@ -16,7 +15,11 @@ fn assert_hkdf_extract_output_len<K: Kdf>(kdf: K, expected_len: usize) -> Result
     Ok(())
 }
 
-fn assert_hkdf_expand_output_len<K: Kdf>(kdf: K, random_key: &[u8], length: u16) -> Result<(), Error> {
+fn assert_hkdf_expand_output_len<K: Kdf>(
+    kdf: K,
+    random_key: &[u8],
+    length: u16,
+) -> Result<(), Error> {
     let result = kdf.labeled_expand(b"suite", random_key, "test", b"info", length)?;
     assert_eq!(result.len(), length as usize);
     Ok(())

@@ -43,8 +43,7 @@ impl Checksum for HybridRecipientBech32 {
     type MidstateRepr = u32;
     const CODE_LENGTH: usize = 8192;
     const CHECKSUM_LENGTH: usize = 6;
-    const GENERATOR_SH: [u32; 5] =
-        [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+    const GENERATOR_SH: [u32; 5] = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
     const TARGET_RESIDUE: u32 = 1;
 }
 
@@ -119,12 +118,7 @@ impl RecipientPluginV1 for RecipientPlugin {
         Ok(())
     }
 
-    fn add_identity(
-        &mut self,
-        _: usize,
-        _: &str,
-        _: &[u8],
-    ) -> Result<(), recipient::Error> {
+    fn add_identity(&mut self, _: usize, _: &str, _: &[u8]) -> Result<(), recipient::Error> {
         Err(recipient::Error::Internal {
             message: "identities not supported for encryption".into(),
         })
@@ -148,8 +142,7 @@ impl RecipientPluginV1 for RecipientPlugin {
         }
 
         let num_files = file_keys.len();
-        let mut stanzas_per_file: Vec<Vec<Stanza>> =
-            (0..num_files).map(|_| vec![]).collect();
+        let mut stanzas_per_file: Vec<Vec<Stanza>> = (0..num_files).map(|_| vec![]).collect();
         let mut errors = vec![];
 
         for (recip_idx, pk) in self.recipients.iter().enumerate() {
@@ -177,9 +170,7 @@ impl RecipientPluginV1 for RecipientPlugin {
                 let nonce_bytes = compute_nonce(&base_nonce, i as u64);
                 let nonce = Nonce::from(nonce_bytes);
 
-                if let Ok(body) =
-                    aead.encrypt(&nonce, file_keys[i].expose_secret().as_slice())
-                {
+                if let Ok(body) = aead.encrypt(&nonce, file_keys[i].expose_secret().as_slice()) {
                     stanzas_per_file[i].push(Stanza {
                         tag: STANZA_TAG.to_string(),
                         args: vec![ct_b64.clone()],
@@ -294,14 +285,13 @@ impl IdentityPluginV1 for IdentityPlugin {
                         Err(_) => continue,
                     };
 
-                    let (mut key_bytes, base_nonce) =
-                        match derive_key_and_nonce(&ss, PQ_LABEL) {
-                            Ok(r) => r,
-                            Err(_) => {
-                                ss.zeroize();
-                                continue;
-                            }
-                        };
+                    let (mut key_bytes, base_nonce) = match derive_key_and_nonce(&ss, PQ_LABEL) {
+                        Ok(r) => r,
+                        Err(_) => {
+                            ss.zeroize();
+                            continue;
+                        }
+                    };
 
                     let nonce_bytes = compute_nonce(&base_nonce, file_idx as u64);
                     let nonce = Nonce::from(nonce_bytes);
@@ -444,7 +434,11 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
     let recipient = bech32_encode::<HybridRecipientBech32>(recipient_hrp, pk.to_bytes().as_ref())
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-    let identity_hrp_str = if native { NATIVE_IDENTITY_HRP } else { IDENTITY_BECH32_HRP };
+    let identity_hrp_str = if native {
+        NATIVE_IDENTITY_HRP
+    } else {
+        IDENTITY_BECH32_HRP
+    };
     let identity_hrp = Hrp::parse(identity_hrp_str)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     // Bech32-encoded private key carries the seed; keep the String wrapped
@@ -490,7 +484,11 @@ fn convert_native_identities() -> io::Result<()> {
         let parsed = CheckedHrpstring::new::<Bech32>(line)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid bech32"))?;
 
-        if !parsed.hrp().as_str().eq_ignore_ascii_case(NATIVE_IDENTITY_HRP) {
+        if !parsed
+            .hrp()
+            .as_str()
+            .eq_ignore_ascii_case(NATIVE_IDENTITY_HRP)
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "not a native PQ identity",

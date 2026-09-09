@@ -83,8 +83,7 @@ fn test_official_kat_vectors() {
             .try_into()
             .expect("Invalid ss length");
         assert_eq!(
-            &ss_sender,
-            &ss_expected,
+            &ss_sender, &ss_expected,
             "Shared secret mismatch (sender) in vector {}",
             i
         );
@@ -92,8 +91,7 @@ fn test_official_kat_vectors() {
         // 5. Decapsulation round-trip
         let ss_receiver = sk.decapsulate(&ct).unwrap();
         assert_eq!(
-            &ss_receiver,
-            &ss_expected,
+            &ss_receiver, &ss_expected,
             "Shared secret mismatch (receiver) in vector {}",
             i
         );
@@ -139,10 +137,7 @@ fn hkdf_sha256_rfc9180_key_schedule_vectors_match() -> Result<(), Error> {
         &key_schedule_context,
         12,
     )?;
-    assert_eq!(
-        base_nonce.as_slice(),
-        expected_base_nonce.as_slice()
-    );
+    assert_eq!(base_nonce.as_slice(), expected_base_nonce.as_slice());
 
     let exporter_secret = kdf.labeled_expand(
         &suite_id,
@@ -199,10 +194,7 @@ fn shake256_draft_hpke_pq_key_schedule_vector_matches() -> Result<(), Error> {
         &key_schedule_context,
         expected_secret.len() as u16,
     )?;
-    assert_eq!(
-        secret.as_slice(),
-        expected_secret.as_slice()
-    );
+    assert_eq!(secret.as_slice(), expected_secret.as_slice());
 
     Ok(())
 }

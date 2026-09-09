@@ -46,8 +46,8 @@ extern crate alloc;
 pub mod error;
 // pub mod xwing1024x25519;
 // pub mod xwing1024x448;
-pub mod kem;
 pub mod aliases;
+pub mod kem;
 
 // New modules for HPKE components
 pub mod aead;
@@ -59,8 +59,8 @@ pub const XWING_DRAFT_VERSION: &str = "09";
 pub const MASTER_SEED_SIZE: usize = 32;
 pub const SHARED_SECRET_SIZE: usize = 32;
 
-pub use error::{Error, Result};
 pub use aliases::*;
+pub use error::{Error, Result};
 
 // Re-export key HPKE components for easy access
 pub use crate::aead::{new_aead, Aead, ChaCha20Poly1305Aead};
