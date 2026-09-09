@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Interop tests can no longer route through our own age plugin.** Cargo puts
-  `target/debug` on `PATH` for test processes, so `age-plugin-pq` was reachable
-  whenever these ran. The identities used are native (`AGE-SECRET-KEY-PQ-`), so
-  age handled them itself — verified by re-running with the plugin hidden — but
-  nothing *enforced* that. Had the identity format ever changed, the test would
-  have quietly stopped being cross-implementation evidence while still passing.
+- **Interop tests can no longer route through our own age plugin.** Anyone who
+  has `cargo install`ed `age-plugin-pq` has it on `PATH`, and on Windows the
+  build directory is on `PATH` for test processes as well (Cargo adds it to the
+  dynamic library search path, which is `PATH` there and `LD_LIBRARY_PATH` on
+  Unix). The identities used are native (`AGE-SECRET-KEY-PQ-`), so age handled
+  them itself — verified by re-running with the plugin hidden — but nothing
+  *enforced* that. Had the identity format ever changed, the test would have
+  quietly stopped being cross-implementation evidence while still passing.
 
   `age` is now invoked with every directory containing an `age-plugin-*` binary
   stripped from `PATH`, and the test asserts the native identity format.
