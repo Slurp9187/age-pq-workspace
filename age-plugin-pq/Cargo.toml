@@ -17,7 +17,7 @@ include.workspace = true
 [dependencies]
 age-plugin = "0.6"
 age-core = "0.11"
-age-hpke-pq = { path = "../age-hpke-pq" }
+age-pq-hpke = { path = "../age-pq-hpke" }
 chacha20poly1305 = "0.10"
 base64 = "0.22"
 bech32 = "0.11"

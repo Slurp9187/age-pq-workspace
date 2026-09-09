@@ -1,6 +1,6 @@
 # Project Rules — age-pq-workspace
 
-Workspace-wide rules for `age-hpke-pq`, `age-recipient-pq`, and `age-plugin-pq`.
+Workspace-wide rules for `age-pq-hpke`, `age-pq-keys`, and `age-plugin-pq`.
 Every rule below applies to every crate in this workspace unless a section
 explicitly scopes itself.
 
@@ -10,8 +10,8 @@ explicitly scopes itself.
 
 | Crate | Role |
 |-------|------|
-| `age-hpke-pq` | Post-quantum hybrid HPKE primitives — X-Wing KEM (ML-KEM-768 + X25519), HPKE Base-mode key schedule (RFC 9180 + draft-ietf-hpke-pq-03), ChaCha20-Poly1305 AEAD. Library only. |
-| `age-recipient-pq` | `age` recipient / identity wrapper around `age-hpke-pq`. Parses stanzas, performs file-key wrap/unwrap. |
+| `age-pq-hpke` | Post-quantum hybrid HPKE primitives — X-Wing KEM (ML-KEM-768 + X25519), HPKE Base-mode key schedule (RFC 9180 + draft-ietf-hpke-pq-03), ChaCha20-Poly1305 AEAD. Library only. |
+| `age-pq-keys` | The key layer over `age-pq-hpke`: recipient **and** identity types, keypair generation, the bech32 key formats and their HRPs, and the `mlkem768x25519` stanza wire format (wrap/unwrap plus its validation). Implements `age::Recipient` / `age::Identity`. |
 | `age-plugin-pq` | `age-plugin-*` binary that exposes the recipient layer over the age plugin protocol (stdio, newline-delimited base64). |
 
 **All three crates use `secure-gate`, inherited from the workspace.** This was
@@ -20,8 +20,8 @@ unified — the secure-gate sections below bind every crate in full.
 
 | Crate | Secret handling |
 |-------|-----------------|
-| `age-hpke-pq` | `secure-gate = { workspace = true }` |
-| `age-recipient-pq` | `secure-gate = { workspace = true }` |
+| `age-pq-hpke` | `secure-gate = { workspace = true }` |
+| `age-pq-keys` | `secure-gate = { workspace = true }` |
 | `age-plugin-pq` | `secure-gate = { workspace = true }` |
 
 The workspace pin is a git dependency, not a registry version:
@@ -34,7 +34,7 @@ secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "rele
 2024 / MSRV 1.85 and cannot be used until the cohort bump. **No encoding feature
 is enabled**, which is why the crates hand-roll bech32 — see issue #11.
 
-`secrecy` still appears in `age-recipient-pq`'s source, but only as `age`'s own
+`secrecy` still appears in `age-pq-keys`'s source, but only as `age`'s own
 re-export: `FileKey` is `age`'s type and keeps `age`'s accessor. Neither
 `secrecy` nor `zeroize` is a direct dependency of any crate here. `zeroize`
 appears once as an `x25519-dalek` feature, not as an API this workspace calls.
@@ -44,6 +44,20 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
 ## Build rules — non-negotiable, workspace-wide
 
 - **`#![forbid(unsafe_code)]`** at every crate root. No exceptions.
+- **`age-plugin-pq` must keep that exact binary name.** The other two crates use
+  an `age-pq-*` prefix; this one deliberately does not, and it is not an
+  oversight to tidy up. age locates a plugin by *constructing* the path:
+
+  ```go
+  path := "age-plugin-" + name   // age-go plugin/client.go
+  ```
+
+  where `name` comes from the identity HRP (`AGE-PLUGIN-PQ-` → `pq`). Rename the
+  binary and plugin discovery breaks — silently, since age reports
+  plugin-not-found rather than failing to build, and no test in this workspace
+  invokes the plugin through age's own discovery path. The Cargo *package* could
+  be renamed while `[[bin]] name` stays put, but package ≠ binary is a trap for
+  the next person, so both stay as they are.
 - **MSRV is `1.70`** (workspace `rust-toolchain.toml`), and this is the **last
   release on it**. The next release moves to **MSRV 1.85** — that decision is
   made; it does not need re-litigating, but nothing in this release may depend
@@ -272,8 +286,8 @@ let key = Seed32::try_from_hex(&hex_str)?;
 let hex = hex::encode(key.expose_secret());    // timing leak, no zeroize
 ```
 
-This applies primarily to `age-plugin-pq` and `age-recipient-pq`, which handle
-human-facing key strings. `age-hpke-pq` currently performs no encoding.
+This applies primarily to `age-plugin-pq` and `age-pq-keys`, which handle
+human-facing key strings. `age-pq-hpke` currently performs no encoding.
 
 ### Type aliases
 
@@ -302,7 +316,7 @@ fn from_seed(s: Fixed<[u8; 32]>) -> Self { ... }
   semantic; `ct_eq` isn't required when the data isn't secret.
 
 ```rust
-use age_hpke_pq::ConstantTimeEq;
+use age_pq_hpke::ConstantTimeEq;
 assert!(original_ss.ct_eq(&recovered_ss));   // secret — ct_eq
 
 assert!(pk_a.expose_secret() == pk_b.expose_secret());   // public — == is fine
@@ -316,11 +330,11 @@ can be implemented for every inner type instead of only the length-bearing
 shapes. `SecretLen` is implemented exactly where a length is meaningful:
 `Fixed<[T; N]>`, `Dynamic<String>`, `Dynamic<Vec<T>>`.
 
-Call sites that ask a wrapper its length need the trait in scope. `age-hpke-pq`
+Call sites that ask a wrapper its length need the trait in scope. `age-pq-hpke`
 re-exports it next to the other two:
 
 ```rust
-use age_hpke_pq::{ConstantTimeEq, RevealSecret, SecretLen};
+use age_pq_hpke::{ConstantTimeEq, RevealSecret, SecretLen};
 
 let n = kdf_output.len();   // requires SecretLen
 ```
@@ -334,7 +348,7 @@ attacker-relevant.
 External APIs that take raw bytes and are the *legitimate* Tier-2
 escape points. Anything outside this list is suspect.
 
-**`age-hpke-pq`:**
+**`age-pq-hpke`:**
 
 | Call | Where | Tier | Reason |
 |------|------|------|--------|
@@ -351,7 +365,7 @@ escape points. Anything outside this list is suspect.
 | `sha3::Shake*::update` | `src/kdf.rs`, `src/kem/common.rs`, `src/kem/combiner.rs` | 2 | Takes `&[u8]` |
 | `combiner::combine_shared_secrets(&[u8; 32], …)` | callers in `kem/mlkem768x25519.rs` | 2 | 4-arg call; closure nesting would obscure |
 
-**`age-recipient-pq`:**
+**`age-pq-keys`:**
 
 | Call | Reason |
 |------|--------|
@@ -403,7 +417,7 @@ returns:
 
 ```rust
 let pt = recipient.open(aad, &ct)?;             // -> Vec<u8>
-let pt = age_hpke_pq::Plaintext::new(pt);       // explicit opt-in
+let pt = age_pq_hpke::Plaintext::new(pt);       // explicit opt-in
 let bytes = pt.with_secret(|b| b.to_vec());     // explicit reveal
 ```
 
@@ -478,8 +492,8 @@ it should be wrapped.
 
 ## Cross-crate consistency
 
-When `age-hpke-pq` changes a public type (e.g. `PrivateKey::bytes` returns a
-wrapped type instead of `Vec<u8>`), `age-recipient-pq` and `age-plugin-pq`
+When `age-pq-hpke` changes a public type (e.g. `PrivateKey::bytes` returns a
+wrapped type instead of `Vec<u8>`), `age-pq-keys` and `age-plugin-pq`
 must follow rather than work around the change. Workarounds tend to be the
 exact `expose_secret().to_vec()` pattern this document forbids — fix the
 consumer's call site, don't preserve the old shape.

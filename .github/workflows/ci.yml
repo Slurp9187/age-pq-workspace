@@ -2,7 +2,7 @@ name: CI
 
 # NOTE ON LOCATION: this file must live at the *repository root*
 # (.github/workflows/). GitHub Actions does not read workflow files from
-# subdirectories. An earlier copy sat at age-hpke-pq/.github/workflows/ci.yml
+# subdirectories. An earlier copy sat at age-pq-hpke/.github/workflows/ci.yml
 # and therefore never ran a single time — which is how a set of input-validation
 # defects (see docs/design/cctv-conformance.md) survived undetected.
 
@@ -56,4 +56,4 @@ jobs:
       - run: cargo update -p half --precise 2.4.1
       # Run the vectors as their own job so a regression is legible at a glance
       # rather than buried in the workspace suite.
-      - run: cargo test -p age-recipient-pq --test testkit -- --nocapture
+      - run: cargo test -p age-pq-keys --test testkit -- --nocapture

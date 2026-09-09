@@ -1,11 +1,11 @@
 # Plan — MSRV 1.85 and the secure-gate 0.9 cohort bump
 
 **Tracking issue: [#2](https://github.com/Slurp9187/age-pq-workspace/issues/2)**
-— "age-hpke-pq 0.0.7: the cohort bump — rand 0.10, libcrux-ml-kem 0.0.10,
+— "age-pq-hpke 0.0.7: the cohort bump — rand 0.10, libcrux-ml-kem 0.0.10,
 secure-gate 0.9, MSRV 1.85"
 
 Status: **Not started.** The current release
-(`age-hpke-pq 0.0.7` / `age-recipient-pq 0.0.6` / `age-plugin-pq 0.0.2`) is the
+(`age-pq-hpke 0.0.7` / `age-pq-keys 0.0.6` / `age-plugin-pq 0.0.2`) is the
 **last one pinned to MSRV 1.70**. Nothing in it may depend on the bump.
 
 This document is the workspace-side checklist. Issue #2 carries the downstream

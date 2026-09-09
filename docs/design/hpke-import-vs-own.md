@@ -6,7 +6,7 @@
 
 Now that `rust-hpke` (str4d's fork, the one rage uses) implements the same
 MLKEM768-X25519 construction we do, should we import it instead of maintaining
-`age-hpke-pq`?
+`age-pq-hpke`?
 
 **Decision: keep ours.** But the *reason* has changed, and the old reason should
 stop being cited.
@@ -19,7 +19,7 @@ cohort bump (issue #2).
 
 ## What the trade actually is, after 1.85
 
-| | `age-hpke-pq` (ours) | `rust-hpke` (str4d fork `1268205e`) |
+| | `age-pq-hpke` (ours) | `rust-hpke` (str4d fork `1268205e`) |
 |---|---|---|
 | ML-KEM backend | `libcrux-ml-kem 0.0.8` — **formally verified** (hax/F*) | RustCrypto `ml-kem 0.3` — **not verified** |
 | `#![forbid(unsafe_code)]` | every crate root, non-negotiable | not declared (`src/lib.rs` sets only `no_std`) |
@@ -76,7 +76,7 @@ and exactly the half importing `rust-hpke` would make unverified.
 
 ## Consequence
 
-- Keep `age-hpke-pq`; port MLKEM1024-P384 ourselves (issue #19).
+- Keep `age-pq-hpke`; port MLKEM1024-P384 ourselves (issue #19).
 - Add `rust-hpke` as a **second differential oracle** in the isolated conformance
   workspace, alongside rage and age-go — its `MlKem1024P384` KATs become our
   acceptance criterion for the port. See

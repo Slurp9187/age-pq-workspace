@@ -1,0 +1,38 @@
+[package]
+name = "age-pq-keys"
+version = "0.0.6"
+repository.workspace = true
+description = "A Rust library providing post-quantum hybrid recipients and identities compatible with the age encryption format"
+
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+include.workspace = true
+
+[dependencies]
+age-pq-hpke = { path = "../age-pq-hpke" }
+age = "0.11"
+age-core = "0.11"
+base64 = "0.22"
+bech32 = "0.11"
+secure-gate = { workspace = true }
+# unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
+unicode-ident = { workspace = true }
+
+[dev-dependencies]
+# Pin dev-deps to MSRV 1.70-compatible versions; the workspace Cargo.lock
+# is the primary guard, but exact pins prevent surprise resolution bumps.
+proptest = { workspace = true }
+# CCTV testkit conformance harness: `armor` for the armored vector, `sha2` for
+# payload digests. Both resolve to already-locked versions (no new fetch).
+age = { version = "0.11", features = ["armor"] }
+sha2 = "0.10"
+tempfile = { workspace = true }
+time = { workspace = true }
+clap = { workspace = true }
+
+[[example]]
+name = "pq-keygen"
+path = "examples/pq-keygen.rs"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["age-hpke-pq", "age-recipient-pq", "age-plugin-pq"]
+members = ["age-pq-hpke", "age-pq-keys", "age-plugin-pq"]
 resolver = "2"   # MSRV 1.70 → resolver 2 is required. LAST 1.70 RELEASE: move to "3" with the 1.85 bump.
 
 # Shared package metadata (inherited by every member)
@@ -25,10 +25,10 @@ include = [
     "/README.md",
 ]
 
-# Redirect the git dependency in age-recipient-pq (and any other cross-crate git deps)
+# Redirect the git dependency in age-pq-keys (and any other cross-crate git deps)
 # to the local path so you can develop everything together.
-[patch."https://github.com/Slurp9187/age-hpke-pq"]
-age-hpke-pq = { path = "age-hpke-pq" }
+[patch."https://github.com/Slurp9187/age-pq-hpke"]
+age-pq-hpke = { path = "age-pq-hpke" }
 
 # Optional: if any other crate depends on one of the others via git, add more patches here.
 

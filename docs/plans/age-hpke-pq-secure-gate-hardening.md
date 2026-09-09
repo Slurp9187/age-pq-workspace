@@ -1,4 +1,4 @@
-# Plan — `age-hpke-pq` secure-gate hardening
+# Plan — `age-pq-hpke` secure-gate hardening
 
 Status: **Complete, and partly superseded.** PRs 1–4 landed; PR 5 reduced to
 version bump + changelog (see "PR 5 — final scope" below).
@@ -43,13 +43,13 @@ What PR 5 actually does:
    callers".
 3. Workspace `CLAUDE.md`: revise the "wire boundary" section to codify
    *raw bytes at the public API; wrappers inside* as the workspace rule.
-4. Bump `age-hpke-pq` to `0.0.6` (releases the `0.0.6-dev` working version).
-5. Update `age-hpke-pq/CHANGELOG.md` with a summary of PRs 1–4.
+4. Bump `age-pq-hpke` to `0.0.6` (releases the `0.0.6-dev` working version).
+5. Update `age-pq-hpke/CHANGELOG.md` with a summary of PRs 1–4.
 
 Companion: workspace rules live in `/CLAUDE.md`. This plan applies those rules
-to every concrete site in `age-hpke-pq` that currently violates them. The
-`age-recipient-pq` and `age-plugin-pq` follow-ups are out of scope for this
-plan — a separate plan in this folder will cover them once `age-hpke-pq`
+to every concrete site in `age-pq-hpke` that currently violates them. The
+`age-pq-keys` and `age-plugin-pq` follow-ups are out of scope for this
+plan — a separate plan in this folder will cover them once `age-pq-hpke`
 lands.
 
 ---
@@ -631,17 +631,17 @@ None. All resolved — see the "Locked decisions" table at the top.
 - **Test surface.** Every test that currently consumes `open` /
   `bytes` / `export` results breaks on Phase 2. Plan internal PRs first
   (no test churn) so the Phase 2 PR is a clean diff of API + test updates.
-- **Downstream** `age-recipient-pq` breaks on Phase 2. During development,
+- **Downstream** `age-pq-keys` breaks on Phase 2. During development,
   use the workspace path patch (already in `Cargo.toml`); bump the published
-  dep after `age-hpke-pq` cuts a release.
+  dep after `age-pq-hpke` cuts a release.
 
 ---
 
-## Out of scope — `age-recipient-pq` (next session)
+## Out of scope — `age-pq-keys` (next session)
 
 Tracked in a separate plan to land after this one ships:
 
-1. Migrate consumers of `age-hpke-pq` to the new wrapper API.
+1. Migrate consumers of `age-pq-hpke` to the new wrapper API.
 2. Audit identity-file I/O — `fs::read_to_string` → `Zeroizing<String>` or
    `Dynamic<String>`; parse buffers wrapped.
 3. Audit stanza body buffering — likely large-plaintext `Vec<u8>` chains

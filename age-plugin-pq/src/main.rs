@@ -3,13 +3,13 @@ use age_core::{
     format::{FileKey, Stanza},
     secrecy::ExposeSecret,
 };
-use age_hpke_pq::compute_nonce;
-use age_hpke_pq::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, EncapsulationKey};
 use age_plugin::{
     identity::{self, IdentityPluginV1},
     recipient::{self, RecipientPluginV1},
     run_state_machine, Callbacks, PluginHandler,
 };
+use age_pq_hpke::compute_nonce;
+use age_pq_hpke::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, EncapsulationKey};
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
 use bech32::primitives::checksum::Checksum;
 use bech32::primitives::decode::CheckedHrpstring;
@@ -40,7 +40,7 @@ const NATIVE_IDENTITY_HRP: &str = "AGE-SECRET-KEY-PQ-";
 /// Custom Bech32 checksum matching the classic BIP-173 constants used by the
 /// official age Go implementation. The standard `bech32::Bech32` caps strings
 /// at 1023 characters; PQ public keys are ~1959 characters and require the
-/// extended CODE_LENGTH of 8192 used here (same as age-recipient-pq).
+/// extended CODE_LENGTH of 8192 used here (same as age-pq-keys).
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum HybridRecipientBech32 {}
 

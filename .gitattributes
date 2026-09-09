@@ -4,5 +4,5 @@
 # Test fixture data must never have line endings touched — the .age files are
 # binary and the plaintext references must exactly match the bytes that were
 # encrypted, regardless of platform.
-age-recipient-pq/tests/data/**  binary
-age-hpke-pq/tests/data/**       binary
+age-pq-keys/tests/data/**  binary
+age-pq-hpke/tests/data/**       binary

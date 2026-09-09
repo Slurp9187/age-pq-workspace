@@ -11,8 +11,8 @@ Post-quantum hybrid encryption crates for [age](https://age-encryption.org) /
 
 | Crate | Description |
 |---|---|
-| [`age-hpke-pq`](age-hpke-pq/) | X-Wing hybrid KEM (ML-KEM-768 + X25519) with full HPKE support. Uses formally verified `libcrux-ml-kem`, constant-time operations, and automatic secret zeroization. |
-| [`age-recipient-pq`](age-recipient-pq/) | age-compatible `HybridRecipient` / `HybridIdentity` types — generate, serialize, parse, encrypt, and decrypt with post-quantum keys. |
+| [`age-pq-hpke`](age-pq-hpke/) | X-Wing hybrid KEM (ML-KEM-768 + X25519) with full HPKE support. Uses formally verified `libcrux-ml-kem`, constant-time operations, and automatic secret zeroization. |
+| [`age-pq-keys`](age-pq-keys/) | age-compatible `HybridRecipient` / `HybridIdentity` types — generate, serialize, parse, encrypt, and decrypt with post-quantum keys. |
 | [`age-plugin-pq`](age-plugin-pq/) | age plugin binary (`age-plugin-pq`) implementing the v1 plugin protocol: `--keygen`, `--identity`, and state-machine mode for the age CLI. |
 
 ## Quick start
@@ -35,8 +35,8 @@ These crates are not published on crates.io. Pin to a tag or exact revision:
 
 ```toml
 [dependencies]
-age-hpke-pq      = { git = "https://github.com/Slurp9187/age-hpke-pq",      tag = "v0.0.5" }
-age-recipient-pq = { git = "https://github.com/Slurp9187/age-recipient-pq",  tag = "v0.0.4" }
+age-pq-hpke      = { git = "https://github.com/Slurp9187/age-pq-hpke",      tag = "v0.0.5" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-keys",  tag = "v0.0.4" }
 ```
 
 ## Requirements
@@ -53,8 +53,8 @@ age-pq-workspace/
 ├── Cargo.toml          # workspace root (shared metadata, deps, lints, profiles)
 ├── Cargo.lock          # authoritative lockfile
 ├── .gitattributes      # line-ending rules; test fixtures marked binary
-├── age-hpke-pq/        # HPKE + KEM core
-├── age-recipient-pq/   # age recipient / identity library
+├── age-pq-hpke/        # HPKE + KEM core
+├── age-pq-keys/   # age recipient / identity library
 └── age-plugin-pq/      # age plugin binary
 ```
 
