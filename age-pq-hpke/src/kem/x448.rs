@@ -78,3 +78,50 @@ pub(crate) fn parse_public_key(bytes: [u8; X448_KEY_SIZE]) -> CrateResult<X448Pu
     }
     X448PublicKey::from_bytes(&bytes).ok_or(Error::InvalidX448PublicKey)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seed() -> X448Scalar {
+        X448Scalar::from([7u8; 56])
+    }
+
+    #[test]
+    fn parse_public_key_rejects_the_all_zero_encoding() {
+        assert!(matches!(
+            parse_public_key([0u8; 56]),
+            Err(Error::InvalidX448PublicKey)
+        ));
+    }
+
+    /// X448's `as_diffie_hellman` returns `None` for a non-contributory result,
+    /// so the check lives upstream — but this crate depends on it being made, so
+    /// assert it rather than assume it. The X25519 path had exactly this gap:
+    /// its dalek equivalent returns the secret unconditionally.
+    #[test]
+    fn decapsulation_rejects_a_low_order_point() {
+        // u = 1 encodes a small-order point and is accepted by `from_bytes`.
+        let mut bytes = [0u8; 56];
+        bytes[0] = 1;
+        if let Ok(pk) = parse_public_key(bytes) {
+            // `expect_err` would need `Debug` on the Ok type, and `x448::PublicKey`
+            // does not implement it — match instead.
+            match decapsulate_from_private_seed(seed(), &pk) {
+                Err(Error::X448DiffieHellmanFailed) => {}
+                Err(e) => panic!("wrong error: {e:?}"),
+                Ok(_) => panic!("non-contributory result must be rejected"),
+            }
+        }
+    }
+
+    #[test]
+    fn encapsulate_and_decapsulate_agree() {
+        let recipient_pk = public_key_from_seed(X448Scalar::from([3u8; 56]));
+        let (ct_x, ss_sender) =
+            encapsulate_to_public_key(X448Scalar::from([9u8; 56]), &recipient_pk).unwrap();
+        let (ss_recipient, _pk) =
+            decapsulate_from_private_seed(X448Scalar::from([3u8; 56]), &ct_x).unwrap();
+        assert_eq!(ss_sender.expose_secret(), ss_recipient.expose_secret());
+    }
+}
