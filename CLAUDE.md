@@ -67,12 +67,12 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   - Rename the **bin target** and the same test fails to compile, because
     `env!("CARGO_BIN_EXE_age-plugin-pq")` no longer resolves.
 
-- **Never let an interop test reach our own plugin.** Cargo puts the build
-  output directory (`target/debug`) on `PATH` for every test process, so
-  `age-plugin-pq` is reachable by default. If a test in `age-pq-keys` handed
-  `age` an `AGE-PLUGIN-PQ-` identity, age would spawn *our* plugin and
-  "interoperability with the Go age CLI" would silently become
-  "interoperability with our own code" — still green, proving nothing.
+- **Never let an interop test reach our own plugin.** If a test in
+  `age-pq-keys` handed `age` an `AGE-PLUGIN-PQ-` identity, age would spawn *our*
+  plugin and "interoperability with the Go age CLI" would silently become
+  "interoperability with our own code" — still green, proving nothing. It is
+  reachable whenever someone has `cargo install`ed the plugin, and on Windows
+  additionally from the build directory (see the platform note below).
 
   `age-pq-keys/tests/common.rs::age_command_without_plugins` strips every
   directory containing an `age-plugin-*` binary from the child's `PATH`, and
@@ -93,6 +93,15 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
 
   The other route to a plugin is `age -j <name>`, which names one explicitly.
   No test here uses it.
+
+  **Platform note, learned the hard way.** Cargo adds the build output directory
+  to the *dynamic library* search path for test processes. That is `PATH` on
+  Windows but `LD_LIBRARY_PATH` on Unix, so `target/debug` is on `PATH` for
+  Windows test runs and **not** for Linux ones. A test that relies on it passes
+  locally on Windows and fails in CI. `age-plugin-pq`'s round trip therefore
+  prepends the plugin's directory to `PATH` explicitly rather than depending on
+  Cargo — which is also better, since it guarantees age spawns this run's build
+  instead of a globally installed one.
 
   `age-plugin-pq`'s own tests deliberately do the opposite — there, Cargo
   putting the fresh binary on `PATH` is what makes discovery testable, and it

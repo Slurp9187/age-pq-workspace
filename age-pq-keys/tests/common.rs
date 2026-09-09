@@ -61,12 +61,20 @@ pub fn without_plugin_dirs(paths: Vec<std::path::PathBuf>) -> Vec<std::path::Pat
 
 /// The process `PATH`, minus any directory holding an age plugin.
 ///
-/// This matters more than it looks. Cargo puts the build output directory
-/// (`target/debug`) on `PATH` for test processes, so `age-plugin-pq` — built by
-/// this very workspace — is reachable by default. If an identity in these tests
-/// ever routed through that plugin, "interoperability with the Go age CLI"
-/// would silently become "interoperability with our own code", and the test
-/// would keep passing while proving nothing.
+/// This matters more than it looks. If an identity in these tests ever routed
+/// through an age plugin, "interoperability with the Go age CLI" would silently
+/// become "interoperability with our own code", and the test would keep passing
+/// while proving nothing.
+///
+/// Two ways that becomes reachable:
+///
+/// * **A globally installed plugin.** Anyone who has run `cargo install` for
+///   `age-plugin-pq`, on any platform, has it on `PATH`.
+/// * **On Windows, the build directory itself.** Cargo adds the build output
+///   directory to the *dynamic library* search path for test processes — which
+///   is `PATH` on Windows, but `LD_LIBRARY_PATH` on Unix. So `target/debug` is
+///   on `PATH` for Windows test runs and not for Linux ones. Do not rely on
+///   that asymmetry in either direction; it is incidental.
 ///
 /// `PATH` is the only lever needed: age-go resolves plugins with
 /// `exec.Command("age-plugin-" + name)` and rage with `which::which`. Neither

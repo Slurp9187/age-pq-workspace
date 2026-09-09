@@ -76,6 +76,33 @@ fn keygen() -> (String, String) {
     (recipient, identity)
 }
 
+/// An `age` command that can discover the plugin **this run just built**.
+///
+/// age spawns `age-plugin-pq` by name and resolves it through `PATH`, so the
+/// binary's directory has to be there. Do not rely on Cargo for this: Cargo adds
+/// the build directory to the *dynamic library* search path, which happens to be
+/// `PATH` on Windows but is `LD_LIBRARY_PATH` on Unix — so depending on it
+/// passes on Windows and fails on Linux CI. (It did.)
+///
+/// Prepending is deliberate: it guarantees age spawns the build from this run
+/// rather than an older copy installed globally.
+fn age_with_fresh_plugin_on_path() -> Command {
+    let plugin_dir = Path::new(PLUGIN_EXE)
+        .parent()
+        .expect("plugin path has a parent directory")
+        .to_path_buf();
+    let mut paths = vec![plugin_dir];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    let mut cmd = Command::new("age");
+    cmd.env(
+        "PATH",
+        std::env::join_paths(paths).expect("failed to build PATH with the plugin directory"),
+    );
+    cmd
+}
+
 #[test]
 fn test_data_fixtures_exist() {
     for f in ["tests/data/lorem.txt", "tests/data/age_go_identity.txt"] {
@@ -174,14 +201,12 @@ fn plugin_converts_native_identity_to_plugin_format() {
 /// runs it with `--include-ignored`.
 ///
 /// This genuinely exercises **plugin discovery by name**: age spawns
-/// `age-plugin-pq` itself, resolving it through `PATH`. That works without
-/// installing anything because Cargo puts the build output directory
-/// (`target/debug`) on `PATH` for test processes — so age finds the binary this
-/// run just built, not some older copy installed globally.
+/// `age-plugin-pq` itself and resolves it through `PATH`, which
+/// `age_with_fresh_plugin_on_path` points at the binary built by this run.
 ///
-/// Worth knowing before "fixing" anything here: installing the plugin
-/// system-wide would make this test exercise the *installed* build instead of
-/// the current one, which is strictly worse. Nothing needs to be installed.
+/// Nothing needs to be installed, and nothing should be: a globally installed
+/// plugin would be shadowed by the fresh one here, which is the intent — this
+/// must test the current build, not whatever is on the machine.
 ///
 /// `identity_hrp_matches_the_binary_name_age_will_look_for` covers the naming
 /// half of the same coupling with no age binary at all.
@@ -204,7 +229,7 @@ fn full_encrypt_decrypt_cycle_through_the_age_cli() {
     fs::write(&recipient_file, recipient).expect("failed to write recipient");
     fs::write(&identity_file, identity).expect("failed to write identity");
 
-    let encrypt = Command::new("age")
+    let encrypt = age_with_fresh_plugin_on_path()
         .arg("--encrypt")
         .arg("-R")
         .arg(&recipient_file)
@@ -219,7 +244,7 @@ fn full_encrypt_decrypt_cycle_through_the_age_cli() {
         String::from_utf8_lossy(&encrypt.stderr)
     );
 
-    let decrypt = Command::new("age")
+    let decrypt = age_with_fresh_plugin_on_path()
         .arg("--decrypt")
         .arg("-i")
         .arg(&identity_file)
