@@ -18,8 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `age` is now invoked with every directory containing an `age-plugin-*` binary
   stripped from `PATH`, and the test asserts the native identity format.
-  `plugin_free_path_actually_removes_the_plugin` guards the guard by asserting a
-  plugin *is* reachable before filtering, so the filter cannot pass vacuously.
+  `plugin_free_path_removes_directories_holding_plugins` guards the guard using
+  synthetic directories, so it checks the filter rather than whatever the build
+  happened to leave in `target/debug`.
+
+  `PATH` is the only lever needed, verified rather than assumed: age-go resolves
+  plugins solely via `exec.Command("age-plugin-" + name)` and rage via
+  `which::which`; neither reads an env var, plugin directory or config file. The
+  match is case-insensitive, since Windows and macOS filesystems are and age
+  would happily run `AGE-PLUGIN-PQ.EXE`.
 
 
 ### Changed (BREAKING)

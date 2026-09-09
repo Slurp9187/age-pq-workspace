@@ -77,9 +77,22 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   `age-pq-keys/tests/common.rs::age_command_without_plugins` strips every
   directory containing an `age-plugin-*` binary from the child's `PATH`, and
   the interop test asserts its identity is the native `AGE-SECRET-KEY-PQ-`
-  form. `plugin_free_path_actually_removes_the_plugin` guards the guard: it
-  asserts a plugin *is* reachable before filtering, so the filter can never
-  pass vacuously.
+  form. `plugin_free_path_removes_directories_holding_plugins` guards the
+  guard against synthetic directories, so a filter that silently matched
+  nothing would fail rather than pass.
+
+  **`PATH` is the only lever needed** — verified against both implementations
+  rather than assumed. age-go resolves plugins solely with
+  `exec.Command("age-plugin-" + name)` (`plugin/client.go`) and rage with
+  `which::which` (`age/src/plugin.rs`). Neither consults an environment
+  variable, a plugin directory, or a config file; there is no search path to
+  miss. On Go 1.19+ `exec` also stopped resolving silently from the working
+  directory. The match is case-insensitive because Windows and macOS
+  filesystems are, and prefix-based so it covers `PATHEXT` variants and the
+  `.exe` form rage looks for under WSL.
+
+  The other route to a plugin is `age -j <name>`, which names one explicitly.
+  No test here uses it.
 
   `age-plugin-pq`'s own tests deliberately do the opposite — there, Cargo
   putting the fresh binary on `PATH` is what makes discovery testable, and it

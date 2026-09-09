@@ -85,27 +85,35 @@ fn test_create_and_verify_pq_encryption_with_cli() {
     assert_eq!(fs::read(temp_decrypted.path()).unwrap(), plaintext);
 }
 
-/// Self-test for the safeguard above.
+/// Self-test for the safeguard above, against synthetic input.
 ///
 /// A filter that quietly matched nothing would restore the exact circularity it
-/// exists to prevent, and every test would still pass. So assert both halves:
-/// the unfiltered `PATH` *does* reach an age plugin under `cargo test` (proving
-/// the hazard is real and the filter is not vacuous), and the filtered one does
-/// not (proving the filter works).
+/// exists to prevent, and every test would still pass. This checks the filter
+/// itself rather than whatever the build left in `target/debug`, so it does not
+/// depend on which crates were compiled.
 #[test]
-fn plugin_free_path_actually_removes_the_plugin() {
-    let all: Vec<_> = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let reachable_before = all.iter().any(|d| common::contains_age_plugin(d));
-    assert!(
-        reachable_before,
-        "expected an age-plugin-* binary on PATH under `cargo test` (Cargo adds          target/debug). If this ever stops holding, the filter below is vacuous          and this safeguard proves nothing — investigate rather than deleting it."
-    );
+fn plugin_free_path_removes_directories_holding_plugins() {
+    use std::path::PathBuf;
 
-    let filtered = common::plugin_free_path();
-    assert!(
-        !filtered.iter().any(|d| common::contains_age_plugin(d)),
-        "an age plugin is still reachable after filtering; the interop test          could route through our own plugin instead of age's native code"
+    let with_plugin = tempfile::tempdir().expect("tempdir");
+    let clean = tempfile::tempdir().expect("tempdir");
+    let odd_case = tempfile::tempdir().expect("tempdir");
+
+    fs::write(with_plugin.path().join("age-plugin-synthetic"), b"x").expect("write");
+    fs::write(clean.path().join("some-other-binary"), b"x").expect("write");
+    // Windows and macOS filesystems are case-insensitive, so age would run this.
+    fs::write(odd_case.path().join("AGE-PLUGIN-SYNTHETIC.EXE"), b"x").expect("write");
+
+    let input: Vec<PathBuf> = vec![
+        with_plugin.path().to_path_buf(),
+        clean.path().to_path_buf(),
+        odd_case.path().to_path_buf(),
+    ];
+    let kept = common::without_plugin_dirs(input);
+
+    assert_eq!(
+        kept,
+        vec![clean.path().to_path_buf()],
+        "only the directory with no age-plugin-* entry should survive"
     );
 }

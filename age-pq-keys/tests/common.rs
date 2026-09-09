@@ -47,8 +47,19 @@ pub fn require_age_cli() -> String {
     raw
 }
 
-/// The `PATH` entries that remain after removing every directory containing an
-/// `age-plugin-*` binary.
+/// Removes every directory containing an `age-plugin-*` binary.
+///
+/// Pure so it can be tested against synthetic input rather than whatever the
+/// build happened to leave in `target/debug`.
+#[allow(dead_code)]
+pub fn without_plugin_dirs(paths: Vec<std::path::PathBuf>) -> Vec<std::path::PathBuf> {
+    paths
+        .into_iter()
+        .filter(|d| !contains_age_plugin(d))
+        .collect()
+}
+
+/// The process `PATH`, minus any directory holding an age plugin.
 ///
 /// This matters more than it looks. Cargo puts the build output directory
 /// (`target/debug`) on `PATH` for test processes, so `age-plugin-pq` — built by
@@ -57,21 +68,21 @@ pub fn require_age_cli() -> String {
 /// would silently become "interoperability with our own code", and the test
 /// would keep passing while proving nothing.
 ///
-/// Identities here are native (`AGE-SECRET-KEY-PQ-`), so age handles them
-/// itself. Rather than trust that, we remove the plugin from reach so the
-/// native path is the *only* one available.
+/// `PATH` is the only lever needed: age-go resolves plugins with
+/// `exec.Command("age-plugin-" + name)` and rage with `which::which`. Neither
+/// consults an environment variable, a plugin directory, or a config file, and
+/// on Go 1.19+ `exec` no longer resolves silently from the working directory.
 ///
 /// The plugin's own tests deliberately do the opposite — see
 /// `age-plugin-pq/tests/integration.rs`, where Cargo putting the fresh binary
 /// on `PATH` is exactly what makes discovery testable.
 #[allow(dead_code)]
 pub fn plugin_free_path() -> Vec<std::path::PathBuf> {
-    std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|dir| !contains_age_plugin(dir))
-        .collect()
+    without_plugin_dirs(
+        std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+            .unwrap_or_default(),
+    )
 }
 
 /// Builds an `age` command that cannot reach any age plugin.
@@ -90,12 +101,21 @@ pub fn age_command_without_plugins() -> Command {
 }
 
 /// True if `dir` holds anything named `age-plugin-*`.
+///
+/// Case-insensitive on purpose: Windows and macOS filesystems are, so age would
+/// happily execute `AGE-PLUGIN-PQ.EXE` when looking for `age-plugin-pq`. A
+/// case-sensitive check would miss it. The prefix match also covers the
+/// `PATHEXT` variants (`.exe`, `.bat`, `.cmd`) and the `.exe` form rage looks
+/// for when running under WSL.
 #[allow(dead_code)]
 pub fn contains_age_plugin(dir: &std::path::Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
-    entries
-        .filter_map(Result::ok)
-        .any(|e| e.file_name().to_string_lossy().starts_with("age-plugin-"))
+    entries.filter_map(Result::ok).any(|e| {
+        e.file_name()
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .starts_with("age-plugin-")
+    })
 }
