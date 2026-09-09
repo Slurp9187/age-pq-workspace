@@ -42,13 +42,25 @@ cargo test --workspace
 
 ### Using as a dependency
 
-These crates are not published on crates.io. Pin to a tag or exact revision:
+These crates are not published on crates.io, and they live in **one repository** —
+the per-crate repos they once had are archived. Point every dependency at the
+workspace and pin a single tag or revision:
 
 ```toml
 [dependencies]
-age-pq-hpke      = { git = "https://github.com/Slurp9187/age-pq-hpke",      tag = "v0.0.5" }
-age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-keys",  tag = "v0.0.4" }
+age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0" }
 ```
+
+The crates share one version and ship under one tag: `age-pq-keys` and
+`age-plugin-pq` depend on `age-pq-hpke` **by path**, so a coherent set is
+whatever a single tag points at. Mixing tags between them is not a supported
+combination.
+
+To follow the MSRV-1.70 line and pick up patches automatically, use the branch
+rather than a tag once one exists — `branch = "release/0.1"`. See
+[`docs/plans/msrv-1.85-cohort-bump.md`](docs/plans/msrv-1.85-cohort-bump.md)
+(DECIDE-13) for how the `0.1` / `0.2` lines split.
 
 ## Requirements
 
