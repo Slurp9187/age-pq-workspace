@@ -1,6 +1,12 @@
 # Default: normalize line endings to LF in the repo, convert to platform on checkout
 * text=auto
 
+# Shell scripts must be LF even in a Windows working copy. CI runs
+# scripts/install-age.sh on Linux, and a CRLF shebang fails as
+# "bad interpreter: /usr/bin/env bash^M" -- as does running it locally under
+# Git Bash or WSL.
+*.sh  text eol=lf
+
 # Test fixture data must never have line endings touched — the .age files are
 # binary and the plaintext references must exactly match the bytes that were
 # encrypted, regardless of platform.
