@@ -34,12 +34,6 @@ dynamic_newtype!(
 );
 
 dynamic_newtype!(
-    pub(crate) SeedBytes,
-    Vec<u8>,
-    "Decoded bech32 payload in transit, before it is validated into a `Seed32`."
-);
-
-dynamic_newtype!(
     pub(crate) FileKeyBytes,
     Vec<u8>,
     "Decrypted age file key, between AEAD `decrypt` and construction of `FileKey`."

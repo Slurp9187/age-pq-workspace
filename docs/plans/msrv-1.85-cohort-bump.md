@@ -19,6 +19,7 @@ motivation — this workspace is the remaining upstream blocker for
 |----|----------|
 | **DECIDE-11** | **MSRV moves 1.70 → 1.85 in the next release.** Decided; does not need re-litigating. The CLAUDE.md rule "raise an MSRV bump as a separate decision PR" is satisfied by this document plus issue #2. |
 | **DECIDE-12** | **The bump and the `secure-gate` 0.9 upgrade are one piece of work,** not two. See below — they are the same constraint. |
+| **DECIDE-14** | **`HybridRecipient::pub_key` becomes private and validated** before the freeze. The `expect` in `to_string()` is a reachable panic today and #11 makes it easier to reach. Breaking, deliberately taken in this window. See [`../design/pre-freeze-audit.md`](../design/pre-freeze-audit.md). |
 | **DECIDE-13** | **The version lines split *at* the bump, not before.** 1.70 work continues on `0.0.x`; the final 1.70 state is tagged `v0.1.0`, and the 1.85 line opens at `0.2.0`. See below. |
 
 ## DECIDE-13 — the version-line split

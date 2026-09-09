@@ -9,11 +9,9 @@ use age_plugin::{
     run_state_machine, Callbacks, PluginHandler,
 };
 use age_pq_hpke::compute_nonce;
+use age_pq_hpke::kem::mlkem768x25519::MLKEM768X25519_ENCAPSULATION_KEY_SIZE;
 use age_pq_hpke::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, EncapsulationKey};
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
-use bech32::primitives::checksum::Checksum;
-use bech32::primitives::decode::CheckedHrpstring;
-use bech32::{encode as bech32_encode, Bech32, Hrp};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit, Nonce};
 use clap::{CommandFactory, Parser};
 use rand::rngs::OsRng;
@@ -22,10 +20,8 @@ use std::io::{self, Read};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 mod aliases;
 
-use crate::aliases::{
-    FileKeyBytes, IdentityEncoding, SecretText, Seed32, SeedBytes, SharedSecret32,
-};
-use secure_gate::{RevealSecret, RevealSecretMut, SecretLen};
+use crate::aliases::{FileKeyBytes, IdentityEncoding, SecretText, Seed32, SharedSecret32};
+use secure_gate::{bech32_code_length, Case, RevealSecret, RevealSecretMut, SecretLen, ToBech32};
 
 mod hpke_pq;
 use hpke_pq::derive_key_and_nonce;
@@ -37,20 +33,16 @@ const RECIPIENT_BECH32_HRP: &str = "age1pq";
 const IDENTITY_BECH32_HRP: &str = "AGE-PLUGIN-PQ-";
 const NATIVE_IDENTITY_HRP: &str = "AGE-SECRET-KEY-PQ-";
 
-/// Custom Bech32 checksum matching the classic BIP-173 constants used by the
-/// official age Go implementation. The standard `bech32::Bech32` caps strings
-/// at 1023 characters; PQ public keys are ~1959 characters and require the
-/// extended CODE_LENGTH of 8192 used here (same as age-pq-keys).
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum HybridRecipientBech32 {}
-
-impl Checksum for HybridRecipientBech32 {
-    type MidstateRepr = u32;
-    const CODE_LENGTH: usize = 8192;
-    const CHECKSUM_LENGTH: usize = 6;
-    const GENERATOR_SH: [u32; 5] = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
-    const TARGET_RESIDUE: u32 = 1;
-}
+/// Bech32 code length for an `age1pq` recipient, derived from the key size.
+///
+/// Replaces a hand-rolled `Checksum` impl with `CODE_LENGTH = 8192` that was
+/// byte-identical to the one in `age-pq-keys` - the duplication issue #11 is
+/// about. The code length is a length gate and never enters the checksum, so
+/// the encoded output is unchanged.
+const RECIPIENT_CODE_LENGTH: usize = bech32_code_length(
+    RECIPIENT_BECH32_HRP.len(),
+    MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
+);
 
 struct FullHandler;
 impl PluginHandler for FullHandler {
@@ -426,26 +418,25 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
         .format(&Rfc3339)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-    let recipient_hrp = Hrp::parse(RECIPIENT_BECH32_HRP)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-    let recipient = bech32_encode::<HybridRecipientBech32>(recipient_hrp, pk.to_bytes().as_ref())
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    let recipient = pk
+        .to_bytes()
+        .try_to_bech32_sized::<RECIPIENT_CODE_LENGTH>(RECIPIENT_BECH32_HRP, Case::Lower)
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, "failed to encode recipient"))?
+        .into_inner();
 
-    let identity_hrp_str = if native {
+    let identity_hrp = if native {
         NATIVE_IDENTITY_HRP
     } else {
         IDENTITY_BECH32_HRP
     };
-    let identity_hrp = Hrp::parse(identity_hrp_str)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-    // Bech32-encoded private key carries the seed; keep the String wrapped
-    // until it's embedded in the final output buffer (which is itself wrapped).
-    // `make_ascii_uppercase` mutates in place so no second unprotected copy.
-    let mut identity = IdentityEncoding::new(
-        seed.with_secret(|s| bech32_encode::<Bech32>(identity_hrp, s))
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?,
+    // `Case::Upper` happens inside the encoder, on the buffer it already owns:
+    // no second plaintext copy, and no separate uppercase step to forget. The
+    // error carries no payload - the input is the private key.
+    let identity = IdentityEncoding::new(
+        seed.try_to_bech32(identity_hrp, Case::Upper)
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "failed to encode identity"))?
+            .into_inner(),
     );
-    identity.with_secret_mut(|s| s.make_ascii_uppercase());
 
     let output_text = SecretText::new(
         identity.with_secret(|id| format!("# created: {created}\n# public key: {recipient}\n{id}")),
@@ -479,42 +470,23 @@ fn convert_native_identities() -> io::Result<()> {
                 continue;
             }
 
-            let parsed = CheckedHrpstring::new::<Bech32>(line)
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid bech32"))?;
-
-            if !parsed
-                .hrp()
-                .as_str()
-                .eq_ignore_ascii_case(NATIVE_IDENTITY_HRP)
-            {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "not a native PQ identity",
-                ));
-            }
-
-            // Per-line decoded seed bytes; wrap so the heap Vec zeroizes when it
-            // falls out of scope at the end of the iteration.
-            let bytes = SeedBytes::new(parsed.byte_iter().collect::<Vec<u8>>());
-            let seed = bytes
-                .with_secret(|b| Seed32::try_from(b.as_slice()))
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "wrong seed length"))?;
+            // Decodes and length-validates in one step, straight into the
+            // wrapper's storage - no intermediate heap Vec of seed bytes. HRP
+            // comparison is case-insensitive, as before.
+            let seed = Seed32::try_from_bech32(line, NATIVE_IDENTITY_HRP).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "not a native PQ identity")
+            })?;
 
             let sk = seed.with_secret(DecapsulationKey::from_seed);
             let _pk = sk.encapsulation_key().map_err(|_| {
                 io::Error::new(io::ErrorKind::InvalidData, "invalid key derivation")
             })?;
 
-            let plugin_hrp = Hrp::parse(IDENTITY_BECH32_HRP)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            // Re-encoded plugin-format private key; same wrap-and-mutate-in-place
-            // pattern as keygen to avoid the second plaintext String from
-            // `to_uppercase()`.
-            let mut plugin_identity = IdentityEncoding::new(
-                seed.with_secret(|s| bech32_encode::<Bech32>(plugin_hrp, s))
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?,
+            let plugin_identity = IdentityEncoding::new(
+                seed.try_to_bech32(IDENTITY_BECH32_HRP, Case::Upper)
+                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "failed to encode identity"))?
+                    .into_inner(),
             );
-            plugin_identity.with_secret_mut(|s| s.make_ascii_uppercase());
             plugin_identity.with_secret(|s| println!("{s}"));
         }
 

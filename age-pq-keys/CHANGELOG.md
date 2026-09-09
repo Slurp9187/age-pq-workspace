@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **`HybridRecipient::pub_key` is now private.** It was a `pub Vec<u8>` field
+  with no length validation anywhere, which made the `expect` in `to_string()`
+  reachable simply by assigning a longer vector. Use `HybridRecipient::from_bytes`
+  (which validates) and `as_bytes()`. The invariant is now enforced rather than
+  assumed, so that `expect` is honest. See DECIDE-14 in
+  `docs/plans/msrv-1.85-cohort-bump.md`.
+- **`pub enum HybridRecipientBech32` is gone**, along with the hand-rolled
+  `bech32::Checksum` impl behind it.
+
+### Changed
+
+- **bech32 encoding moved to secure-gate** (#11). The hand-rolled `Checksum`
+  with `CODE_LENGTH = 8192` — duplicated byte-for-byte in `age-plugin-pq` — is
+  replaced by `bech32_code_length()`, which derives 1959 from the actual key
+  size. The code length is a *length gate* and never enters the checksum, so
+  **the encoded output is unchanged**; new tests assert byte-identity against
+  Go age CLI v1.3.1 fixtures on both the recipient and identity paths.
+
+  The doc comment this removed was wrong three ways: it claimed a 4096-character
+  maximum while setting 8192, claimed error detection that does not hold past
+  1023 characters, and carried a byte estimate off by roughly half.
+
+- **`bech32` is no longer a direct dependency.**
+- Identity decoding uses `Seed32::try_from_bech32`, which decodes into the
+  wrapper's own storage — the heap `SeedBytes` intermediate is gone.
+- Decode errors are payload-free (`"malformed hybrid identity"` rather than the
+  bech32 error), because for the identity path the input *is* the private key.
+
+
 ### Fixed
 
 - **Interop tests can no longer route through our own age plugin.** Anyone who
