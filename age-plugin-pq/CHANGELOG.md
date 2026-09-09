@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING, internal)
+
+- **`zeroize` replaced by `secure-gate`.** The direct dependency is gone; aliases
+  live in the new `src/aliases.rs`. `secrecy` still appears only as `age`'s
+  re-export for `FileKey`.
+
+  The decrypt loop is where this pays: `unwrap_file_keys` exits through
+  `continue` on six different paths, and each one previously needed its own
+  hand-written `.zeroize()` call on the shared secret and the AEAD key, kept in
+  sync by hand. Wrappers cover every exit on drop, so those six calls are gone
+  and cannot fall out of sync.
+
+- `keygen` now fills the seed with `Seed32::from_rng(&mut OsRng)` instead of
+  `OsRng.try_fill_bytes` into a `Zeroizing<[u8; 32]>`, so the seed is written
+  straight into the wrapper's storage and never exists as a bare local.
+
+- `hpke_pq::derive_key_and_nonce` returns `AeadKey32` rather than `[u8; 32]`.
+  This is a crate-internal helper, not a published API.
+
 ### Changed
 
 - `rand` dependency upgraded from `0.8` to `0.9`.

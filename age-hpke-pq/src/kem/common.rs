@@ -4,11 +4,10 @@ use crate::aliases::{ExpandedKeyMaterial96, KdfBytes, MlKemSeed64, Seed32, X2551
 use crate::error::{Error, Result as CrateResult};
 use crate::kdf::HPKE_VERSION_LABEL;
 use byteorder::{BigEndian, ByteOrder};
-use secure_gate::RevealSecret;
+use secure_gate::{RevealSecret, RevealSecretMut};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
 use std::any::Any;
-use zeroize::Zeroizing;
 
 /// HPKE KEM identifier for MLKEM768-X25519.
 pub const KEM_ID: u16 = 0x647a;
@@ -121,9 +120,9 @@ pub(crate) fn shake256_labeled_derive(
     BigEndian::write_u16(&mut buf, length as u16);
     h.update(&buf);
     h.update(context);
-    let mut out = Zeroizing::new(vec![0u8; length]);
-    h.finalize_xof().read(&mut out);
-    Ok(KdfBytes::new(core::mem::take(&mut *out)))
+    let mut out = KdfBytes::new(vec![0u8; length]);
+    out.with_secret_mut(|o| h.finalize_xof().read(o));
+    Ok(out)
 }
 
 /// Expands a 32-byte hybrid seed into ML-KEM and X25519 key material.

@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed (internal)
+
+- **`zeroize` replaced by `secure-gate`; the direct dependency is gone.** The six
+  `Zeroizing<Vec<u8>>` scratch buffers in `kdf.rs` and `kem/common.rs` are now
+  `KdfBytes` / `LabeledIkm`, filled through `with_secret_mut`. `labeled_extract`
+  loses a whole buffer in the process: it used to build the labeled IKM in a
+  `Zeroizing<Vec<u8>>` and then `core::mem::take` it into a `LabeledIkm`, and now
+  builds directly into the wrapper.
+
 ### Changed (BREAKING)
 
 - **Every secure-gate type removed from the public API.** Public in/out types

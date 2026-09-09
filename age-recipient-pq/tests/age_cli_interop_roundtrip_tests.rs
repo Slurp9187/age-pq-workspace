@@ -1,4 +1,3 @@
-use age::secrecy::ExposeSecret;
 use age::Encryptor;
 use age_recipient_pq::HybridRecipient;
 use std::fs;
@@ -22,7 +21,7 @@ fn test_create_and_verify_pq_encryption_with_cli() {
     let (recipient, identity) = HybridRecipient::generate().unwrap();
     let recipient_str = recipient.to_string();
     let secret_str = identity.to_string();
-    let identity_str = secret_str.expose_secret();
+    let identity_str = &secret_str;
 
     // Write to temp files (auto-cleaned up)
     let mut temp_recipient = NamedTempFile::new().unwrap();
