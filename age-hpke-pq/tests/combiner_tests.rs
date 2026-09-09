@@ -1,7 +1,7 @@
 //! Unit tests for combiner.
 
 use age_hpke_pq::kem::combiner::combine_shared_secrets;
-use age_hpke_pq::{ConstantTimeEq, RevealSecret};
+use age_hpke_pq::{ConstantTimeEq, RevealSecret, SecretLen};
 use age_hpke_pq::SHARED_SECRET_SIZE;
 use sha3::{Digest, Sha3_256};
 

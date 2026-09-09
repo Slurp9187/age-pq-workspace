@@ -10,6 +10,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`secure-gate` bumped `=0.8.0-rc.10` → `=0.8.0-rc.11`.** The one breaking
+  change that reaches this workspace is rc.11's #156, which moves `len()` /
+  `byte_len()` / `is_empty()` off `RevealSecret` onto a new `SecretLen` trait so
+  `RevealSecret` can be implemented for every inner type. Libraries, binaries,
+  and doctests were unaffected; three `age-hpke-pq` test files needed the new
+  trait in scope. rc.11's other two breaking changes are inert here — no
+  secure-gate encoding method is called anywhere in the workspace, and no
+  `EncodedSecret` is ever constructed.
+- **`CLAUDE.md`: corrected the `into_inner` rules.** The MSRV-1.70 table claimed
+  `Fixed<[u8; N]>` with `N > 32` could not use Tier-3 because `into_inner`
+  required `Self::Inner: Default`. secure-gate rc.10 replaced that bound with
+  `SentinelValue`, whose array impl bounds the *element* type, so the ceiling
+  has been gone for a release. Replaced the table, recorded the history so a
+  stale `// Tier-2 (forced)` marker on an old branch is recognisable, documented
+  that `InnerSecret` has no `DerefMut`, refreshed the pinned-version line, and
+  split the `x448` row of the Tier-2 inventory into its Tier-3 (`Secret::from`)
+  and Tier-2 (`as_diffie_hellman`) halves.
+- **`CLAUDE.md`: new *Length metadata — `SecretLen`, not `RevealSecret`*
+  section** covering the rc.11 trait split and the import it requires.
+
+### Security
+
+- rc.11 carries two upstream fixes relevant to patterns this workspace
+  documents, though neither has a live call site here: #152 (`io::Write` on
+  `Dynamic<Vec<u8>>` left the plaintext in the old allocation when the buffer
+  grew — the exact `Plaintext::new(Vec::new())` + `io::copy` shape the
+  *IO with `Dynamic<Vec<u8>>`* rule recommends) and #146 (`InnerSecret::clone()`
+  resolved through `Deref` to `T::clone` and silently produced an unzeroized
+  bare value).
+
 ### Added
 
 - `.gitattributes`: `* text=auto` baseline with `binary` overrides for

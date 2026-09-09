@@ -301,12 +301,13 @@ impl DecapsulationKey {
 
     /// Returns the raw seed bytes (for HPKE key-schedule integration).
     ///
-    /// Note: this is a Tier-2 leak by current API shape — the bytes leave
-    /// the wrapper as a plain array. Phase 2 (PR 5) will change the
-    /// `PrivateKey::bytes` trait method to return a wrapper reference,
-    /// at which point this method becomes a `&Seed32` accessor.
+    /// The plain array is deliberate, not a gap: per the workspace wire-boundary
+    /// rule, public API outputs are native Rust types and callers who want
+    /// zeroize-on-drop wrap the result themselves via `Seed32::new(bytes)`. The
+    /// wrapper discipline applies to the seed's intra-crate lifetime, which this
+    /// method does not shorten — `self.seed` stays wrapped and zeroizes on drop.
     pub fn bytes(&self) -> [u8; MASTER_SEED_SIZE] {
-        // Tier-2: existing API returns a plain array; PR 5 lifts to &Seed32.
+        // Tier-2: public API boundary returns a plain array by design.
         self.seed.with_secret(|b| *b)
     }
 

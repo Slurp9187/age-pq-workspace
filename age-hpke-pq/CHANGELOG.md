@@ -7,7 +7,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `SecretLen` re-exported from the crate root alongside `ConstantTimeEq` and
+  `RevealSecret`. secure-gate `0.8.0-rc.11` moved `len()` / `byte_len()` /
+  `is_empty()` onto this trait, so callers asking a wrapper its length need it
+  in scope; re-exporting keeps all three available from one place.
+
+### Changed (internal)
+
+- `src/kem/ml_kem/mlkem{768,512,1024}.rs::keypair_from_seed` and
+  `src/kem/x448.rs::secret_from_seed` promoted from Tier-2 to Tier-3: they now
+  consume their wrapper with `into_inner` instead of dereferencing through
+  `with_secret(|bytes| *bytes)`. The four `// Tier-2 (forced)` markers claimed
+  `into_inner` needed `Self::Inner: Default` and so could not serve
+  `[u8; 56]` / `[u8; 64]` on MSRV 1.70; secure-gate rc.10 replaced that bound
+  with `SentinelValue` (bounding the element type, not the array), which lifted
+  the ceiling. No behavioral change — both forms copy the array by value into
+  the callee and leave the source zeroized; the gain is that consumption is
+  named at the boundary and four comments stop asserting a limitation that no
+  longer exists.
+
 ### Docs
+
+- `DecapsulationKey::bytes`: replaced the note planning a future `&Seed32`
+  return with the actual workspace rule. Public API outputs are native Rust
+  types; the plain `[u8; 32]` is deliberate, and the wrapper discipline covers
+  the seed's intra-crate lifetime, which this accessor does not shorten.
 
 - Fix rustdoc warnings from intradoc links to `pub(crate)` items in `kem/combiner.rs` and
   `kem/mlkem768x25519.rs` (plain backticks where the target is not public on docs.rs).

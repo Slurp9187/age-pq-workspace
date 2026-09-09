@@ -69,6 +69,6 @@ pub use kdf::{new_kdf, HkdfSha256, HkdfSha384, HkdfSha512, Kdf, Shake128Kdf, Sha
 pub use kem::{Kem, PrivateKey, PublicKey};
 
 pub use kem::MlKem768X25519;
-pub use secure_gate::{ConstantTimeEq, RevealSecret};
+pub use secure_gate::{ConstantTimeEq, RevealSecret, SecretLen};
 
 pub use hpke::compute_nonce;
