@@ -187,11 +187,15 @@ impl HybridRecipient {
     pub fn parse(s: &str) -> Result<Self, age::EncryptError> {
         let bytes =
             RecipientBytes::try_from_bech32_sized::<RECIPIENT_CODE_LENGTH>(s, RECIPIENT_HRP)
-                // The decode error is forwarded here but deliberately NOT on
-                // the identity path below. A recipient is public data, so the
-                // detail ("invalid character", "checksum mismatch") is useful
-                // and leaks nothing. An identity string *is* the private key,
-                // and bech32's Display echoes input-derived characters.
+                // Forwarded here, deliberately NOT on the identity path below.
+                //
+                // `Bech32Error` is payload-free by construction: three unit
+                // variants plus `InvalidLength { expected, got }`, two integers.
+                // (The `Display` that echoes input belongs to the upstream
+                // `bech32` crate, which secure-gate collapses into
+                // `OperationFailed` and never surfaces.) So forwarding is safe
+                // on both paths -- the split is about metadata, not bytes. See
+                // `HybridIdentity::parse`.
                 .map_err(|e| {
                     age::EncryptError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
                 })?;
@@ -300,8 +304,16 @@ impl HybridIdentity {
         // Decodes straight into the wrapper's own storage. The path this
         // replaced collected the payload into a heap `Vec<u8>` first, then
         // validated its length.
-        // Payload-free by design, unlike the recipient path above: `s` is the
-        // private key, and bech32's Display echoes input-derived characters.
+        // Payload-free, unlike the recipient path above -- and for a narrower
+        // reason than "the error would leak the key". It would not:
+        // `Bech32Error` captures no input-derived text.
+        //
+        // But `InvalidLength { expected, got }` carries `got`, the decoded byte
+        // length of the input. That is metadata, not secret bytes, and for a
+        // fixed-size key it is near-zero information since the length is public
+        // in the format. It is not *nothing*, though, and this path can promise
+        // the stronger thing: the error carries nothing derived from the secret
+        // at all. Keeping that is deliberate, not an oversight.
         let seed = Seed32::try_from_bech32(s, IDENTITY_HRP).map_err(|_| {
             age::DecryptError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
