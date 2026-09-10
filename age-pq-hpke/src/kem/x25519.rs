@@ -182,7 +182,9 @@ mod tests {
             encapsulate_to_public_key(X25519Scalar::from([9u8; 32]), &recipient_pk).unwrap();
         let (ss_recipient, _pk) = decapsulate_from_private_seed(recipient_seed, &ct_x).unwrap();
 
-        assert_eq!(ss_sender.expose_secret(), ss_recipient.expose_secret());
+        // `ct_eq`, not `assert_eq!`: these are Diffie-Hellman shared secrets, and
+        // `assert_eq!` renders both operands with `Debug` on failure.
+        assert!(ss_sender.ct_eq(&ss_recipient));
     }
 
     /// RFC 7748: clear the low three bits, clear the top bit, set bit 254.

@@ -65,11 +65,13 @@ debug = true    # keep symbols for flamegraphs / profiling
 # claimed `#![forbid(unsafe_code)]` at every crate root "no exceptions", but
 # only `age-pq-hpke` actually carried the attribute. Setting it here makes the
 # rule true for all three crates and enforced by the build rather than by
-# documentation. Cost is zero: the workspace contains exactly one `unsafe`
-# token, and it is that attribute.
+# documentation. Cost is zero: every `unsafe` token in the workspace is itself
+# a `#![forbid(unsafe_code)]` attribute — four of them, one per crate root plus
+# one in a test target. Belt and braces: the attributes catch it at the file,
+# this table catches a crate that forgets one.
 #
 # Deliberately NOT here: the clippy cast lints (`cast_possible_truncation` and
-# friends). They fire on ~19 `usize as u16` RFC 9180 length prefixes in
+# friends). They fire on the `usize as u16` RFC 9180 length prefixes in
 # `age-pq-hpke`, which are wire-format-adjacent — fixing them is real work that
 # belongs in its own change, not riding along in a dependency bump whose whole
 # constraint is that the wire format must not move. Tracked separately rather

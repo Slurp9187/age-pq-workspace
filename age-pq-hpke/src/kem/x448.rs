@@ -122,6 +122,7 @@ mod tests {
             encapsulate_to_public_key(X448Scalar::from([9u8; 56]), &recipient_pk).unwrap();
         let (ss_recipient, _pk) =
             decapsulate_from_private_seed(X448Scalar::from([3u8; 56]), &ct_x).unwrap();
-        assert_eq!(ss_sender.expose_secret(), ss_recipient.expose_secret());
+        // `ct_eq`, not `assert_eq!`: see the note in `x25519.rs`.
+        assert!(ss_sender.ct_eq(&ss_recipient));
     }
 }

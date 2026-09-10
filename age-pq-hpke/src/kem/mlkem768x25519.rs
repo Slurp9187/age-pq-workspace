@@ -344,7 +344,11 @@ impl DecapsulationKey {
     /// wrapper discipline applies to the seed's intra-crate lifetime, which this
     /// method does not shorten — `self.seed` stays wrapped and zeroizes on drop.
     pub fn bytes(&self) -> [u8; MASTER_SEED_SIZE] {
-        // Tier-2: public API boundary returns a plain array by design.
+        // Tier-1: `with_secret` — the borrow does not escape the closure; the
+        // copy it returns is the wire-boundary rule's plain array, not a Tier-2
+        // reference. (Mis-tagged Tier-2 until the CLAUDE.md sweep; the table's
+        // own rule says a tier comment disagreeing with the table means one of
+        // the two is wrong.)
         self.seed.with_secret(|b| *b)
     }
 
