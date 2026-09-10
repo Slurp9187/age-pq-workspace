@@ -31,16 +31,36 @@ from the adjacent question's side.
 
 | | `age-pq-hpke` (ours) | `rust-hpke` (str4d fork `1268205e`) |
 |---|---|---|
-| ML-KEM backend | `libcrux-ml-kem 0.0.10` — **formally verified** (hax/F*) | RustCrypto `ml-kem 0.3` — **not verified** |
-| `#![forbid(unsafe_code)]` | every crate root, non-negotiable | not declared (`src/lib.rs` sets only `no_std`) |
+| ML-KEM backend | `libcrux-ml-kem 0.0.10` — **formally verified** (hax/F*) | RustCrypto `ml-kem 0.3` — **not verified** [^mlkem] |
+| `#![forbid(unsafe_code)]` | every crate root, non-negotiable [^unsafe] | not declared (`src/lib.rs` sets only `no_std`) |
 | MLKEM768-X25519 | implemented, KAT + 19 CCTV vectors | implemented |
 | MLKEM1024-P384 | not implemented | **already implemented, with KATs** |
 | x25519-dalek | 2.0 | 3.0 |
 
-Importing would trade formally-verified ML-KEM for unverified, and give up the
-unsafe-forbid guarantee. Those two properties are what distinguish this
-workspace: a PQ library whose post-quantum half is machine-checked is a
-substantive claim, where "another HPKE wrapper" is not.
+[^mlkem]: Since the `age` 0.12 migration this is no longer a statement about
+    which crates are *compiled*. RustCrypto `ml-kem 0.2.3` is in this
+    workspace's graph either way — `age` 0.12 depends on it non-optionally for
+    its own `mlkem768p256tag` recipient. It reaches `age-pq-keys` only;
+    `age-pq-hpke` and `age-plugin-pq` never link it. Measured with
+    `cargo tree -i ml-kem --workspace -e normal`.
+
+[^unsafe]: The guarantee is "no `unsafe` in code we wrote", enforced by
+    `[workspace.lints.rust] unsafe_code = "forbid"` plus `[lints] workspace =
+    true` in each member. It has never been a property of the whole graph —
+    `curve25519-dalek`, `cpufeatures` and `aes` have always carried `unsafe` —
+    and `ml-kem 0.2.3` now adds its own (`src/util.rs`, 7 occurrences including
+    an `unwrap_unchecked` and two `ptr::read`s).
+
+**Updated 2026-09-10, after the `age` 0.12 migration.** The trade is no longer
+"verified ML-KEM in the graph versus unverified in the graph". Importing
+`rust-hpke` would move **our** ML-KEM-768 path from formally-verified libcrux to
+unverified RustCrypto. It would not change which crates are compiled: `hpke`
+0.12 and `ml-kem` 0.2.3 are already linked into `age-pq-keys` by `age` itself.
+The property being defended is *which code our `mlkem768x25519` stanza runs*,
+not the contents of the dependency graph. Note also that the `hpke` crate in the
+table's right-hand column is the same crate as the `hpke 0.12.0` now compiled
+into both `age-pq-keys` and `age-plugin-pq` via `age-core` 0.12 — unforked, and
+carrying zero `unsafe` in its `src/`.
 
 ## The argument being retired
 
@@ -62,7 +82,10 @@ One macro invocation, with KAT coverage, in `rust-hpke/src/kem/mlkem_nistp.rs`.
 Adopting rage would make the variant work "wire an age stanza type around an
 existing KEM", not "implement a KEM".
 
-Keep ours for **verified ML-KEM**. That is the whole of it.
+Keep ours so that the **`mlkem768x25519` path is verified end to end**. That is
+the whole of it. (Before the `age` 0.12 migration this line read "keep ours for
+verified ML-KEM", which was a graph-level claim; it is now a claim about our own
+code path, which is the thing that was ever actually true.)
 
 ## Cost of the variant if we keep ours
 

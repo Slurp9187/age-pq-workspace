@@ -81,6 +81,15 @@ Item 2 was originally cited as *the* reason to keep our own runtime.
 >
 > Cite the verified-backend argument, not the extensibility one. Full analysis
 > and the port estimate: [`hpke-import-vs-own.md`](hpke-import-vs-own.md).
+>
+> **Narrowed 2026-09-10, after the `age` 0.12 migration.** Both halves above
+> read as claims about the dependency graph, and neither is one. `age` 0.12
+> pulls RustCrypto `ml-kem 0.2.3` non-optionally for its own `mlkem768p256tag`
+> recipient, so that crate — `unsafe` and all — compiles into `age-pq-keys`
+> whether or not we ever import `rust-hpke`. What importing would change is
+> which implementation **our** `mlkem768x25519` stanza executes, and the
+> unsafe-forbid guarantee covers **code we wrote**, not the tree beneath us. The
+> decision is unchanged; only its statement is.
 
 ## Q3 — Draft tracking: pinned, not chasing head
 

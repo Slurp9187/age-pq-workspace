@@ -14,7 +14,7 @@ publish = false
 # single git tag over the whole workspace, and a consumer pinning
 # `tag = "v0.2.0-rc.1"` gets all three at once. Per-crate numbers would give
 # that tag three answers to "which version is this?".
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 
 rust-version = "1.85"
 edition = "2024"

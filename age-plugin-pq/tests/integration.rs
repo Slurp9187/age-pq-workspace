@@ -153,9 +153,71 @@ fn identity_hrp_matches_the_binary_name_age_will_look_for() {
     );
 }
 
-/// Converting a native identity to plugin format needs only our own binary.
+/// The plugin identity HRP must be **uppercase**, and since `age-plugin` 0.7 /
+/// `age` 0.12 that is a correctness requirement rather than a cosmetic one.
+///
+/// Both crates recognise a plugin identity by testing
+/// `hrp.as_str().starts_with("AGE-PLUGIN-")`. Two things changed together in
+/// that release pair, and only the combination bites:
+///
+/// * the prefix constant flipped from `"age-plugin-"` to `"AGE-PLUGIN-"`
+///   (`age-plugin-0.7.0/src/lib.rs:193`, `age-0.12.1/src/plugin.rs:32`), and
+/// * `bech32` 0.9 -> 0.11 made `Hrp` **case-preserving**, where 0.9's `decode`
+///   returned the HRP pre-lowercased.
+///
+/// Under 0.6.1 / 0.11.2 a lowercased plugin identity therefore matched; under
+/// 0.7.0 / 0.12.1 it is rejected as an invalid HRP. We emit `Case::Upper`
+/// (`main.rs`, both `try_to_bech32` call sites), so nothing breaks — but the
+/// constraint is now load-bearing and invisible, because every fixture and
+/// every keygen path in this workspace already produces uppercase. Switching
+/// the encoder to `Case::Lower` would still emit valid bech32 and still round
+/// trip through our own parser, while silently becoming undiscoverable to
+/// every age client on the 0.12 generation.
+///
+/// Note the asymmetry, so this is not over-read: `age::x25519` is unaffected,
+/// because it compares `Hrp == Hrp` and that `PartialEq` is explicitly
+/// case-insensitive. The narrowing applies to the *plugin* prefix test only.
 #[test]
-fn plugin_converts_native_identity_to_plugin_format() {
+fn plugin_identity_hrp_is_uppercase_as_age_0_12_requires() {
+    let (_recipient, from_keygen) = keygen();
+    let from_conversion = convert_native_fixture_to_plugin_identity();
+
+    // Both emitters, because mutating one alone leaves the other's test green.
+    for (source, identity) in [
+        ("--keygen (main.rs:439)", &from_keygen),
+        ("--identity conversion (main.rs:489)", &from_conversion),
+    ] {
+        // The HRP is everything up to bech32's separator; the data part that
+        // follows is lowercase by construction and must not be inspected here.
+        let sep = identity
+            .rfind('1')
+            .expect("bech32 string must contain the '1' separator");
+        let hrp = &identity[..sep];
+
+        assert!(
+            !hrp.chars().any(|c| c.is_ascii_lowercase()),
+            "plugin identity HRP {hrp:?} from {source} contains lowercase. age-plugin 0.7 and \
+             age 0.12 match plugin identities with a case-SENSITIVE \
+             `starts_with(\"AGE-PLUGIN-\")` against a case-preserving bech32 Hrp, so a \
+             lowercased HRP is rejected as invalid and the plugin becomes undiscoverable. \
+             Emit Case::Upper."
+        );
+        assert!(
+            hrp.starts_with("AGE-PLUGIN-"),
+            "plugin identity HRP {hrp:?} from {source} must start with the exact uppercase \
+             `AGE-PLUGIN-` prefix that age-plugin 0.7 and age 0.12 test for"
+        );
+    }
+}
+
+/// Feeds the native PQ identity fixture through `--identity` and returns the
+/// plugin-format identity the binary prints.
+///
+/// This is the *second* of the two places the plugin emits an `AGE-PLUGIN-PQ-`
+/// HRP (`main.rs:489`); `keygen` is the first (`main.rs:439`). Both are checked
+/// by `plugin_identity_hrp_is_uppercase_as_age_0_12_requires`, because mutating
+/// either one alone leaves the other's test green.
+fn convert_native_fixture_to_plugin_identity() -> String {
     let native = fs::read_to_string("tests/data/age_go_identity.txt")
         .expect("failed to read tests/data/age_go_identity.txt")
         .trim()
@@ -184,8 +246,17 @@ fn plugin_converts_native_identity_to_plugin_format() {
         "identity conversion failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
 
-    let converted = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+/// Converting a native identity to plugin format needs only our own binary.
+#[test]
+fn plugin_converts_native_identity_to_plugin_format() {
+    let native = fs::read_to_string("tests/data/age_go_identity.txt")
+        .expect("failed to read tests/data/age_go_identity.txt")
+        .trim()
+        .to_owned();
+    let converted = convert_native_fixture_to_plugin_identity();
     assert!(
         converted.starts_with("AGE-PLUGIN-PQ-"),
         "output is not a plugin identity"

@@ -164,6 +164,41 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   entry (`time = { workspace = true, … }`) rather than declaring `time = "0.3"`
   itself, which used to bypass the cap entirely.
 
+  **The `age` 0.12 migration (issue #29), settled in `0.2.0-rc.2`.** The 1.70
+  floor was what had blocked it; `age` 0.12.1 / `age-core` 0.12.0 /
+  `age-plugin` 0.7.0 all declare `rust-version = "1.74"`, edition 2021, well
+  under our floor.
+
+  | Item | Was | Now |
+  |------|-----|-----|
+  | `age` (`age-pq-keys`, normal + `armor` dev-dep) | `0.11` | `0.12` |
+  | `age-core` (`age-pq-keys`, `age-plugin-pq`) | `0.11` | `0.12` |
+  | `age-plugin` (`age-plugin-pq`) | `0.6` | `0.7` |
+
+  **Zero source changes.** The `Recipient` / `Identity` trait signatures are
+  byte-identical across the jump, the `"postquantum"` label is unchanged, and
+  the wire format does not move — 19/19 CCTV vectors and D1–D5 verified
+  per-vector before *and* after, not just as a summary line.
+
+  What it drags in, and this is the part that will surprise an auditor:
+  **`age` 0.12 depends non-optionally on `ml-kem 0.2`, `p256 0.13`, `hpke 0.12`
+  and `sha3 0.10`** — no feature gates. So RustCrypto `ml-kem` is now in this
+  workspace's graph. It is **not** a second implementation of our KEM: it backs
+  `age` 0.12's own `native::tagpq` recipient (`mlkem768p256tag`, HRP
+  `age1tagpq`, label `MLKEM768-P256`), which is a different format from our
+  `mlkem768x25519` and shares no code with it. Reach is asymmetric and worth
+  knowing: `age-pq-keys` gets `ml-kem` + `p256` + `hpke` + `aes-gcm`;
+  `age-plugin-pq` gets `hpke` + `aes-gcm` only (`age-core` takes `hpke` with
+  `default-features = false, features = ["alloc"]`, and no `ml-kem`);
+  **`age-pq-hpke` gets nothing new** — it has no `age` edge at all, so the
+  verified-ML-KEM crate is the only ML-KEM in that crate's graph.
+
+  Two consequences that are documentation, not code: the "formally verified
+  ML-KEM" claim is now a claim about *our path*, not about the graph (see
+  `docs/design/hpke-import-vs-own.md`), and `hpke 0.12` pulls a **pre-release**,
+  `kem 0.3.0-pre.0`, transitively. The pre-release is pinned by `hpke` and is
+  not ours to cap; `Cargo.lock` is what holds it.
+
   **Not taken in that bump, deliberately:** `sha3` 0.10 → 0.12 and
   `x25519-dalek` 2.0 → 3.0. Neither is forced. `sha3` 0.12 needs `digest` 0.11
   while `sha2` / `hkdf` / `chacha20poly1305` / `aead` all remain on `digest`
@@ -177,19 +212,57 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   0.12 + `x25519-dalek` 3.0) in its own change, gated on the CCTV vectors and
   D1–D5, so exactly one commit can be blamed for a combiner-byte change.
 
+  **The `age` 0.12 migration (issue #29, `0.2.0-rc.2`) added a hard blocker to
+  that cohort.** Both crates `age` 0.12 pulls non-optionally pin the gen-1 side,
+  read from their manifests rather than inferred: `hpke 0.12` declares `digest`
+  0.10, `sha2` 0.10, `aead` 0.5, `hkdf` 0.12 and `hmac` 0.12; `ml-kem 0.2.3`
+  declares `sha3` 0.10.8 (its only other deps being `rand_core` 0.6.4 and
+  `hybrid-array` 0.2.0-rc.9). So the gen-2 move is no longer only ours to make:
+  **it cannot happen before `age` itself moves**, or the split it was deferred
+  to avoid appears anyway, now with the deciding side outside this workspace's
+  control — and note `sha3` in particular, the crate the deferred bump is named
+  for, is now pinned to 0.10 by `ml-kem` as well as by us. Measured after the
+  migration, `digest` is still **single-generation at 0.10.7** across the whole
+  workspace graph, as are `sha2` (0.10.9) and `sha3` (0.10.8) — the deferral is
+  still holding, and this is the fact to re-check before anyone reopens it.
+
   **`cargo tree -d` will always show duplicate `rand` / `rand_core`, and that is
-  correct.** Measured with `cargo tree -i rand@0.8.5 --workspace -e normal,dev`,
-  `rand 0.8.5` has **three** consumers: `age 0.11`, `age-core 0.11`, and
-  `proptest 1.5.0` (a dev-dependency of `age-pq-keys`). `rand_core 0.6.4` comes
-  from `crypto-common`, `rand_core 0.5.1` from `x448 0.6`. `age 0.11` is the
-  trait provider this workspace implements, so its generation is not ours to
-  choose — **do not force-upgrade or `[patch]` `age` to collapse these.**
-  `proptest` is the one consumer that *is* ours, but moving it does not dedup
-  anything: the first release off `rand 0.8` is proptest 1.7, and it lands on
-  `rand 0.9` — a different duplicate, not one fewer. That trade is out of scope
-  for a dependency bump and is not taken. The criterion that *is* meaningful:
-  exactly one `libcrux-ml-kem`, and every direct declaration in the three crates
-  on the `rand` 0.10 generation.
+  correct.** Re-measured after the `age` 0.12 migration with
+  `cargo tree -i rand@0.8.5 --workspace -e normal,dev`: `rand 0.8.5` still has
+  **exactly three** consumers, `age 0.12.1`, `age-core 0.12.0` and
+  `proptest 1.5.0` (a dev-dependency of `age-pq-keys`). `age` is the trait
+  provider this workspace implements, so its generation is not ours to choose —
+  **do not force-upgrade or `[patch]` `age` to collapse these.** `proptest` is
+  the one consumer that *is* ours, but moving it does not dedup anything: the
+  first release off `rand 0.8` is proptest 1.7, and it lands on `rand 0.9` — a
+  different duplicate, not one fewer. That trade is out of scope for a
+  dependency bump and is not taken.
+
+  `rand_core 0.5.1` still comes from `x448 0.6`. **`rand_core 0.6.4` no longer
+  "comes from `crypto-common`"** — that was true on `age` 0.11 and is now badly
+  understated. `cargo tree -i rand_core@0.6.4 --workspace -e normal,dev` lists
+  **twelve** direct consumers: `crypto-bigint`, `crypto-common`,
+  `elliptic-curve`, `ff`, `group`, `hpke`, `kem`, `ml-kem`, `rand 0.8.5`,
+  `rand_chacha 0.3.1`, `rand_xorshift` and `x25519-dalek 2.0.1`. This makes the
+  paragraph above *stronger*, not weaker: moving `x25519-dalek` to 3.0 alone now
+  removes one edge of twelve, so it cannot collapse the duplicate even in
+  principle. Do not read the old single-consumer wording as a dedup opportunity.
+
+  The criteria that *are* meaningful, all three re-measured on the migrated
+  tree: exactly one `libcrux-ml-kem` (0.0.10); **exactly one RustCrypto
+  `ml-kem` (0.2.3), which is `age` 0.12's own and is not on our KEM path** —
+  `cargo tree -i ml-kem --workspace -e normal` must show `age` as its only
+  consumer, never `age-pq-hpke`; and every direct declaration in the three
+  crates on the `rand` 0.10 generation.
+
+  **Duplicate-group count is not a regression signal by itself.** The `age` 0.12
+  migration took it from 17 groups to 14 (`base64`, `bech32`, `rustc-hash` and
+  `self_cell` resolved; `syn` 2/3 added, a proc-macro build-graph duplicate via
+  `i18n-embed-fl`, not a runtime one). Separately, `Cargo.lock` holds `nom` 7.1.3
+  beside `nom` 8.0.0, reachable only through the target-gated
+  `crabgrind`/`bindgen` chain under `libcrux-secrets`; `cargo tree -d --target
+  all` reports it, and it never compiles here. Same class of lockfile-only
+  artifact as the retired wasip2 pins above — expected, not a thing to "fix".
 - **`panic = "unwind"`** in every profile. `Drop` runs on unwind; `panic = "abort"`
   skips destructors, which skips secure-gate zeroization. The workspace
   `[profile.dev]` / `[profile.release]` / `[profile.bench]` must not set
