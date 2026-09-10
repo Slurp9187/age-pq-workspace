@@ -8,12 +8,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
-
-Nothing yet.
-
----
-
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** All three crates move to a

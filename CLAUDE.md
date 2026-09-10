@@ -561,6 +561,43 @@ a breaking change; doing it the right way the first time isn't.
 
 ---
 
+## Changelog protocol
+
+Full rules and the portable checker:
+[`.claude/skills/changelog-protocol/SKILL.md`](.claude/skills/changelog-protocol/SKILL.md).
+Two invariants:
+
+1. **The top section matches the workspace version.** `[workspace.package]
+   version` and the newest heading in all four `CHANGELOG.md` files agree.
+2. **A version heading is dated iff that tag exists.**
+   `## [0.1.1] - unreleased` while in flight; the ISO date goes in when the tag
+   is cut, and not before.
+
+`## [0.1.0-rc.1]` here is correctly dated: `v0.1.0-rc.1` exists, and this branch
+is the maintenance line cut from it.
+
+There is **no standing empty `## [Unreleased]` section** — the
+versioned-but-undated section *is* the unreleased one, and keeping both leaves a
+reader unable to tell which describes the code they have.
+
+**Do not date entries as bookkeeping** — git records that precisely and a typed
+date drifts. **Do** date an entry when the date bounds an *observation*, because
+git dates the commit, not the measurement.
+
+**This branch carries no CI check for the above**, deliberately: the workflow
+here is the frozen MSRV-1.70 one and is not modified for tooling changes. The
+check runs on `main`. Run it by hand before cutting anything from this branch:
+
+```sh
+python .claude/skills/changelog-protocol/scripts/check_changelog.py
+```
+
+Opening a patch line (`0.1.1`) means bumping `[workspace.package] version` and
+adding `## [0.1.1] - unreleased` to all four changelogs in the same commit, or
+invariant 1 is broken the moment the version moves.
+
+---
+
 ## Toolchain pin
 
 `rust-toolchain.toml` pins the workspace toolchain. CI runs against that pin.
