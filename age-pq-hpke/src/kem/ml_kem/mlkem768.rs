@@ -14,7 +14,7 @@ use secure_gate::RevealSecret;
 /// ML-KEM-768 public-key size in bytes.
 pub(crate) const MLKEM768_PK_SIZE: usize = 1184;
 /// ML-KEM-768 ciphertext size in bytes.
-pub const MLKEM768_CT_SIZE: usize = 1088;
+pub(crate) const MLKEM768_CT_SIZE: usize = 1088;
 
 /// Derives an ML-KEM-768 key pair from a wrapped 64-byte (`d || z`) seed.
 ///

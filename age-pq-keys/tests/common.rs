@@ -1,3 +1,9 @@
+// Shared helper module, included via `mod common;` by several test binaries.
+// `unreachable_pub` is allowed here because that include idiom is exactly what
+// the lint flags: each binary compiles the whole module but uses only part of
+// it, and there is no crate boundary for these helpers to be reachable across.
+#![allow(unreachable_pub)]
+
 use std::process::Command;
 
 /// Minimum age CLI version: 1.3.0 is the first release with native

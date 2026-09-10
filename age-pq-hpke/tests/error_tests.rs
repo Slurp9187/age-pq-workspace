@@ -208,7 +208,7 @@ fn test_randomness_error_variant() {
 // Fuzz-like: Random invalid inputs
 #[test]
 fn test_random_invalid_keys() {
-    use rand::Rng;
+    use rand::RngExt;
     use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 
     let mut rng = ChaCha20Rng::from_seed([0u8; 32]);

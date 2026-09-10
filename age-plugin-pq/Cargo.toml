@@ -21,12 +21,19 @@ age-pq-hpke = { path = "../age-pq-hpke" }
 chacha20poly1305 = "0.10"
 base64 = "0.22"
 clap = { workspace = true }
-rand = { version = "0.9", features = ["std"] }
-time = { version = "0.3", features = ["formatting"] }
+# `sys_rng` (the rand 0.10 name for the old `os_rng`) is a default feature and
+# supplies `rngs::SysRng`; `std` is requested explicitly as before.
+rand = { version = "0.10", features = ["std"] }
+# Inherit the workspace entry so its `< 0.3.46` MSRV cap governs here too;
+# declaring `time = "0.3"` locally used to bypass that cap entirely.
+time = { workspace = true, features = ["formatting"] }
 secure-gate = { workspace = true, features = ["encoding-bech32", "std"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "age-plugin-pq"

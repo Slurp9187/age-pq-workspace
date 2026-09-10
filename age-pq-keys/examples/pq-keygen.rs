@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("version")
                 .short('v')
                 .long("version")
-                .action(clap::ArgAction::Version)
+                .action(ArgAction::Version)
                 .help("Print the version information"),
         )
         .get_matches();

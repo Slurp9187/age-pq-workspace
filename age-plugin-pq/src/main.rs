@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // src/main.rs
 use age_core::{
     format::{FileKey, Stanza},
@@ -14,7 +16,7 @@ use age_pq_hpke::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, Encapsulati
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit, Nonce};
 use clap::{CommandFactory, Parser};
-use rand::rngs::OsRng;
+use rand::rngs::SysRng;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -144,7 +146,7 @@ impl RecipientPluginV1 for RecipientPlugin {
 
         for (recip_idx, pk) in self.recipients.iter().enumerate() {
             let (ct, ss) = pk
-                .encapsulate(&mut OsRng)
+                .encapsulate(&mut SysRng)
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "encapsulation failed"))?;
 
             // `encapsulate` hands back a native [u8; 32]; wrap it so the shared
@@ -406,7 +408,7 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
     // `from_rng` fills the wrapper's own storage straight from the CSPRNG, so the
     // seed never exists as an unprotected buffer. It is wiped on drop, including
     // on the `?`-driven early returns below.
-    let seed = Seed32::from_rng(&mut OsRng)
+    let seed = Seed32::from_rng(&mut SysRng)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
     let sk = seed.with_secret(DecapsulationKey::from_seed);

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! # age-pq-keys
 //!
 //! This crate implements a post-quantum hybrid recipient and identity for the [`age`] encryption
