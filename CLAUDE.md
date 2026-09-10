@@ -576,6 +576,12 @@ Two invariants:
 `## [0.1.0-rc.1]` here is correctly dated: `v0.1.0-rc.1` exists, and this branch
 is the maintenance line cut from it.
 
+**One changelog, at the root.** The three crate `CHANGELOG.md` files are
+**frozen**: they keep their MSRV-1.70 history through `0.1.0-rc.1` and carry a
+`<!-- changelog-protocol: frozen -->` marker the checker skips. A future `0.1.x`
+patch goes in the root under a `### <crate>` heading — not back into the crate
+files, or invariant 1 has four places to drift again.
+
 There is **no standing empty `## [Unreleased]` section** — the
 versioned-but-undated section *is* the unreleased one, and keeping both leaves a
 reader unable to tell which describes the code they have.

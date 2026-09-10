@@ -77,6 +77,34 @@ Pre-release candidates work the same way: `## [1.2.0-rc.1] - unreleased`
 becomes `## [1.2.0-rc.1] - 2026-09-10` when `v1.2.0-rc.1` is tagged, and
 `## [1.2.0-rc.2]` opens next.
 
+## One changelog or many?
+
+Per-crate / per-package changelogs are justified by **independent versioning and
+independent distribution**. A workspace whose members share one version and ship
+as a single tag has neither, and per-package files then duplicate one release's
+story N times while giving invariant 1 N places to drift.
+
+Prefer **one changelog at the root**, with a `### <package>` heading inside each
+release section for changes that are genuinely package-specific. Split only when
+packages are versioned and released separately.
+
+### Freezing a superseded changelog
+
+When consolidating, do not delete or re-shuffle the old files — rewriting
+history loses more than the tidiness gains. Mark them frozen:
+
+```markdown
+<!-- changelog-protocol: frozen -->
+
+> **Frozen.** Historical record up to `X.Y.Z`. Later changes are in the
+> [root `CHANGELOG.md`](../CHANGELOG.md).
+```
+
+The checker skips any file containing that marker and **says so on every run** —
+an unexplained skip is how a check quietly stops covering what people believe it
+covers. It also fails if *every* discovered file is frozen, because a check that
+passes while inspecting nothing is not a check.
+
 ## Enforcing it
 
 `scripts/check_changelog.py` checks both invariants and is meant to run in CI.

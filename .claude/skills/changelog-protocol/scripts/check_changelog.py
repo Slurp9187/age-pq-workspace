@@ -20,6 +20,7 @@ import sys
 HEADING = re.compile(r"^##\s*\[(?P<version>[^\]]+)\]\s*-\s*(?P<marker>.+?)\s*$")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 UNRELEASED = "unreleased"
+FROZEN = "<!-- changelog-protocol: frozen -->"
 
 
 def detect_version(root: pathlib.Path) -> tuple[str, str] | tuple[None, None]:
@@ -147,8 +148,19 @@ def main() -> int:
           f"{'present' if tag_exists else 'absent'}")
 
     failures = 0
+    checked = 0
     for path in changelogs:
         rel = path.relative_to(root) if path.is_absolute() else path
+
+        # A frozen file is a historical record that no longer accumulates --
+        # e.g. per-crate changelogs superseded by a single root one. Skipping is
+        # announced rather than silent: an unexplained skip is how a check stops
+        # covering what people believe it covers.
+        if FROZEN in path.read_text(encoding="utf-8"):
+            print(f"  --  {rel}  frozen, skipped")
+            continue
+
+        checked += 1
         head = top_heading(path)
         if head is None:
             print(f"::error file={rel}::no version heading found")
@@ -203,7 +215,21 @@ def main() -> int:
     if failures:
         print(f"::error::{failures} changelog protocol violation(s)")
         return 1
-    print(f"changelog protocol: {len(changelogs)} file(s) ok")
+
+    # Guard against a vacuous pass. If every discovered file were frozen -- or
+    # marked frozen by mistake -- the loop above would report nothing and exit
+    # 0, which is indistinguishable from a healthy tree. A check that can pass
+    # while inspecting nothing is not a check.
+    if checked == 0:
+        print(
+            "::error::no changelog was actually checked "
+            f"({len(changelogs)} discovered, all frozen or skipped). "
+            "At least one file must carry the in-flight version."
+        )
+        return 1
+
+    print(f"changelog protocol: {checked} file(s) ok"
+          + (f", {len(changelogs) - checked} frozen" if len(changelogs) > checked else ""))
     return 0
 
 

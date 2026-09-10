@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<!-- changelog-protocol: frozen -->
+
+> **Frozen.** This file is the historical record for `age-pq-keys` on the MSRV-1.70
+> line, through `0.1.0-rc.1`. Any future `0.1.x` patch is recorded in the
+> [root `CHANGELOG.md`](../CHANGELOG.md) under a `### age-pq-keys` heading.
+>
+> The crates share one version and ship as a single git tag, so per-crate
+> changelogs duplicated one release's story across four files and gave the
+> protocol's "top section matches the manifest version" invariant four places to
+> drift. History is kept here rather than re-shuffled into the root.
+
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** This crate now inherits
