@@ -23,9 +23,17 @@ than skips when the binary is absent, so "ignored" and "passed" never blur.
 | # | Direction | What it establishes | Cases |
 |---|---|---|---|
 | **D1** | our identity → `age-keygen -y` | Go parses what our encoder emits, and Go's seed→recipient derivation agrees with `HybridIdentity::to_public()` byte-for-byte | 64 |
-| **D2** | `age-keygen -pq` → our parser | our decoder accepts *arbitrary fresh* Go output, re-encodes it byte-identically, and derives the recipient Go printed | 8 |
-| **D3** | we encrypt → `age -d` | our stanza and STREAM payload are readable by Go, across the 64 KiB chunk boundary | 22 |
-| **D4** | `age -e` → we decrypt | Go's stanza and payload are readable by us, across the same boundary | 22 |
+| **D2** | `age-keygen -pq` → our parser | our identity **and** recipient decoders accept *arbitrary fresh* Go output, re-encode it byte-identically, and derive the recipient Go printed | 8 |
+| **D3** | we encrypt → `age -d` | our stanza, carried inside the `age` crate's STREAM payload, is readable by Go | 22 |
+| **D4** | `age -e` → we decrypt | Go's stanza and payload are readable by us | 22 |
+
+The length matrix in D3/D4 additionally pins the **`age` crate's** STREAM
+framing against Go's across the 64 KiB chunk boundary. That is worth having for
+a pinned dependency, but it is not evidence about this workspace: nothing here
+varies with plaintext length. Our contribution to D3/D4 is one 16-byte file key
+in one stanza, identical for a 0-byte and a 131 072-byte file — what the 22
+cases add *for us* is 22 more distinct keys through `wrap_file_key` /
+`unwrap_stanza`.
 
 The step up from what existed before is a sample size. `bech32_byte_identity.rs`
 and `age_cli_interop_decrypt_tests.rs` each check **one** checked-in artefact.
@@ -34,8 +42,11 @@ off-by-one at a chunk edge — has roughly a one-in-N chance of appearing in a
 single fixture. D1 gives it sixty-four chances, D3/D4 twenty-two each at
 deliberately chosen sizes.
 
-D2 is the only one pointed at our **decoder** with fresh input. Everything else
-in the suite decodes either our own output or the same frozen string.
+D2 is the only one pointed at our **decoders** with fresh input. Everything else
+in the suite decodes either our own output or the same frozen string — which is
+why D2 feeds Go's recipient back through `HybridRecipient::parse` as well as its
+identity through `HybridIdentity::parse`. Without that, a decoder-side defect in
+a direction our own encoder never emits would pass all four differentials.
 
 ## What it does *not* prove
 
@@ -83,13 +94,28 @@ Two properties make that total rather than best-effort:
 - **The identity is uppercase.** `Case::Upper` is applied by the encoder to the
   whole string, HRP included. A generator that emits lowercase produces
   identities Go refuses outright — every case would fail at once, but only for
-  whoever ran the ignored tests. `derived_identities_are_in_ages_native_uppercase_form`
-  catches that with no binary present.
+  whoever ran the ignored tests.
+  `identities_are_uppercase_and_match_the_crate_encoder` catches that with no
+  binary present.
 
 The HRP is **re-declared** in the test rather than imported. If the crate's HRP
 ever changed, the oracle would keep emitting this one, `HybridIdentity::parse`
 would reject it, and the change would fail loudly instead of silently
 redefining what the tests compare.
+
+That independence has a sharp edge, and it took a mutation run to find it: with
+the oracle encoding its own identities, `HybridIdentity::to_string` — the
+production encoder — was on no differential's happy path except D2's, which is
+`#[ignore]`d and needs `age-keygen`. Flipping the crate encoder to `Case::Lower`
+left D1, D3, D4 and the pinned digest all green (bech32 decoding is
+case-insensitive, so the recipients, and therefore the digest, do not move),
+while Go would have rejected every identity in the field. So
+`identities_are_uppercase_and_match_the_crate_encoder` now also asserts, for
+**every** case D1/D3/D4 use, that `HybridIdentity::parse(...).to_string()`
+reproduces the oracle's bytes — wrapped in a `Dynamic<String>` and compared with
+`ct_eq`, since both sides are private keys. That is two bech32 operations per
+case and no process spawn, and it turns the slip red on a machine with no age
+binary at all.
 
 D2 is the deliberate exception: its keys come from Go's CSPRNG and cannot be
 index-reproducible. Its failure messages carry the case index and the
@@ -114,11 +140,13 @@ way to make D3/D4 look fine while testing nothing at the boundary.
 
 | Mechanism | What it stops |
 |---|---|
-| Identities held as `secure_gate::EncodedSecret` | Zeroizes on drop, redacts in `Debug`, and has **no `Display`** — a stray `{}` in a panic message is a compile error, not a key leak |
+| Derived identities held as `secure_gate::EncodedSecret` | Zeroizes on drop, redacts in `Debug`, and has **no `Display`** — a stray `{}` in a panic message is a compile error, not a key leak |
+| Go-generated identities held as `Dynamic<String>` | D2's keys are the only genuinely secret ones here (every other case is `SHA-256(committed domain ‖ index)`). The whole keyfile lands in the wrapper on arrival, the identity line moves into a second one, and the re-encoding check compares them with `ct_eq` |
+| `String::from_utf8_lossy`, never `from_utf8(..).expect(..)` | `expect` formats the error with `{:?}`, and `FromUtf8Error`'s `Debug` prints **every input byte** as a decimal. On D2's stdout — a whole keyfile — one non-UTF-8 byte would put a private key into a panic message that the CI guard echoes verbatim |
 | `age-keygen` stderr is `Stdio::null()` | `age-keygen -y` echoes the **entire** identity on a parse failure; see the table below |
 | `age` stderr goes through `common::safe_stderr` | Drops any whitespace token containing `AGE-SECRET-KEY`, at the one place bytes become a message |
-| Failure messages carry index + lengths only | Recipients are compared with `assert!(a == b)`, not `assert_eq!`, so a mismatch cannot dump two 1959-character strings into a log |
-| Temp directories are never `keep()`d | D3 must write an identity file (`age -d -i` takes a path); it is deleted on drop, including on failure |
+| Failure messages carry index, lengths and digest handles | Recipients are compared with `assert!(a == b)`, not `assert_eq!`. D2 has no index to re-run from, so its messages carry `sha256:<12 hex>… (N chars)` of the public recipient rather than the recipient itself — eight failures once emitted ~16 KB of bech32 into a single panic and buried the legible part |
+| No identity is written to disk at all | D3 pipes its key to `age -d -i -` (measured: the identity is read from stdin while the ciphertext stays a file argument). Its keys are index-derivable and so not really secret — but unlinking a temp file is not shredding it, and drop does not run at all if the runner is killed |
 
 The stderr asymmetry, measured on v1.3.1 during this work:
 
@@ -126,6 +154,7 @@ The stderr asymmetry, measured on v1.3.1 during this work:
 |---|---|
 | `age-keygen -y` | **Yes** — `unknown identity type: "age-secret-key-pq-<full 77-char key>"` |
 | `age -d -i FILE` | No — names the file instead |
+| `age -d -i -` | No — names `-`, and reports a character *index* into the line (`malformed secret key: invalid character data part: s[0]=…`) |
 
 That correction is carried back into [`pre-freeze-audit.md`](pre-freeze-audit.md),
 whose *dead ends* section previously recorded the leak as "not reproduced" on
@@ -186,9 +215,32 @@ Three checks, because no one of them sees all three degradations:
 
 | Leg | Where | Catches | Blind to |
 |---|---|---|---|
-| **1. Declared count** | `msrv` job, before the age installer | file deleted (cargo exits 101, "no test target named"); tests removed (`--list` summary below the floor) | tests that are all `#[ignore]`d — `--list` counts them anyway |
-| **2. Executed count** | `msrv` job, after the workspace test run | bodies voided (`passed` below the floor); tests re-`#[ignore]`d (`ignored` non-zero while cargo still exits 0); age missing (cargo exits 101) | a test whose *body* still runs but tests less |
-| **3. Pinned digest** | `oracle_case_generation_is_pinned`, **not** `#[ignore]`d | `ORACLE_CASES` shrunk, `PLAINTEXT_LENGTHS` losing its chunk multiples, `seed_for_case` weakened to a constant | nothing above; it needs the file to still exist and run |
+| **1. Declared count** | `msrv` job, before the age installer | file deleted (cargo exits 101, "no test target named"); tests removed (`--list` summary below the floor) | bodies voided, and tests all `#[ignore]`d — `--list` counts names, and counts ignored tests too |
+| **2. Executed count + banners** | `msrv` job, after the workspace test run | bodies voided (no `D1:`…`D4:` banner is printed); tests re-`#[ignore]`d (no banner either, and the plain run drops to 0 passed); age missing or any failure (cargo exits 101) | a test whose *body* still runs but tests less |
+| **3. Pinned digest + floors** | `oracle_case_generation_is_pinned` and `identities_are_uppercase_and_match_the_crate_encoder`, **not** `#[ignore]`d | any matrix shrunk below its floor — including `ORACLE_GO_KEYGEN_CASES`, which cannot go into the digest because Go's keys are random — `PLAINTEXT_LENGTHS` losing its chunk multiples, `seed_for_case` weakened to a constant, and the crate's identity encoder drifting from the oracle's | nothing above; it needs the file to still exist and run |
+
+**Leg 2 is the one a mutation run rewrote**, and the earlier version of this
+table overstated it. Measured on the pinned toolchain: six `#[test]` fns keeping
+their exact names with every body replaced by `{}` reports `6 passed; 0 ignored`
+in 0.00 s and *passes a count-shaped guard*. `passed` does **not** drop when a
+body is voided — the test still runs, it just does nothing — and the `ignored`
+counter is always 0 under `--include-ignored`, so an `ignored -ne 0` branch is
+unreachable by construction. Both claims were written here and in `ci.yml`, and
+both were false. Leg 3 cannot cover for either, because voiding deletes its body
+along with the rest.
+
+The repair is to assert on evidence a body must produce. Each differential
+prints a banner (`D1: derivation differential against age …`) *after*
+`common::require_age_cli()` has successfully spawned the binary, so a banner is
+positive proof that the body ran real work against the real CLI. Leg 2 now runs
+the target with `--nocapture --test-threads=1` and requires all four, matching on
+the differential name only — never on the version substring, since CI is on
+v1.3.2 and local development on v1.3.1. A voided body prints nothing; an
+`#[ignore]`d one prints nothing either. A second, plain invocation (no
+`--include-ignored`, nothing rebuilt) then asserts a floor of 2 passed, which is
+the only check that can see an all-`#[ignore]`d file — the case where CI stays
+green because every CI invocation passes `--include-ignored`, while a
+developer's `cargo test` silently runs nothing.
 
 Leg 3 is the one that had to live in Rust, and it is deliberately not
 `#[ignore]`d so it runs on a machine with no age binary at all. Its digest
@@ -218,14 +270,25 @@ Three implementation choices in the shell, each measured rather than assumed:
 `ci.yml` has no build cache of any kind. The `msrv` job already installs age and
 already runs this target via `cargo test --workspace --all-features --
 --include-ignored`, so a dedicated job would pay a full cold `libcrux-ml-kem`
-build for signal that job already produces. The only new signal is the count
-guard, which is why it is two steps rather than a job. If a cache is added
+build for signal that job already produces. The only new signal is the guard
+itself, which is why it is two steps rather than a job. If a cache is added
 later, a separate job for legibility becomes cheap and this tradeoff is worth
 revisiting.
 
-Leg 2 re-runs a target the workspace line already ran. That is duplicate
-*execution* (seconds), not duplicate compilation. If those seconds ever matter,
-the fix is to narrow the workspace line, not to weaken the guard.
+**Both guards must use the same package and feature selection as the workspace
+test step**, and originally they did not. `cargo test -p age-pq-keys` resolves
+`libcrux-ml-kem` to `{mlkem768, rand}`, while `--workspace --all-features`
+resolves `{mlkem512, mlkem768, mlkem1024, rand}` — age-pq-hpke's `mlkem512` and
+`mlkem1024` forward to it. The two commands therefore link *different* test
+binaries (verified by filename hash), and with no cache each compiles
+`libcrux-ml-kem`, `age-pq-hpke` and `age-pq-keys` from cold. The guards were
+paying exactly the full build the two-step design exists to avoid, inside the job
+that was supposed to be sharing it. They now say `cargo test --workspace
+--all-features --test differential_age_go`, which on cargo 1.70 still selects
+exactly one target (one `Running` line, one `test result:` line, so the parse is
+unchanged) and still exits 101 with "no test target named" when the file is
+deleted. What remains duplicated is *execution*, measured in seconds, not
+compilation.
 
 ## Cost, and raising the case count
 

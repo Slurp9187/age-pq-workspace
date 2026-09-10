@@ -34,11 +34,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Anti-gutting guard for the oracle**, as two steps in the `msrv` CI job. A
   test target with zero `#[test]` functions prints `running 0 tests … ok` and
   **exits 0**, so a job that merely names the file catches its deletion and not
-  its gutting. The first step asserts a floor on the *declared* count, the
-  second on what actually *ran* (and that nothing was skipped); the pinned
-  `oracle_case_generation_is_pinned` test — deliberately not `#[ignore]`d —
-  covers the third case neither can see, a matrix quietly shrunk or a generator
-  weakened.
+  its gutting. The first step asserts a floor on the *declared* count. The
+  second asserts on **evidence a body must produce**: each differential prints a
+  `D1:`…`D4:` banner only after it has successfully spawned the age binary, and
+  all four are required, because counting is not enough — six `#[test]` fns with
+  their names kept and every body replaced by `{}` still reports `6 passed`. It
+  also re-runs the target *without* `--include-ignored` and requires a floor
+  there, which is the only way to see a file whose tests have all been
+  `#[ignore]`d away. Two binary-free tests cover what neither can see — a matrix
+  shrunk below its floor, a generator weakened, or the crate's identity encoder
+  drifting from the oracle's.
 
 ### Changed (BREAKING)
 

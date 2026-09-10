@@ -13,9 +13,17 @@
 //! | # | direction | what it proves |
 //! |---|-----------|----------------|
 //! | D1 | our identity → `age-keygen -y` | our encoder emits something Go parses, and Go's seed→recipient derivation agrees with [`HybridIdentity::to_public`] byte-for-byte |
-//! | D2 | `age-keygen -pq` → our parser | our decoder accepts *arbitrary fresh* Go output, re-encodes it identically, and derives the same recipient Go printed |
-//! | D3 | we encrypt → `age -d` | our stanza and STREAM payload are readable by Go, across the 64 KiB chunk boundary |
-//! | D4 | `age -e` → we decrypt | Go's stanza and payload are readable by us, across the same boundary |
+//! | D2 | `age-keygen -pq` → our parser | our identity **and** recipient decoders accept *arbitrary fresh* Go output, re-encode it identically, and derive the same recipient Go printed |
+//! | D3 | we encrypt → `age -d` | our stanza, carried inside the `age` crate's STREAM payload, is readable by Go |
+//! | D4 | `age -e` → we decrypt | Go's stanza and payload are readable by us |
+//!
+//! The length matrix in D3/D4 additionally pins the **`age` crate's** STREAM
+//! framing against Go's across the 64 KiB chunk boundary. That is real
+//! regression value for a pinned dependency, but it is not evidence about this
+//! workspace: no code here varies with plaintext length. Our contribution to
+//! those two is one 16-byte file key in one stanza, identical for a 0-byte and a
+//! 131 072-byte file — what the 22 cases add *for us* is 22 more distinct keys
+//! through `wrap_file_key` / `unwrap_stanza`.
 //!
 //! ## Why the cases are derived, not random
 //!
@@ -33,9 +41,10 @@
 //!
 //! D2 is the one differential that *cannot* be index-reproducible: its keys come
 //! from Go's CSPRNG. It is here anyway, because it is the only direction that
-//! exercises our **decoder** against fresh Go output rather than against one
-//! frozen string. Its failures report the case index and the recipient (public);
-//! the identity is deliberately unreportable and the temp directory is not kept.
+//! exercises our **decoders** against fresh Go output rather than against one
+//! frozen string. Its failures report the case index and a short digest handle
+//! for the recipient (public); the identity is deliberately unreportable, and
+//! nothing it touches is written to disk.
 //!
 //! ## What this does *not* prove
 //!
@@ -55,23 +64,48 @@
 //!
 //! ## Secret hygiene
 //!
-//! The per-case identity is held as a [`secure_gate::EncodedSecret`], which
-//! zeroizes on drop, redacts in `Debug`, and has **no `Display`** — a stray `{}`
-//! in a panic message is a compile error rather than a key leak. `age-keygen`'s
-//! stderr is never surfaced (it echoes the whole identity on a parse failure);
-//! `age`'s own stderr goes through `common::safe_stderr`. Failure messages carry
-//! a case index, a differential name, and lengths. Nothing else.
+//! Every identity here lives in a secure-gate wrapper for its whole life: the
+//! derived ones as [`secure_gate::EncodedSecret`], the ones Go generates as
+//! [`secure_gate::Dynamic`]`<String>`. Both zeroize on drop, redact in `Debug`,
+//! and have **no `Display`** — a stray `{}` in a panic message is a compile
+//! error rather than a key leak — and identity comparisons go through `ct_eq`.
+//! No identity is written to disk: D3 pipes its key to `age -d -i -`.
+//!
+//! `String::from_utf8(..).expect(..)` is banned on any child's stdout here, and
+//! this is not a style rule: `expect` formats the error with `{:?}`, and
+//! `FromUtf8Error`'s `Debug` prints every input byte as a decimal. On D2's
+//! stdout — a whole `age-keygen -pq` keyfile — one non-UTF-8 byte would put a
+//! private key into a panic message that CI echoes verbatim.
+//!
+//! `age-keygen`'s stderr is never surfaced (it echoes the whole identity on a
+//! parse failure); `age`'s own stderr goes through `common::safe_stderr`.
+//! Failure messages carry a case index, a differential name, lengths, and — for
+//! D2, whose cases have no index to re-run — a truncated SHA-256 handle of the
+//! public recipient. Nothing else.
 //!
 //! ## Anti-gutting
 //!
-//! [`oracle_case_generation_is_pinned`] is deliberately **not** `#[ignore]`d, so
-//! it runs with no age binary present. A test target with zero tests prints
-//! `running 0 tests … ok` and *exits 0*, so a CI step that merely names this file
-//! would catch its deletion but not its gutting. The pinned digest covers the
-//! case count, the seed derivation, the recipient derivation and the plaintext
-//! generator, so shrinking the matrix or weakening the generator fails a
-//! green-path test. The CI steps in `.github/workflows/ci.yml` close the
-//! complementary hole — a file whose tests are all `#[ignore]`d away.
+//! A test target with zero tests prints `running 0 tests … ok` and *exits 0*, so
+//! a CI step that merely names this file would catch its deletion but not its
+//! gutting. Worse, and measured: six `#[test]` fns whose bodies are all replaced
+//! by `{}` still report `6 passed`, so a guard that counts names or results is
+//! green on a completely voided oracle.
+//!
+//! Two mechanisms answer that, and they are aimed at different halves:
+//!
+//! * [`oracle_case_generation_is_pinned`] and
+//!   [`identities_are_uppercase_and_match_the_crate_encoder`] are deliberately
+//!   **not** `#[ignore]`d, so they run with no age binary present. The pinned
+//!   digest covers the case counts, the seed derivation, the recipient
+//!   derivation and the plaintext generator; the floor assertions catch a matrix
+//!   shrunk to nothing; and the encoder check catches a crate-side encoding slip
+//!   that leaves every other test in this file green.
+//! * The `.github/workflows/ci.yml` guards require the **banners** each
+//!   differential prints (`D1:` … `D4:`) to appear in the run's output. A banner
+//!   is emitted only after `common::require_age_cli()` has successfully spawned
+//!   the binary, so its presence is positive evidence that a body ran real work
+//!   against the real CLI — which a voided body cannot fake and an `#[ignore]`d
+//!   one cannot produce.
 //!
 //! Background and the measured CLI behaviours these tests are built around:
 //! [`docs/design/age-go-differential-oracle.md`](../../docs/design/age-go-differential-oracle.md)
@@ -81,7 +115,9 @@
 
 use age::Encryptor;
 use age_pq_keys::{HybridIdentity, HybridRecipient};
-use secure_gate::{fixed_newtype, Case, EncodedSecret, ToBech32};
+use secure_gate::{
+    fixed_newtype, Case, ConstantTimeEq, Dynamic, EncodedSecret, RevealSecret, ToBech32,
+};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 use std::fs;
@@ -127,6 +163,16 @@ const ORACLE_MIN_STREAM_CASES: usize = PLAINTEXT_LENGTHS.len();
 /// One spawn each, so kept small.
 const ORACLE_GO_KEYGEN_CASES: usize = 8;
 
+/// Floor for [`ORACLE_GO_KEYGEN_CASES`].
+///
+/// This one cannot be covered by [`GENERATOR_DIGEST`] — Go's keys are random, so
+/// there is nothing deterministic to hash — which is exactly why it needs an
+/// explicit floor. D2 is the only differential pointed at our **decoder** with
+/// fresh input, and setting its count to 0 would make it pass vacuously with
+/// every CI guard still green: `report()` returns early on an empty failure
+/// list, and the test still counts as one that ran.
+const ORACLE_MIN_GO_KEYGEN_CASES: usize = 4;
+
 /// Plaintext sizes, cycled by case index.
 ///
 /// 65_536 is age's STREAM chunk size (`age-0.11.2/src/primitives/stream.rs:22`,
@@ -170,6 +216,15 @@ fn seed_for_case(case: usize) -> OracleSeed32 {
 ///
 /// `EncodedSecret` zeroizes on drop and cannot be `Display`ed, so this value
 /// cannot reach a panic message by accident.
+///
+/// Encoded here rather than through [`HybridIdentity::to_string`] so the oracle
+/// keeps its own, independent notion of the format — see [`IDENTITY_HRP`]. That
+/// independence is only worth anything if the two are also *checked* against
+/// each other, which is what
+/// [`identities_are_uppercase_and_match_the_crate_encoder`] does, over every
+/// case D1/D3/D4 use and with no binary present. Without that check, flipping
+/// the crate's encoder to `Case::Lower` would leave every test in this file
+/// green except D2.
 fn identity_for_case(case: usize) -> EncodedSecret {
     seed_for_case(case)
         .try_to_bech32(IDENTITY_HRP, Case::Upper)
@@ -215,6 +270,19 @@ fn hex_encode(b: &[u8]) -> String {
         let _ = write!(s, "{x:02x}");
     }
     s
+}
+
+/// A short, stable handle for a **public** string.
+///
+/// D2's cases come from Go's CSPRNG, so a failure cannot be re-run by index and
+/// needs *some* correlator across its several messages. The recipient itself is
+/// public and would do the job, but it is 1959 characters: eight failing cases
+/// once emitted ~16 KB of bech32 into a single panic message and buried the part
+/// a reader needs. A truncated digest plus the length is enough to correlate and
+/// short enough to read.
+fn public_handle(s: &str) -> String {
+    let digest = hex_encode(&Sha256::digest(s.as_bytes()));
+    format!("sha256:{}… ({} chars)", &digest[..12], s.len())
 }
 
 /// Turns per-case failures into one panic, capped so a systemic break cannot
@@ -281,6 +349,12 @@ fn oracle_case_generation_is_pinned() {
          {ORACLE_MIN_STREAM_CASES} (one full pass over PLAINTEXT_LENGTHS)"
     );
     assert!(
+        ORACLE_GO_KEYGEN_CASES >= ORACLE_MIN_GO_KEYGEN_CASES,
+        "the decoder matrix shrank to {ORACLE_GO_KEYGEN_CASES} case(s), below its floor of \
+         {ORACLE_MIN_GO_KEYGEN_CASES}; at 0 it would pass vacuously, and it is the only \
+         differential that points our decoder at fresh Go output"
+    );
+    assert!(
         PLAINTEXT_LENGTHS.contains(&65_536) && PLAINTEXT_LENGTHS.contains(&131_072),
         "the payload matrix must keep the exact STREAM chunk multiples; they are the sizes a \
          chunking bug actually shows up at"
@@ -305,14 +379,28 @@ fn oracle_case_generation_is_pinned() {
     );
 }
 
-/// A sanity check on the derived identities themselves, again with no binary.
+/// A sanity check on the identities themselves, again with no binary — and the
+/// only place the **crate's** identity encoder is checked without one.
 ///
-/// Catches the mirror-image slip that would make D1 vacuous: emitting a
-/// lowercase identity. Go refuses `age-secret-key-pq-…` outright, so every case
-/// would fail at once — but only when someone actually ran the ignored tests.
+/// Two jobs, and the second is the load-bearing one:
+///
+/// 1. The oracle's own identities are in age's native uppercase form. Go refuses
+///    `age-secret-key-pq-…` outright, so a lowercase generator would fail every
+///    case at once — but only for whoever ran the ignored tests.
+/// 2. **[`HybridIdentity::to_string`] produces the very same bytes.** Without
+///    this, the oracle's most-advertised claim — "our encoder emits something Go
+///    parses" — would be carried by D2 alone, which is `#[ignore]`d and needs
+///    `age-keygen`. Measured: flipping the crate encoder to `Case::Lower` left
+///    D1, D3, D4 and the pinned-digest test all green, because bech32 decoding
+///    is case-insensitive, so the recipients (and therefore the digest) do not
+///    move. This assertion is what turns that slip red, on any machine, with no
+///    age binary at all.
+///
+/// Every case D1/D3/D4 use is covered, not a sample: the check is two bech32
+/// operations per case and costs no process spawn.
 #[test]
-fn derived_identities_are_in_ages_native_uppercase_form() {
-    for case in [0usize, 1, ORACLE_CASES - 1] {
+fn identities_are_uppercase_and_match_the_crate_encoder() {
+    for case in 0..ORACLE_CASES {
         let identity = identity_for_case(case);
         // Length and prefix are public facts about the format, not key material:
         // a 32-byte seed under this HRP always encodes to 77 characters.
@@ -324,6 +412,23 @@ fn derived_identities_are_in_ages_native_uppercase_form() {
             identity.len() == 77,
             "case {case}: identity is {} characters, expected 77",
             identity.len()
+        );
+
+        // The crate's own encoder, round-tripped through its own parser. Held in
+        // a `Dynamic<String>` — `to_string` returns the private key as a plain
+        // `String` by design (wire-boundary rule), and this is the wrapper its
+        // own docs tell callers to reach for — and compared with `ct_eq`, since
+        // both sides are secret material.
+        let via_crate = Dynamic::<String>::new(
+            HybridIdentity::parse(&identity)
+                .unwrap_or_else(|_| panic!("case {case}: our own identity encoding must re-parse"))
+                .to_string(),
+        );
+        assert!(
+            via_crate.with_secret(|s| s.as_bytes().ct_eq(identity.as_bytes())),
+            "case {case}: HybridIdentity::to_string disagrees with the oracle's encoder \
+             (values withheld — they are private keys). Case, HRP or checksum drift in \
+             age-pq-keys would otherwise leave D1/D3/D4 green while Go rejected every identity."
         );
     }
 }
@@ -369,18 +474,27 @@ fn go_recipients_for_all_cases() -> Vec<String> {
     });
 
     let output = child.wait_with_output().expect("age-keygen -y did not run");
-    writer
-        .join()
-        .expect("the identity writer thread panicked")
-        .expect("writing identities to age-keygen failed");
 
+    // Order matters, and it is the reverse of the obvious one. If `age-keygen`
+    // rejects an identity it exits after the first bad line, the writer thread
+    // is still mid-write and gets `BrokenPipe` (Rust ignores SIGPIPE, so this is
+    // an `Err`, not a signal). Unwrapping the writer first would therefore
+    // report a spawn-plumbing error in exactly the scenario the status
+    // assertion below was written for: a real encoder regression.
+    let writer_result = writer.join().expect("the identity writer thread panicked");
     assert!(
         output.status.success(),
         "age-keygen -y exited with {:?} (stderr withheld: it echoes the input identity)",
         output.status.code()
     );
+    writer_result.expect("writing identities to age-keygen failed");
 
-    let stdout = String::from_utf8(output.stdout).expect("age-keygen -y emits ASCII recipients");
+    // `from_utf8_lossy`, never `String::from_utf8(..).expect(..)`: `expect`
+    // formats the error with `{:?}`, and `FromUtf8Error`'s `Debug` prints every
+    // input byte as a decimal. Here that is only public recipients, but the
+    // same call on D2's stdout would print a private key, so the two paths
+    // deliberately do not differ in habit.
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let lines: Vec<String> = stdout
         .lines()
         .map(|l| l.trim_end().to_owned())
@@ -408,7 +522,11 @@ fn go_recipients_for_all_cases() -> Vec<String> {
 #[ignore = "requires age CLI >= 1.3 and age-keygen on PATH; run with --include-ignored"]
 fn go_derives_the_same_recipient_from_our_identities() {
     let version = common::require_age_cli();
-    eprintln!("D1: derivation differential against age {version}, {ORACLE_CASES} cases");
+    let keygen_version = common::require_age_keygen_cli();
+    eprintln!(
+        "D1: derivation differential against age {version} / age-keygen {keygen_version}, \
+         {ORACLE_CASES} cases"
+    );
 
     let go = go_recipients_for_all_cases();
     let mut failures = vec![];
@@ -452,14 +570,23 @@ fn go_derives_the_same_recipient_from_our_identities() {
 /// direction that points our **decoder** at arbitrary Go output; today that is
 /// checked against exactly one frozen string in `tests/data/`.
 ///
-/// A failure therefore reports the case index and the recipient (public data)
-/// and states plainly that the identity cannot be reprinted. The temp directory
-/// is not kept: "keeping it for debugging" would persist a private key to disk.
+/// A failure therefore reports the case index and a short digest **handle** for
+/// the recipient (public data) and states plainly that the identity cannot be
+/// reprinted. Nothing is written to disk: `age-keygen -pq` prints the keyfile on
+/// stdout, and it stays in a [`Dynamic<String>`] for its whole life here.
+///
+/// These are the only genuinely secret keys in this file — every other case is
+/// `SHA-256(committed domain ‖ index)` and reconstructible by anyone holding the
+/// repository — so this is where the wrapper discipline actually earns its keep.
 #[test]
 #[ignore = "requires age CLI >= 1.3 and age-keygen on PATH; run with --include-ignored"]
 fn we_reparse_freshly_generated_go_keypairs() {
     let version = common::require_age_cli();
-    eprintln!("D2: decoder differential against age {version}, {ORACLE_GO_KEYGEN_CASES} cases");
+    let keygen_version = common::require_age_keygen_cli();
+    eprintln!(
+        "D2: decoder differential against age {version} / age-keygen {keygen_version}, \
+         {ORACLE_GO_KEYGEN_CASES} cases"
+    );
 
     let mut failures = vec![];
 
@@ -479,14 +606,33 @@ fn we_reparse_freshly_generated_go_keypairs() {
             output.status.code()
         );
 
-        // The keyfile is three lines: `# created:`, `# public key: `, identity.
-        let text = String::from_utf8(output.stdout).expect("age-keygen emits ASCII");
-        let go_recipient = match text
-            .lines()
-            .find_map(|l| l.strip_prefix("# public key: "))
-            .map(str::trim)
-        {
-            Some(r) => r.to_owned(),
+        // The keyfile is three lines: `# created:`, `# public key: `, identity —
+        // and one of them is a live private key, so the whole buffer goes
+        // straight into a wrapper that zeroizes on drop and redacts in `Debug`.
+        //
+        // `from_utf8_lossy`, never `String::from_utf8(..).expect(..)`: `expect`
+        // formats the error with `{:?}`, `FromUtf8Error`'s `Debug` prints every
+        // input byte as a decimal, and this stdout is the whole keyfile. A
+        // single non-UTF-8 byte would put the private key in the panic message,
+        // which CI echoes verbatim.
+        let keyfile = Dynamic::<String>::new(String::from_utf8_lossy(&output.stdout).into_owned());
+
+        // The recipient is public and may leave the wrapper. The identity line
+        // may not: it moves into a wrapper of its own inside the same closure.
+        let (go_recipient, go_identity) = keyfile.with_secret(|text| {
+            (
+                text.lines()
+                    .find_map(|l| l.strip_prefix("# public key: "))
+                    .map(|r| r.trim().to_owned()),
+                text.lines()
+                    .map(str::trim)
+                    .find(|l| l.starts_with("AGE-SECRET-KEY-PQ-"))
+                    .map(|i| Dynamic::<String>::new(i.to_owned())),
+            )
+        });
+
+        let go_recipient = match go_recipient {
+            Some(r) => r,
             None => {
                 failures.push(format!(
                     "case {case}: no `# public key: ` line in the keyfile"
@@ -494,47 +640,71 @@ fn we_reparse_freshly_generated_go_keypairs() {
                 continue;
             }
         };
-        let go_identity = match text
-            .lines()
-            .map(str::trim)
-            .find(|l| l.starts_with("AGE-SECRET-KEY-PQ-"))
-        {
+        // A short digest of the (public) recipient correlates this case's
+        // messages without dumping 1959 characters of bech32 per failure.
+        let handle = public_handle(&go_recipient);
+        let go_identity = match go_identity {
             Some(i) => i,
             None => {
                 failures.push(format!(
-                    "case {case}: no native identity line in the keyfile"
+                    "case {case}: no native identity line in the keyfile ({handle})"
                 ));
                 continue;
             }
         };
 
-        let identity = match HybridIdentity::parse(go_identity) {
+        let identity = match go_identity.with_secret(|s| HybridIdentity::parse(s)) {
             Ok(i) => i,
             Err(_) => {
                 failures.push(format!(
                     "case {case}: our parser rejected a fresh Go identity (identity withheld; \
-                     its recipient is {go_recipient})"
+                     its recipient is {handle})"
                 ));
                 continue;
             }
         };
 
-        if identity.to_string() != go_identity {
+        // Both sides are private keys: wrapped, and compared with `ct_eq`.
+        let ours_encoded = Dynamic::<String>::new(identity.to_string());
+        if !ours_encoded.ct_eq(&go_identity) {
             failures.push(format!(
                 "case {case}: identity did not re-encode byte-identically (values withheld; its \
-                 recipient is {go_recipient})"
+                 recipient is {handle})"
             ));
         }
 
-        match identity.to_public() {
-            Ok(ours) if ours.to_string() == go_recipient => {}
-            Ok(ours) => failures.push(format!(
-                "case {case}: we derived {} from Go's identity, Go printed {go_recipient}",
-                ours.to_string()
+        let ours_recipient = match identity.to_public() {
+            Ok(r) => r,
+            Err(_) => {
+                failures.push(format!(
+                    "case {case}: deriving a recipient from Go's identity failed ({handle})"
+                ));
+                continue;
+            }
+        };
+        if ours_recipient.to_string() != go_recipient {
+            failures.push(format!(
+                "case {case}: the recipient we derived from Go's identity differs from the one \
+                 Go printed ({handle}; ours {} chars, Go's {} chars)",
+                ours_recipient.to_string().len(),
+                go_recipient.len()
+            ));
+        }
+
+        // The recipient *decoder*, against fresh Go output. Without this, no
+        // Go-produced recipient string is ever fed through `HybridRecipient::parse`
+        // on a passing run: D1 only reaches it in its failure-attribution branch,
+        // and D4 hands `age -e` a recipient we produced ourselves. A decoder-side
+        // defect in a direction our own encoder never emits would otherwise pass
+        // all four differentials.
+        match HybridRecipient::parse(&go_recipient) {
+            Ok(parsed) if parsed.as_bytes() == ours_recipient.as_bytes() => {}
+            Ok(_) => failures.push(format!(
+                "case {case}: our recipient decoder accepted Go's recipient but produced \
+                 different key bytes ({handle})"
             )),
             Err(_) => failures.push(format!(
-                "case {case}: deriving a recipient from Go's identity failed (its recipient is \
-                 {go_recipient})"
+                "case {case}: our recipient decoder rejected a fresh Go recipient ({handle})"
             )),
         }
     }
@@ -549,9 +719,17 @@ fn we_reparse_freshly_generated_go_keypairs() {
 /// D3: the Go CLI decrypts what we encrypt, across the STREAM chunk boundary.
 ///
 /// Keys are D1's, so a failure is re-runnable from the index alone. Files are
-/// used on both ends rather than pipes: 128 KiB through a child's stdin while it
-/// writes more than a pipe buffer to stdout deadlocks, and the deadlock is
-/// silent.
+/// used for the *payload* on both ends rather than pipes: 128 KiB through a
+/// child's stdin while it writes more than a pipe buffer to stdout deadlocks,
+/// and the deadlock is silent.
+///
+/// The **identity** is the exception and goes down stdin (`-i -`), so no key
+/// ever lands on disk. These particular keys are `SHA-256(committed domain ‖
+/// index)` and so publicly reconstructible — but "the temp file is unlinked on
+/// drop" is not the same as "nothing was persisted": unlinking does not shred,
+/// and drop does not run at all if the runner is killed mid-test. 77 bytes fits
+/// any pipe buffer, so the writer-thread dance D1 needs is unnecessary here;
+/// dropping the handle before `wait_with_output` is enough.
 #[test]
 #[ignore = "requires age CLI >= 1.3 on PATH; run with --include-ignored"]
 fn go_decrypts_what_we_encrypt() {
@@ -567,7 +745,6 @@ fn go_decrypts_what_we_encrypt() {
         let recipient = our_recipient_for_case(case);
 
         let ciphertext_path = dir.path().join(format!("d3-{case}.age"));
-        let identity_path = dir.path().join(format!("d3-{case}.key"));
         let recovered_path = dir.path().join(format!("d3-{case}.out"));
 
         let mut ciphertext = Vec::new();
@@ -582,21 +759,41 @@ fn go_decrypts_what_we_encrypt() {
             writer.finish().expect("finish");
         }
         fs::write(&ciphertext_path, &ciphertext).expect("write ciphertext");
-        // Tier-2: the file sink takes `&[u8]`; `age -d -i` needs a path, so the
-        // key must land on disk. The temp directory is dropped at test end.
-        fs::write(&identity_path, identity.as_bytes()).expect("write identity");
 
-        let output = common::age_command_without_plugins()
+        // `-i -` reads the identity from stdin while the ciphertext stays a file
+        // argument (measured against the local CLI; `-` for an identity path is
+        // documented age behaviour, not a version-specific accident).
+        let mut child = common::age_command_without_plugins()
             .args([
                 "-d".as_ref(),
                 "-i".as_ref(),
-                identity_path.as_os_str(),
+                "-".as_ref(),
                 "-o".as_ref(),
                 recovered_path.as_os_str(),
                 ciphertext_path.as_os_str(),
             ])
-            .output()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .expect("age -d did not run");
+        let written = {
+            let mut sink = child.stdin.take().expect("stdin was requested");
+            // Tier-2: `ChildStdin::write_all` takes `&[u8]`. `EncodedSecret` has
+            // no `AsRef<[u8]>` on purpose, so this is the explicit hand-off.
+            sink.write_all(identity.as_bytes())
+                .and_then(|()| sink.write_all(b"\n"))
+            // `sink` drops here, closing stdin; age reads identities to EOF.
+        };
+        let output = child
+            .wait_with_output()
+            .expect("age -d did not run to completion");
+        // Checked *after* the child's status, for D1's reason: a child that
+        // exits early turns this write into `BrokenPipe`, and the exit code is
+        // the more informative half.
+        if output.status.success() {
+            written.expect("writing the identity to age's stdin failed");
+        }
 
         if !output.status.success() {
             failures.push(format!(
