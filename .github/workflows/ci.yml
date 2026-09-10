@@ -20,6 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags are required by the changelog check below: without them every
+          # dated section looks untagged and the check fails for the wrong
+          # reason. actions/checkout fetches none by default.
+          fetch-depth: 0
+      # ---- changelog protocol -------------------------------------------
+      # Two invariants, both silent failures otherwise:
+      #   * the top changelog section matches the manifest version
+      #   * a version heading is dated IFF that tag exists
+      # A section reading `## [1.2.0] - 2026-09-10` when v1.2.0 was never
+      # tagged claims a release that did not happen, and reads that way
+      # forever. That exact state existed on this branch before the check did.
+      # Protocol and rationale: .claude/skills/changelog-protocol/SKILL.md
+      - name: Changelog protocol
+        run: python .claude/skills/changelog-protocol/scripts/check_changelog.py
       # Keep this in step with rust-toolchain.toml, which pins the same version
       # and is what every bare `cargo` in this repo actually obeys.
       - uses: dtolnay/rust-toolchain@1.85

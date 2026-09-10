@@ -5,67 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+<!-- changelog-protocol: frozen -->
 
-Nothing yet.
-
----
-
-## [0.2.0-rc.1] - 2026-09-10
-
-**Part of the MSRV 1.85 cohort bump (issue #2).** The workspace moves to rustc
-1.85, edition 2024 and Cargo resolver 3. See the root `CHANGELOG.md` for the
-full rationale, the per-pin decisions, and what was deliberately not taken.
-**The wire format does not change.**
-
-### Changed
-
-- **BREAKING: the RNG trait bound on three public functions.**
-  `EncapsulationKey::encapsulate`, `DecapsulationKey::generate` and the free
-  `generate_keypair` move from `<R: TryRngCore + TryCryptoRng>` to
-  `<R: TryRng + TryCryptoRng>`, following rand_core 0.10's rename of `RngCore`
-  to `Rng` and `TryRngCore` to `TryRng`. This is a genuine signature change for
-  downstream callers, not an internal rename.
-
-- **`rand` 0.9 -> 0.10.** `rand::rngs::OsRng` is now `rand::rngs::SysRng`
-  (the `os_rng` feature became `sys_rng`, and is on by default). Note that
-  `SysRng` implements the fallible `TryRng` / `TryCryptoRng`, not the infallible
-  `Rng` / `CryptoRng`.
-
-- **`rand_core` moved to `[dev-dependencies]`.** Nothing in `src/` names it, and
-  rand_core 0.10 has no features at all — the `os_rng` feature it used to carry
-  went with `OsRng` itself, so the old
-  `rand_core = { version = "0.9", features = ["os_rng"] }` line could not have
-  been version-bumped in place.
-
-- **`libcrux-ml-kem` 0.0.8 -> 0.0.10.** The four functions this crate calls keep
-  their exact signatures, so the Tier-3 `into_inner()` hand-offs are unchanged.
-  `default-features = false` is kept, and its comment corrected: it selects the
-  ML-KEM variant explicitly (the default set also turns on mlkem512 and
-  mlkem1024). The previous rationale blamed "older Cargo" and tls_codec default
-  feature resolution, which was a Cargo-1.70 concern and stale at 1.85.
-
-- **`sha3` stays at 0.10 and `x25519-dalek` at 2.0**, deliberately — see the
-  root changelog.
-
-- Dev-dependencies `rand` and `rand_chacha` move to 0.10. Seeded ChaCha output
-  is bit-for-bit stable across this bump, and no fixed vector in this workspace
-  derives from a seeded `rand` stream.
-
-### Fixed
-
-- Five unreachable-`pub` items surfaced by the new workspace lint table:
-  `MLKEM768_CT_SIZE` (now `pub(crate)`, matching its neighbour
-  `MLKEM768_PK_SIZE`), the same constants in the feature-gated `mlkem512` /
-  `mlkem1024` siblings, and `clamp_x25519_scalar` / `clamp_x448_scalar`.
-
-  The two feature-gated ones were missed at first because they compile only
-  under `--all-features`, so a plain `cargo clippy --all-targets` never sees
-  them while `cargo test --workspace --all-features` — what CI runs — prints
-  them on every run. Verification for this crate is now done with
-  `--all-features --all-targets`.
-
----
+> **Frozen.** This file is the historical record for `age-pq-hpke` up to and
+> including `0.1.0-rc.1`. From `0.2.0-rc.1` onward every change is recorded in
+> the [root `CHANGELOG.md`](../CHANGELOG.md), under a `### age-pq-hpke` heading
+> inside each release section.
+>
+> The crates share one version and ship as a single git tag, so per-crate
+> changelogs were duplicating one release's story across four files and giving
+> the protocol's "top section matches the manifest version" invariant four
+> places to drift. History is kept here rather than re-shuffled into the root,
+> because rewriting it would lose more than the tidiness gains.
 
 ## [0.1.0-rc.1] - 2026-09-10
 

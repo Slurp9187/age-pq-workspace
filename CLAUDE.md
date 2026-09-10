@@ -640,6 +640,48 @@ a breaking change; doing it the right way the first time isn't.
 
 ---
 
+## Changelog protocol
+
+Full rules and the portable checker:
+[`.claude/skills/changelog-protocol/SKILL.md`](.claude/skills/changelog-protocol/SKILL.md).
+Two invariants, enforced by CI on `main`:
+
+1. **The top section matches the workspace version.** `[workspace.package]
+   version` and the newest heading in all four `CHANGELOG.md` files agree.
+2. **A version heading is dated iff that tag exists.**
+   `## [0.2.0-rc.1] - unreleased` while in flight; the ISO date goes in when the
+   tag is cut, and not before.
+
+**One changelog, at the root.** The three crates share one version and ship as a
+single git tag, so per-crate changelogs were telling one release's story four
+times and giving invariant 1 four places to drift. Crate-specific changes get a
+`### age-pq-hpke` / `### age-pq-keys` / `### age-plugin-pq` heading inside the
+release section. The three crate `CHANGELOG.md` files are **frozen** — they keep
+their history through `0.1.0-rc.1` and carry a
+`<!-- changelog-protocol: frozen -->` marker that the checker skips (announcing
+each skip, and failing if *every* file is frozen). If the crates ever publish
+independently, versions and changelogs re-split together.
+
+There is **no standing empty `## [Unreleased]` section** — the
+versioned-but-undated section *is* the unreleased one, and keeping both leaves a
+reader unable to tell which describes the code they have. This is not
+hypothetical: `0.2.0-rc.1` sat dated `2026-09-10` while untagged, under an empty
+`[Unreleased]`, claiming a release that had not happened.
+
+**Do not date entries as bookkeeping** — git records that precisely and a typed
+date drifts. **Do** date an entry when the date bounds an *observation*, because
+git dates the commit, not the measurement:
+
+```markdown
+- Not reproduced on age v1.3.1 as of 2026-09-09.      <- keep, the date is the claim
+- Moved encoding to secure-gate (2026-09-08).          <- drop, git knows
+```
+
+The `release/0.1` maintenance branch follows the same protocol but carries no CI
+check; its `0.1.0-rc.1` heading is correctly dated because `v0.1.0-rc.1` exists.
+
+---
+
 ## Toolchain pin
 
 `rust-toolchain.toml` pins the workspace toolchain. CI runs against that pin.

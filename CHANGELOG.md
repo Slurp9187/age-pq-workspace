@@ -8,13 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
-
-Nothing yet.
-
----
-
-## [0.2.0-rc.1] - 2026-09-10
+## [0.2.0-rc.1] - unreleased
 
 **The MSRV 1.85 cohort bump (issue #2).** The 1.70 line is frozen at
 `v0.1.0-rc.1`; this release moves the whole workspace to **rustc 1.85**,
@@ -23,7 +17,9 @@ that 1.70 was holding back. Dependencies and toolchain only — **the wire forma
 does not change**, which the 19 C2SP CCTV vectors and the five `age`-CLI
 differentials (D1-D5) gate.
 
-### Changed
+### Workspace
+
+#### Changed
 
 - **MSRV 1.70 -> 1.85.** `rust-toolchain.toml` and `[workspace.package]
   rust-version` move together, as does CI. This was pre-decided; see the table
@@ -105,7 +101,7 @@ differentials (D1-D5) gate.
   as the WASI chain the removed pins guarded, so it gets the same treatment: a
   durable record rather than a surprise.
 
-### Added
+#### Added
 
 - **`[workspace.lints]` restored — with the member opt-in that the pre-1.70
   version omitted.** All three members now carry `[lints] workspace = true`;
@@ -124,7 +120,7 @@ differentials (D1-D5) gate.
   wire-format-adjacent code and belongs in its own change, not a blanket
   `#![allow]`.
 
-### Fixed
+#### Fixed
 
 - Five unreachable-`pub` items in `age-pq-hpke` found by the new lints
   (`MLKEM768_CT_SIZE` now matches its already-`pub(crate)` neighbour
@@ -139,7 +135,7 @@ differentials (D1-D5) gate.
   decorative. The verification command below now carries `--all-features` for
   exactly that reason.
 
-### Not taken, deliberately
+#### Not taken, deliberately
 
 - **`sha3` 0.10 -> 0.12** and **`x25519-dalek` 2.0 -> 3.0.** Neither is forced
   by this bump and both are deferred to a single RustCrypto gen-2 cohort change.
@@ -152,7 +148,7 @@ differentials (D1-D5) gate.
   it alone dedups nothing while carrying `curve25519-dalek` 4->5 underneath the
   low-order-point rejection.
 
-### Verification
+#### Verification
 
 `cargo test --workspace --all-features -- --include-ignored`: **157 passed, 0
 failed, 0 ignored**, including 19/19 C2SP CCTV hybrid vectors and D1-D5 against
@@ -170,6 +166,118 @@ workspace implements, so its generation is not ours to choose. `proptest` is
 ours, but the first release off `rand 0.8` is proptest 1.7, which takes
 `rand 0.9` — a different duplicate, not one fewer — so moving it is not a dedup
 and is not taken here.
+
+### age-pq-hpke
+
+#### Changed
+
+- **BREAKING: the RNG trait bound on three public functions.**
+  `EncapsulationKey::encapsulate`, `DecapsulationKey::generate` and the free
+  `generate_keypair` move from `<R: TryRngCore + TryCryptoRng>` to
+  `<R: TryRng + TryCryptoRng>`, following rand_core 0.10's rename of `RngCore`
+  to `Rng` and `TryRngCore` to `TryRng`. This is a genuine signature change for
+  downstream callers, not an internal rename.
+
+- **`rand` 0.9 -> 0.10.** `rand::rngs::OsRng` is now `rand::rngs::SysRng`
+  (the `os_rng` feature became `sys_rng`, and is on by default). Note that
+  `SysRng` implements the fallible `TryRng` / `TryCryptoRng`, not the infallible
+  `Rng` / `CryptoRng`.
+
+- **`rand_core` moved to `[dev-dependencies]`.** Nothing in `src/` names it, and
+  rand_core 0.10 has no features at all — the `os_rng` feature it used to carry
+  went with `OsRng` itself, so the old
+  `rand_core = { version = "0.9", features = ["os_rng"] }` line could not have
+  been version-bumped in place.
+
+- **`libcrux-ml-kem` 0.0.8 -> 0.0.10.** The four functions this crate calls keep
+  their exact signatures, so the Tier-3 `into_inner()` hand-offs are unchanged.
+  `default-features = false` is kept, and its comment corrected: it selects the
+  ML-KEM variant explicitly (the default set also turns on mlkem512 and
+  mlkem1024). The previous rationale blamed "older Cargo" and tls_codec default
+  feature resolution, which was a Cargo-1.70 concern and stale at 1.85.
+
+- **`sha3` stays at 0.10 and `x25519-dalek` at 2.0**, deliberately — see the
+  root changelog.
+
+- Dev-dependencies `rand` and `rand_chacha` move to 0.10. Seeded ChaCha output
+  is bit-for-bit stable across this bump, and no fixed vector in this workspace
+  derives from a seeded `rand` stream.
+
+#### Fixed
+
+- Five unreachable-`pub` items surfaced by the new workspace lint table:
+  `MLKEM768_CT_SIZE` (now `pub(crate)`, matching its neighbour
+  `MLKEM768_PK_SIZE`), the same constants in the feature-gated `mlkem512` /
+  `mlkem1024` siblings, and `clamp_x25519_scalar` / `clamp_x448_scalar`.
+
+  The two feature-gated ones were missed at first because they compile only
+  under `--all-features`, so a plain `cargo clippy --all-targets` never sees
+  them while `cargo test --workspace --all-features` — what CI runs — prints
+  them on every run. Verification for this crate is now done with
+  `--all-features --all-targets`.
+
+### age-pq-keys
+
+#### Changed
+
+- **`secure-gate` moves from git `release/0.8` (0.8.0-rc.12) to git `main`
+  (0.9.0-rc.9).** This crate needed **no call-site changes**: `Case`,
+  `bech32_code_length` / `BECH32_CODE_LENGTH`, the `*_sized` encoders and the
+  plain-value `into_inner` all exist on rc.9. Had this landed on 0.9.0-rc.8
+  instead — which predates that work — the uppercase `AGE-SECRET-KEY-PQ-`
+  identity encoding would have regressed to lowercase, so the exact rc matters.
+
+- Dev-dependency exact pins (`proptest`, `tempfile`, `time`, `clap`) relax to
+  the workspace entries; the `unicode-ident` MSRV cap is gone.
+
+#### Added
+
+- `#![forbid(unsafe_code)]` at the crate root. `CLAUDE.md` had always required
+  it, but this crate never actually carried it; it is now also enforced by
+  `[workspace.lints.rust] unsafe_code = "forbid"` plus `[lints] workspace = true`.
+
+#### Fixed
+
+- `go_recipients_for_all_cases` in the differential harness carries a targeted
+  `#[allow(clippy::zombie_processes)]`. The lint fires on a `?` inside the
+  writer thread's closure, reading it as an early return from the function; it
+  is not one, and `child.wait_with_output()` is reached on every path. Verified
+  rather than restructured.
+
+#### Verification
+
+19/19 C2SP CCTV hybrid vectors pass, and all five differentials against the Go
+`age` CLI v1.3.1 (D1-D5) pass, under rustc 1.85 and edition 2024.
+
+### age-plugin-pq
+
+#### Changed
+
+- **`rand` 0.9 -> 0.10.** `rand::rngs::OsRng` becomes `rand::rngs::SysRng` at
+  the import and both use sites (recipient encapsulation and identity-seed
+  generation). The crate relies on rand's **default** features for `sys_rng`;
+  adding `default-features = false` later would silently remove `SysRng` and
+  break key generation.
+
+- **`secure-gate` moves to git `main` (0.9.0-rc.9)** with no call-site changes —
+  `Case::Upper` still produces the `AGE-PLUGIN-PQ-` identity string.
+
+- **`time` now inherits the workspace entry** rather than declaring
+  `time = "0.3"` locally. The local declaration bypassed the workspace's MSRV
+  cap, so nothing was actually holding `time` below the version that requires
+  rustc 1.88.
+
+#### Added
+
+- `#![forbid(unsafe_code)]` at the crate root, plus `[lints] workspace = true`
+  so the workspace's `unsafe_code = "forbid"` governs this crate.
+
+#### Unchanged
+
+- The binary name stays `age-plugin-pq`, and the identity HRP stays
+  `AGE-PLUGIN-PQ-`. Plugin discovery depends on both, and
+  `identity_hrp_matches_the_binary_name_age_will_look_for` still guards the
+  coupling.
 
 ---
 
