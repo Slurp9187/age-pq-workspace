@@ -190,11 +190,11 @@ const ORACLE_MIN_GO_KEYGEN_CASES: usize = 4;
 
 /// Plaintext sizes, cycled by case index.
 ///
-/// 65_536 is age's STREAM chunk size (`age-0.11.2/src/primitives/stream.rs:22`,
+/// 65_536 is age's STREAM chunk size (`age-0.12.1/src/primitives/stream.rs:22`,
 /// `CHUNK_SIZE = 64 * 1024`); 131_072 is exactly two chunks. Those two are the
 /// interesting ones: an exact multiple forces the encryptor to flag a *full*
 /// chunk as last rather than emit an empty one, and the reader rejects an empty
-/// final chunk outright (`stream.rs:441`, `err-stream-last-chunk-empty`). The
+/// final chunk outright (`stream.rs:446`, `err-stream-last-chunk-empty`). The
 /// small sizes bracket the AEAD block boundary.
 const PLAINTEXT_LENGTHS: &[usize] = &[0, 1, 15, 16, 17, 64, 1024, 65_535, 65_536, 65_537, 131_072];
 

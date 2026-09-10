@@ -15,8 +15,8 @@ authors.workspace = true
 include.workspace = true
 
 [dependencies]
-age-plugin = "0.6"
-age-core = "0.11"
+age-plugin = "0.7"
+age-core = "0.12"
 age-pq-hpke = { path = "../age-pq-hpke" }
 chacha20poly1305 = "0.10"
 base64 = "0.22"

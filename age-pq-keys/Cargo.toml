@@ -13,8 +13,8 @@ include.workspace = true
 
 [dependencies]
 age-pq-hpke = { path = "../age-pq-hpke" }
-age = "0.11"
-age-core = "0.11"
+age = "0.12"
+age-core = "0.12"
 base64 = "0.22"
 secure-gate = { workspace = true, features = ["encoding-bech32", "std"] }
 
@@ -24,8 +24,10 @@ secure-gate = { workspace = true, features = ["encoding-bech32", "std"] }
 # workspace Cargo.lock remains the reproducibility guard.
 proptest = { workspace = true }
 # CCTV testkit conformance harness: `armor` for the armored vector, `sha2` for
-# payload digests. Both resolve to already-locked versions (no new fetch).
-age = { version = "0.11", features = ["armor"] }
+# payload digests. Keep this version in lockstep with the normal `age` dep
+# above — two `age` generations in one crate's graph would not resolve, and a
+# stale dev-dep here is the shape that mistake takes.
+age = { version = "0.12", features = ["armor"] }
 sha2 = "0.10"
 tempfile = { workspace = true }
 time = { workspace = true }

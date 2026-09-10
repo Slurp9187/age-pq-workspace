@@ -178,7 +178,10 @@ refresh is tracked in
 ## Security
 
 - Hybrid post-quantum design: ML-KEM-768 (NIST-standardized) + X25519.
-- Formally verified ML-KEM via `libcrux-ml-kem`.
+- The `mlkem768x25519` KEM path uses formally verified ML-KEM via
+  `libcrux-ml-kem` (hax/F*). Note that `age` 0.12 links RustCrypto `ml-kem` for
+  its own, unrelated `mlkem768p256tag` recipient; that code is present in
+  `age-pq-keys`'s dependency graph but is never on our path.
 - Constant-time validation for X25519 keys and ciphertexts via `secure-gate::ConstantTimeEq`.
 - Secrets wrapped in `secure-gate::Fixed` / `secure-gate::Dynamic` with redacted `Debug` and
   automatic `ZeroizeOnDrop`.

@@ -10,6 +10,16 @@ Both official age implementations now ship post-quantum support natively:
   locally against the v1.3.2 clone.
 - **rage** — `age::pq::{Identity, Recipient}` on the unmerged `pq` branch.
 
+**Updated 2026-09-10, after the `age` 0.12 migration (issue #29).** Released
+`age` 0.12.1 — the crate `age-pq-keys` now depends on — ships a native PQ
+recipient of its own, `age::tagpq` (`mlkem768p256tag`, HRP `age1tagpq`, label
+`MLKEM768-P256`), backed by RustCrypto `ml-kem 0.2` and `hpke 0.12`. It is a
+different wire format from ours and shares no code with it; there is **zero**
+occurrence of `mlkem768x25519` in the published crate. Our `mlkem768x25519`
+variant remains rage-unmerged, on that `pq` branch. Note that `tagpq::Recipient`
+returns the same `"postquantum"` label we do, so the two can legally coexist in
+one file header — untested here.
+
 This crate set predates both. The question was whether to adopt one of them or
 keep our own implementation.
 
@@ -81,6 +91,15 @@ Item 2 was originally cited as *the* reason to keep our own runtime.
 >
 > Cite the verified-backend argument, not the extensibility one. Full analysis
 > and the port estimate: [`hpke-import-vs-own.md`](hpke-import-vs-own.md).
+>
+> **Narrowed 2026-09-10, after the `age` 0.12 migration.** Both halves above
+> read as claims about the dependency graph, and neither is one. `age` 0.12
+> pulls RustCrypto `ml-kem 0.2.3` non-optionally for its own `mlkem768p256tag`
+> recipient, so that crate — `unsafe` and all — compiles into `age-pq-keys`
+> whether or not we ever import `rust-hpke`. What importing would change is
+> which implementation **our** `mlkem768x25519` stanza executes, and the
+> unsafe-forbid guarantee covers **code we wrote**, not the tree beneath us. The
+> decision is unchanged; only its statement is.
 
 ## Q3 — Draft tracking: pinned, not chasing head
 
@@ -122,9 +141,14 @@ See [`cctv-conformance.md`](cctv-conformance.md).
 
 - We own all shipping code; libcrux stays inside.
 - rage and age-go are oracles, pulled into an isolated conformance workspace so
-  their MSRV, their `secrecy` dependency, and the `[patch.crates-io]` forks stay
-  out of our shipping graph. `[patch.crates-io]` is workspace-global, so
-  isolation is load-bearing, not tidiness. See
+  their MSRV, their `secrecy` dependency, and the **forked revisions** rage
+  pins via `[patch.crates-io]` (`str4d/rust-hpke`, `str4d/RustCrypto-KEMs`)
+  stay out of our shipping graph. `[patch.crates-io]` is workspace-global, so
+  isolation is load-bearing, not tidiness. **Narrowed 2026-09-10:** what stays
+  out is the *forks*, not those crate names. Since the `age` 0.12 migration the
+  unforked upstream releases of both — `hpke 0.12.0` and `ml-kem 0.2.3` — are in
+  our shipping graph anyway, arriving through `age` itself rather than through
+  any patch. See
   [`../plans/conformance-workspace.md`](../plans/conformance-workspace.md).
 - Cost of keeping ours: the seven CCTV fixes (done) plus ongoing conformance
   maintenance.

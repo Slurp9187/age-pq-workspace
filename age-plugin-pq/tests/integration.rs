@@ -67,9 +67,15 @@ fn keygen() -> (String, String) {
         .expect("no recipient line in --keygen output")
         .trim()
         .to_owned();
+    // Case-insensitively, deliberately. The HRP's *case* is what
+    // `plugin_identity_hrp_is_uppercase_as_age_0_12_requires` asserts, so this
+    // helper must not pre-filter on it: a case-sensitive `starts_with` here
+    // makes a lowercased HRP die on the `expect` below with "no plugin
+    // identity" — which reads as a broken keygen — and the case assertion's
+    // diagnostic never prints.
     let identity = stdout
         .lines()
-        .find(|l| l.starts_with("AGE-PLUGIN-"))
+        .find(|l| l.trim().to_ascii_uppercase().starts_with("AGE-PLUGIN-"))
         .expect("no plugin identity in --keygen output")
         .trim()
         .to_owned();
@@ -153,9 +159,121 @@ fn identity_hrp_matches_the_binary_name_age_will_look_for() {
     );
 }
 
-/// Converting a native identity to plugin format needs only our own binary.
+/// The plugin identity HRP must be **uppercase**, and since `age-plugin` 0.7 /
+/// `age` 0.12 that is a correctness requirement rather than a cosmetic one.
+///
+/// Both crates recognise a plugin identity by testing
+/// `hrp.as_str().starts_with("AGE-PLUGIN-")`. Two things changed together in
+/// that release pair, and only the combination bites:
+///
+/// * the prefix constant flipped from `"age-plugin-"` to `"AGE-PLUGIN-"`
+///   (`age-plugin-0.7.0/src/lib.rs:193`, `age-0.12.1/src/plugin.rs:31`; the
+///   use site is `age-0.12.1/src/plugin.rs:167-172`, the `starts_with` test
+///   that returns the literal `"invalid HRP"` quoted below — a use site rots
+///   less silently than a constant's line number), and
+/// * `bech32` 0.9 -> 0.11 made `Hrp` **case-preserving**, where 0.9's `decode`
+///   returned the HRP pre-lowercased.
+///
+/// Under 0.6.1 / 0.11.2 a lowercased plugin identity therefore matched; under
+/// 0.7.0 / 0.12.1 it is rejected as an invalid HRP. We emit `Case::Upper`
+/// (`main.rs`, both `try_to_bech32` call sites), so nothing breaks — but the
+/// constraint is now load-bearing and invisible, because every fixture and
+/// every keygen path in this workspace already produces uppercase. Switching
+/// the encoder to `Case::Lower` would still emit valid bech32 and still round
+/// trip through our own parser, while silently becoming undiscoverable to
+/// every age client on the 0.12 generation.
+///
+/// Note the asymmetry, so this is not over-read: `age::x25519` is unaffected,
+/// because it compares `Hrp == Hrp` and that `PartialEq` is explicitly
+/// case-insensitive. The narrowing applies to the *plugin* prefix test only.
 #[test]
-fn plugin_converts_native_identity_to_plugin_format() {
+fn plugin_identity_hrp_is_uppercase_as_age_0_12_requires() {
+    let (_recipient, from_keygen) = keygen();
+    let from_conversion = convert_native_fixture_to_plugin_identity();
+
+    // Both emitters, because mutating one alone leaves the other's test green.
+    for (source, identity) in [
+        ("--keygen (main.rs:439)", &from_keygen),
+        ("--identity conversion (main.rs:489)", &from_conversion),
+    ] {
+        // The HRP is everything up to bech32's separator; the data part that
+        // follows is lowercase by construction and must not be inspected here.
+        let sep = identity
+            .rfind('1')
+            .expect("bech32 string must contain the '1' separator");
+        let hrp = &identity[..sep];
+
+        assert!(
+            !hrp.chars().any(|c| c.is_ascii_lowercase()),
+            "plugin identity HRP {hrp:?} from {source} contains lowercase. age-plugin 0.7 and \
+             age 0.12 match plugin identities with a case-SENSITIVE \
+             `starts_with(\"AGE-PLUGIN-\")` against a case-preserving bech32 Hrp, so a \
+             lowercased HRP is rejected as invalid and the plugin becomes undiscoverable. \
+             Emit Case::Upper."
+        );
+        assert!(
+            hrp.starts_with("AGE-PLUGIN-"),
+            "plugin identity HRP {hrp:?} from {source} must start with the exact uppercase \
+             `AGE-PLUGIN-` prefix that age-plugin 0.7 and age 0.12 test for"
+        );
+    }
+}
+
+/// The mirror image of the rule above, from the same `bech32` 0.9 -> 0.11
+/// case-preservation change: the plugin **recipient** HRP must stay
+/// **lowercase**.
+///
+/// Both clients test the recipient prefix case-sensitively, against an HRP that
+/// is no longer folded for them:
+///
+/// * `age` 0.12.1 does `hrp.as_str().starts_with("age1")`
+///   (`src/plugin.rs:112-113`, constant at `:30`), and
+/// * age-go does `strings.HasPrefix(hrp, "age1")` on the raw HRP that
+///   `bech32.Decode` returns (`plugin/encode.go:62`); only the *data* part is
+///   case-folded there (`internal/bech32/bech32.go:160`).
+///
+/// So flipping `main.rs:426` from `Case::Lower` to `Case::Upper` would emit
+/// valid bech32, still round trip through our own parser, and make this
+/// plugin's recipients undiscoverable in exactly the way a lowercased identity
+/// would. `age-pq-keys` is incidentally covered by its own `age1pq1` prefix
+/// assertions and the Go fixture byte-identity test; `age-plugin-pq` had no
+/// such assertion, because `keygen`'s recipient return was bound to `_` at
+/// every call site. This is that assertion, and like its identity twin it needs
+/// no `age` binary.
+#[test]
+fn plugin_recipient_hrp_is_lowercase_as_age_0_12_requires() {
+    let (recipient, _identity) = keygen();
+
+    // The HRP is everything up to bech32's separator; the data part that
+    // follows is lowercase by construction and must not be inspected here.
+    let sep = recipient
+        .rfind('1')
+        .expect("bech32 string must contain the '1' separator");
+    let hrp = &recipient[..sep];
+
+    assert!(
+        !hrp.chars().any(|c| c.is_ascii_uppercase()),
+        "plugin recipient HRP {hrp:?} from --keygen (main.rs:426) contains uppercase. age 0.12 \
+         and age-go both match plugin recipients with a case-SENSITIVE \
+         `starts_with(\"age1\")` against an HRP they no longer case-fold, so an uppercased HRP \
+         is rejected and the recipient becomes unparseable. Emit Case::Lower."
+    );
+    assert_eq!(
+        hrp, "age1pq",
+        "plugin recipient HRP must be exactly `age1pq`: age derives the plugin name by \
+         stripping `age1`, and that name is what it appends to `age-plugin-` when locating \
+         this binary"
+    );
+}
+
+/// Feeds the native PQ identity fixture through `--identity` and returns the
+/// plugin-format identity the binary prints.
+///
+/// This is the *second* of the two places the plugin emits an `AGE-PLUGIN-PQ-`
+/// HRP (`main.rs:489`); `keygen` is the first (`main.rs:439`). Both are checked
+/// by `plugin_identity_hrp_is_uppercase_as_age_0_12_requires`, because mutating
+/// either one alone leaves the other's test green.
+fn convert_native_fixture_to_plugin_identity() -> String {
     let native = fs::read_to_string("tests/data/age_go_identity.txt")
         .expect("failed to read tests/data/age_go_identity.txt")
         .trim()
@@ -184,8 +302,17 @@ fn plugin_converts_native_identity_to_plugin_format() {
         "identity conversion failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
 
-    let converted = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+/// Converting a native identity to plugin format needs only our own binary.
+#[test]
+fn plugin_converts_native_identity_to_plugin_format() {
+    let native = fs::read_to_string("tests/data/age_go_identity.txt")
+        .expect("failed to read tests/data/age_go_identity.txt")
+        .trim()
+        .to_owned();
+    let converted = convert_native_fixture_to_plugin_identity();
     assert!(
         converted.starts_with("AGE-PLUGIN-PQ-"),
         "output is not a plugin identity"

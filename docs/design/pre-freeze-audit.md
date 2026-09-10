@@ -76,7 +76,10 @@ the change itself adds more. A gate that can never pass gets waved through.
 
 **"`cargo tree -p age-pq-keys -e normal -i bech32`" as a verification step.**
 Never runs — two `bech32` versions are in the graph (0.9.1 via `age`, 0.11.1 via
-secure-gate) and the spec is ambiguous. Needs `-i bech32@0.11.1`.
+secure-gate) and the spec is ambiguous. Needs `-i bech32@0.11.1`. — **Resolved by
+the `age` 0.12 migration (2026-09-10):** `age` 0.12, `age-core` 0.12 and
+`age-plugin` 0.7 all declare `bech32 = "0.11"`, matching secure-gate, so 0.9.1
+left the lockfile entirely and the bare `-i bech32` form is now unambiguous.
 
 **"Go echoes the whole secret key on stderr when it fails to parse an
 identity."** ~~Not reproduced.~~ **Reproduced, and this entry was wrong — the

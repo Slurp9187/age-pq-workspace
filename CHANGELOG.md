@@ -8,6 +8,178 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.2] - unreleased
+
+**The `age` 0.12 migration (issue #29).** `age` 0.11 -> 0.12, `age-core` 0.11 ->
+0.12, `age-plugin` 0.6 -> 0.7. The MSRV 1.70 floor was what had blocked this;
+all three declare `rust-version = "1.74"`, well under the 1.85 line opened in
+`0.2.0-rc.1`. Dependencies only — **the wire format does not change**, gated as
+always by the 19 C2SP CCTV vectors and the five `age`-CLI differentials (D1-D5).
+
+### Workspace
+
+#### Changed
+
+- **`age` 0.11.2 -> 0.12.1, `age-core` 0.11.0 -> 0.12.0, `age-plugin` 0.6.1 ->
+  0.7.0**, with **no changes to any crate's `src/`** — the only code added is
+  in `age-plugin-pq/tests/integration.rs` (see *Added*). The `Recipient` /
+  `Identity` trait signatures (`wrap_file_key`, `unwrap_stanza`,
+  `unwrap_stanzas`) are identical across the jump, `Stanza` and `FileKey` are
+  unchanged, and the `"postquantum"` label is still what `wrap_file_key`
+  returns. Five version strings across two member manifests moved (three
+  dependency names), including the `armor` dev-dependency on `age` — a stale
+  dev-dep there would be the shape this mistake takes, so it now carries a
+  comment saying to keep it in lockstep.
+
+- **Wire format verified per-vector, not per-summary.** This is a 0.11.2 ->
+  0.12.1 jump that silently carries 0.11.3/0.11.4/0.11.5, including a stricter
+  armored reader (an empty final line is now `NotWrappedAt64Chars` rather than
+  an accepted short line) — which `armor_hybrid` goes through. So the 19 CCTV
+  vectors were run before *and* after and their per-vector `want`/`got` outcomes
+  diffed: **identical, 19/19 both times**. The same was done for the whole
+  suite as it stood before this release: **157 test outcomes, byte-identical
+  before and after**. (The suite is larger now — the HRP-case guards added
+  below are new tests, not changed outcomes.) D1-D5 ran
+  against the real Go `age` v1.3.1 (D1 64 cases, D2 8, D3 22, D4 22, D5 2).
+  "`test result: ok`" alone would not have distinguished this from a shortened
+  vector list.
+
+#### Added
+
+- `age-plugin-pq`: `plugin_identity_hrp_is_uppercase_as_age_0_12_requires` and
+  `plugin_recipient_hrp_is_lowercase_as_age_0_12_requires`, executable guards
+  for a real semantic narrowing in this release pair. Both `age-plugin` 0.7 and
+  `age` 0.12 flipped their plugin **identity** prefix constant from
+  `"age-plugin-"` to `"AGE-PLUGIN-"`, and both test the identity prefix *and*
+  the `"age1"` **recipient** prefix with a case-**sensitive**
+  `hrp.as_str().starts_with(...)`, while `bech32` 0.9 -> 0.11 made `Hrp`
+  case-preserving where 0.9's `decode` returned it pre-lowercased. (age-go does
+  the same: `plugin/encode.go` prefix-tests the raw HRP, and only the bech32
+  *data* part is case-folded.) A lowercase plugin identity that 0.6.1/0.11.2
+  accepted is now rejected as an invalid HRP, and an uppercase recipient would
+  be equally unparseable. We emit `Case::Upper` from both identity sites
+  (`main.rs:439`, `:489`) and `Case::Lower` from the recipient site
+  (`main.rs:426`), so nothing breaks — but the constraint had been invisible,
+  since every fixture and keygen path in the workspace already produced the
+  right case. The guards cover all three sites and were mutation-checked:
+  flipping any one alone fails one of them, at the HRP assertion and with its
+  diagnostic. (`age::x25519` is unaffected; it compares `Hrp == Hrp`, and that
+  `PartialEq` is explicitly case-insensitive.)
+
+  The `keygen` test helper had to stop selecting the identity line with a
+  case-sensitive `starts_with("AGE-PLUGIN-")` for this to work: with it, the
+  `--keygen` mutation died inside the helper's `expect` — reading as a broken
+  keygen — rather than at the assertion written to explain it.
+
+#### Dependencies
+
+- **RustCrypto `ml-kem 0.2.3` is now in the graph, and it is not ours.** `age`
+  0.12 depends non-optionally on `ml-kem 0.2`, `p256 0.13`, `hpke 0.12` and
+  `sha3 0.10` — no feature gates — to back its own `native::tagpq` recipient
+  (`mlkem768p256tag`, HRP `age1tagpq`, label `MLKEM768-P256`). That is a
+  different wire format from our `mlkem768x25519` and shares no code with it.
+  Reach is asymmetric, and the two resolution modes disagree — say which you
+  measured. Through its own dependency edges (`cargo tree -p <crate> …`):
+  `age-pq-keys` reaches `ml-kem` + `p256` + `hpke` + `aes-gcm`, and
+  `age-plugin-pq` reaches `hpke` + `aes-gcm` only, since `age-core` takes
+  `hpke` with `default-features = false, features = ["alloc"]` and no `ml-kem`.
+  Workspace-wide (`cargo tree --workspace …`, which is how CI and every bare
+  `cargo build`/`cargo test` here resolve) feature unification enables `hpke`'s
+  `p256` feature for every member, so the plugin binary links the P-256 stack —
+  `p256`, `elliptic-curve`, `crypto-bigint`, `sec1`, `der`, `const-oid`, `ff`,
+  `group`, `primeorder` — as dead code. The `ml-kem` half holds in **both**
+  modes: `cargo tree -i ml-kem --workspace -e normal` is `ml-kem 0.2.3 <- age
+  0.12.1 <- age-pq-keys` and nothing else. **`age-pq-hpke` gets nothing new**
+  either way — it has no `age` edge, so formally verified `libcrux-ml-kem`
+  remains the only ML-KEM in that crate's graph. The claim wording in
+  `README.md`, `CLAUDE.md`,
+  `docs/design/hpke-import-vs-own.md` and `docs/design/rage-pq-adoption.md` was
+  narrowed accordingly: the property defended is *which implementation our
+  `mlkem768x25519` path executes*, not the contents of the dependency graph. The
+  decision to keep our own runtime is unchanged.
+
+- **Two long-standing duplicates resolved, one added.** `cargo tree -d
+  --workspace -e normal,dev` goes from **17 duplicate groups to 14**. Gone:
+  `base64` 0.21/0.22, `bech32` 0.9/0.11 (the one this workspace had carried
+  since the hand-rolled-bech32 work — `age`, `age-core` and `age-plugin` now all
+  declare `bech32 = "0.11"`, matching secure-gate), plus `rustc-hash` and
+  `self_cell` via `i18n-embed` 0.15 -> 0.16. Added: `syn` 2.0.114/3.0.5, a
+  proc-macro **build-graph** duplicate via `i18n-embed-fl` 0.10 ->
+  `proc-macro-error3`, not a runtime one.
+
+- **`digest` stays single-generation at 0.10.7**, as do `sha2` (0.10.9) and
+  `sha3` (0.10.8). `hpke 0.12` and `ml-kem 0.2.3` both declare the 0.10
+  generation, so for `digest` / `sha2` / `sha3` specifically the migration lands
+  on this workspace's existing side of the RustCrypto split rather than
+  straddling it. It is not a blanket claim: see the `base16ct` bullet below for
+  one crate where it does not hold. It does however add a blocker to
+  the deferred gen-2 cohort: that move can no longer happen before `age` itself
+  moves. `x25519-dalek` stays 2.0.1, `chacha20poly1305` stays 0.10.
+
+- **No MSRV pressure.** The maximum declared `rust-version` anywhere in the
+  migrated graph is exactly **1.85** — `age` 0.12.1, `age-core` 0.12.0 and
+  `age-plugin` 0.7.0 all declare 1.74. No new cap was added: in particular
+  `hybrid-array` resolves to **0.2.3** (`rust-version` 1.81), because `ml-kem
+  0.2.3` requires `hybrid-array` `0.2.0-rc.9`, a caret range that cannot select
+  the edition-2024 0.4 line at all. That pin is structural, so a `time`-style
+  manifest cap would guard nothing.
+
+- **`rand` / `rand_core` duplicates are unchanged in kind.** `rand 0.8.5` still
+  has exactly three consumers (`age` 0.12.1, `age-core` 0.12.0, `proptest`
+  1.5.0). `rand_core 0.6.4`, previously reachable only through `crypto-common`,
+  now has **twelve** direct consumers; this strengthens rather than weakens the
+  standing conclusion that moving `x25519-dalek` to 3.0 alone would dedup
+  nothing.
+
+- **A pre-release enters the graph transitively:** `kem 0.3.0-pre.0`, pulled by
+  **`ml-kem 0.2.3`** — not by `hpke`, whose 0.12.0 manifest declares no `kem`
+  dependency at all. `ml-kem` pins it *exactly* (`[dependencies.kem] version =
+  "=0.3.0-pre.0"`), so `cargo update` cannot move it even within the
+  pre-release line and nothing needs `--precise`; `Cargo.lock` is what holds
+  it. Two consequences of the parent being `ml-kem`: the pin is not ours to
+  cap (it belongs to `age`'s dependency, not ours), and the pre-release reaches
+  **`age-pq-keys` only** — `cargo tree -i kem@0.3.0-pre.0 --workspace -e
+  normal` is `kem <- ml-kem 0.2.3 <- age 0.12.1 <- age-pq-keys`. Recorded here
+  because a pre-release in a crypto-adjacent tree is the sort of thing an audit
+  should find already written down, and an audit that followed a pointer to
+  `hpke`'s manifest would find nothing. Separately, `hpke 0.12` takes `aes-gcm
+  0.10` non-optionally, so `age-plugin-pq` now links AES-GCM, AES, CTR, GHASH
+  and POLYVAL that it never calls.
+
+- Lockfile grows from **239 to 258** packages. Cold build cost was not
+  resolvable above run-to-run variance and no figure is claimed for it.
+
+- **One RustCrypto crate *does* now straddle generations, and no instrument in
+  this entry can see it.** `base16ct` 0.2.0 is newly compiled into
+  `age-pq-keys` (`elliptic-curve 0.13.8` <- `p256 0.13.2` <- `age`/`hpke`),
+  while `Cargo.lock` also carries `base16ct` 1.0.0 as `secure-gate`'s
+  `encoding-hex` dependency. `cargo tree -d` cannot report this — 1.0.0 is
+  feature-gated off here, so it is unreachable on the host target even under
+  `--all-features` and the 17 -> 14 count above is correct while still missing
+  it. Only a lockfile diff shows `base16ct: [1.0.0] -> [0.2.0, 1.0.0]`. Live
+  consequence: the day anyone enables `secure-gate/encoding-hex`, two
+  `base16ct` generations compile side by side — and `base16ct` is the
+  constant-time hex backend the *Encoding and decoding* rules route secrets
+  through, so it is crypto-adjacent rather than incidental.
+
+- `Cargo.lock` keeps `nom` 7.1.3 beside the new `nom` 8.0.0. The 7.x copy is
+  reachable only through the target-gated `crabgrind`/`bindgen` chain under
+  `libcrux-secrets` and never compiles here — the same lockfile-only artifact
+  class as the retired wasip2 pins. Expected; not a thing to fix.
+
+### Notes
+
+- `age` 0.12's `tagpq::Recipient` returns the same `"postquantum"` label we do,
+  so `HybridRecipient` and `age::tagpq::Recipient` can now legally be combined
+  in one file's header — the stanza tags (`mlkem768x25519` vs
+  `mlkem768p256tag`) do not collide. Mixing with `x25519` / `tag` / `scrypt`
+  still fails as before. This combination is legal but **untested here**.
+- `age::EncryptError` and `age::DecryptError` are now `#[non_exhaustive]`.
+  Nothing breaks today — `testkit.rs::classify` already ends in a catch-all —
+  but any future `match` on them written without one will fail to compile.
+
+---
+
 ## [0.2.0-rc.1] - 2026-09-10
 
 **The MSRV 1.85 cohort bump (issue #2).** The 1.70 line is frozen at
