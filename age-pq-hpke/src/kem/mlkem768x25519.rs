@@ -265,6 +265,11 @@ impl EncapsulationKey {
 /// Use this where age reports "malformed recipient"; use
 /// [`EncapsulationKey::try_from`] for the full check at encapsulation time.
 ///
+/// The staging is verified against the real CLI, not assumed, by
+/// `age-pq-keys`'s D5 differential
+/// (`go_stages_the_encapsulation_key_checks_where_we_do`). Change what this
+/// function checks and that test is the one that should have to be argued with.
+///
 /// # Errors
 ///
 /// [`Error::InvalidEncapsulationKeyLength`] if `bytes` is not
@@ -408,16 +413,6 @@ impl Ciphertext {
         ct_x: X25519PublicKey,
     ) -> Self {
         Self { ct_m, ct_x }
-    }
-
-    /// Constructs from raw byte components (crate-internal).
-    ///
-    /// Kept off the public surface for the same reason as
-    /// [`EncapsulationKey::from_components`]: parsing untrusted bytes goes
-    /// through `try_from`, which checks the length and the curve point.
-    #[allow(dead_code)]
-    pub(crate) fn from_components(ct_m: [u8; MLKEM768_CT_SIZE], ct_x: X25519PublicKey) -> Self {
-        Self::from_wrapped_components(MlKem768Ciphertext1088::from(ct_m), ct_x)
     }
 
     /// Returns the raw ML-KEM-768 ciphertext bytes.

@@ -103,11 +103,26 @@ fn from_bytes_rejects_a_wrong_length_recipient() {
             "{len}-byte input must be rejected"
         );
     }
-    // Still accepted, and deliberately so: an all-zero ML-KEM half is a
-    // canonical ByteEncode_12 output, so it passes the FIPS 203 section 7.2
-    // check that `from_bytes` now also applies. age parses this recipient too
-    // and only rejects it later, on the X25519 low-order point, when it wraps
-    // the file key. See `from_bytes_rejects_a_malformed_ml_kem_half` in
-    // hybrid_recipient_tests.rs.
+}
+
+/// The all-zero recipient is accepted by `from_bytes`, **deliberately**, and
+/// this is the test that says so.
+///
+/// It used to be a trailing line inside
+/// `from_bytes_rejects_a_wrong_length_recipient`, whose name gives no hint that
+/// it also pins the parse/wrap stage split — one tidy-up away from being lost
+/// with nothing to notice.
+///
+/// Two independent reasons it must pass:
+///
+/// * An all-zero ML-KEM half is a *canonical* `ByteEncode_12` output (every
+///   coefficient is 0 < q), so it passes the FIPS 203 section 7.2 check that
+///   `from_bytes` applies.
+/// * The X25519 half is the low-order all-zero point, and that is checked at
+///   **wrap** time, not parse time, because that is where age checks it. The
+///   staging is pinned against the real CLI by
+///   `differential_age_go.rs::go_stages_the_encapsulation_key_checks_where_we_do`.
+#[test]
+fn from_bytes_accepts_an_all_zero_key_because_the_curve_check_belongs_to_wrap() {
     assert!(HybridRecipient::from_bytes(vec![0u8; 1216]).is_ok());
 }

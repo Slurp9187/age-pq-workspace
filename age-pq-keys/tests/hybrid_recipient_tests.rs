@@ -1,5 +1,6 @@
 use age::{Encryptor, Recipient};
 use age_pq_keys::{HybridIdentity, HybridRecipient};
+use secure_gate::{ConstantTimeEq, Dynamic};
 use std::io::{Read, Seek, Write};
 use tempfile::NamedTempFile;
 
@@ -138,22 +139,36 @@ fn parse_rejects_a_recipient_string_with_a_malformed_ml_kem_half() {
     let good = recipient.to_string();
     assert!(HybridRecipient::parse(&good).is_ok());
 
+    // The helper must agree with the crate's own encoder before it is trusted
+    // to build a negative case. Without this, a change to the HRP, the length
+    // or the checksum case would make `parse` reject `bad` for an unrelated
+    // reason and the assertion below would stay green while testing nothing.
+    assert_eq!(
+        re_encode(recipient.as_bytes()),
+        good,
+        "re_encode no longer matches the crate's encoder"
+    );
+
     let mut bytes = recipient.as_bytes().to_vec();
     bytes[0] = 0xFF;
     bytes[1] |= 0x0F;
-    // Re-encode through the crate's own encoder by way of a recipient we build
-    // the only way that skips the check: there is none, so encode the mutated
-    // bytes with the same bech32 machinery the good string came from.
     let bad = re_encode(&bytes);
+    let err = HybridRecipient::parse(&bad)
+        .err()
+        .expect("parse must reject a recipient age calls malformed")
+        .to_string();
+    // Named, not just `is_err()`: a bech32 or length failure must not satisfy
+    // this test.
     assert!(
-        HybridRecipient::parse(&bad).is_err(),
-        "parse must reject a recipient age calls malformed"
+        err.contains("invalid MLKEM768-X25519 recipient"),
+        "rejection must name the ML-KEM half, got: {err}"
     );
 }
 
 /// Encodes raw recipient bytes with the same HRP and checksum the crate uses,
 /// bypassing `HybridRecipient` so the test can build a string the constructor
-/// would refuse.
+/// would refuse. Its agreement with the real encoder is asserted at the call
+/// site, on unmutated bytes.
 fn re_encode(bytes: &[u8]) -> String {
     use secure_gate::{bech32_code_length, Case, ToBech32};
     const HRP: &str = "age1pq";
@@ -181,5 +196,16 @@ fn hybrid_recipient_key_generation_and_serialization() {
     assert_eq!(recipient.to_string(), parsed_recipient.to_string());
 
     let parsed_identity = HybridIdentity::parse(&priv_str).unwrap();
-    assert_eq!(identity.to_string(), parsed_identity.to_string());
+    // Deliberately not `assert_eq!`: that renders both operands with `Debug` on
+    // failure, and both operands here are the private key — CLAUDE.md's error
+    // hygiene rule forbids secret bytes in panic output, and CI logs are
+    // retained. Wrapped and compared with `ct_eq`, the way
+    // `differential_age_go.rs` does it. The recipient comparison above is
+    // public data, hence the asymmetry.
+    let encoded = Dynamic::<String>::new(identity.to_string());
+    let reparsed = Dynamic::<String>::new(parsed_identity.to_string());
+    assert!(
+        encoded.ct_eq(&reparsed),
+        "identity did not round-trip through parse"
+    );
 }

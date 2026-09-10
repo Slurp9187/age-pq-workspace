@@ -116,6 +116,36 @@ One existing test, `pq_stanza_unwrap_malformed_ciphertext`, asserted
 asserts `InvalidHeader`, with companion tests for the foreign-tag skip and the
 extra-argument rejection.
 
+## What the corpus does not cover: recipient parsing
+
+**Every one of the 19 vectors is decryption-side.** Each carries `identity:`
+plus an age file; `grep -c '^recipient:'` returns 0 for all of them. No vector
+supplies an encapsulation key, so nothing here exercises the *encapsulation*
+side of parsing — which is where the ML-KEM encapsulation key check lives.
+
+That gap is not hypothetical: it is exactly where a validator that validated
+nothing survived until 2026-09-09. See
+[`mlkem-encapsulation-key-check.md`](mlkem-encapsulation-key-check.md).
+Recipient-parse conformance has to be tested locally, against the age CLI, and
+the tests for it live in `age-pq-hpke/tests/mlkem768x25519_tests.rs`,
+`age-pq-keys/tests/hybrid_recipient_tests.rs`, and — for the *stage* at which
+each half is checked — differential **D5** in
+`age-pq-keys/tests/differential_age_go.rs`, which is the only test in the
+workspace that puts a malformed recipient in front of the real age binary.
+
+The two FIPS 203 checks pull in opposite directions here, and the corpus depends
+on the distinction:
+
+| Check | Applies? | Why |
+|---|---|---|
+| §7.2 encapsulation key check | **Yes**, at encap/parse | draft-connolly-cfrg-xwing-kem-10 §5.1 makes it a MUST for `ML-KEM-768.Encaps`, as does draft-ietf-hpke-pq-05 §3 |
+| §7.3 decapsulation key check | **No** | the same drafts explicitly say Decap is NOT required to perform it |
+
+`hybrid_currupted_enc_mlkem` expects **no match**, not a header failure, because
+ML-KEM's implicit rejection returns a pseudorandom shared secret and the AEAD
+open then fails quietly. Adding a §7.3-style hard failure on the decap path
+would flip that vector. It is the single most likely way to break this corpus.
+
 ## Result
 
 19/19 CCTV vectors pass; full workspace suite green.

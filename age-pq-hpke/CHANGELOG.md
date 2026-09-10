@@ -7,8 +7,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Enforce the FIPS 203 §7.2 ML-KEM encapsulation key check.**
+  draft-connolly-cfrg-xwing-kem-**10** §5.1 and draft-ietf-hpke-pq-**05** §3 both
+  require `ML-KEM-768.Encaps` to perform this check and raise an error;
+  `validate_public_key` performed none.
+  `MlKem768PublicKey::from([u8; 1184])` is an infallible newtype wrap and
+  `.as_ref()` only borrows, so the function returned `()` and its caller in
+  `impl TryFrom<&[u8]> for EncapsulationKey` had nothing to check — a 1216-byte
+  key whose ML-KEM half is not a canonical `ByteEncode_12` output was accepted
+  where age rejects it. The same no-op existed verbatim in `mlkem512.rs` and
+  `mlkem1024.rs`; all three now delegate to
+  `libcrux_ml_kem::mlkem*::validate_public_key` (libcrux-ml-kem 0.0.8, already
+  in the lockfile) and return `CrateResult<()>`.
+
+  Conformance and interoperability, **not** a security fix — see
+  [`docs/design/mlkem-encapsulation-key-check.md`](../docs/design/mlkem-encapsulation-key-check.md)
+  for the measurement against age v1.3.1 and for why the mirror-image §7.3
+  decapsulation-key check must **not** be added.
+
+### Added
+
+- `Error::InvalidMlKemEncapsulationKey`, payload-free, additive under
+  `#[non_exhaustive]`. Distinct from `InvalidEncapsulationKeyLength`: the key is
+  the right size, its contents are not a valid ML-KEM encoding.
+- `kem::mlkem768x25519::validate_encapsulation_key_mlkem_half(&[u8])` — the
+  parse-time subset of `EncapsulationKey::try_from`'s checks (length plus the
+  §7.2 modulus check), matching what age validates in `ParseHybridRecipient`.
+  It deliberately omits the X25519 low-order rejection, because age accepts an
+  all-zero curve point at parse and fails at wrap.
+
 ### Changed (BREAKING)
 
+- **`EncapsulationKey::try_from` checks the ML-KEM half before the curve
+  point**, matching filippo.io/hpke's `hybridKEM.NewPublicKey`, so a key
+  malformed in both halves produces the same error here as in age. An all-zero
+  ML-KEM half is *valid* under §7.2, so the existing all-zero tests are
+  unaffected by the reordering.
+- **`EncapsulationKey::from_components` is `pub(crate)`.** It was `pub` and
+  validated nothing, which made the new check advisory — any caller could
+  construct an `EncapsulationKey` around arbitrary `pk_m` bytes. Its only caller
+  is internal and derives its bytes from a seed. Parse untrusted bytes with
+  `try_from`.
+- **`Ciphertext::from_components` is removed.** It was demoted to `pub(crate)`
+  for the same reason and then had no caller anywhere in the workspace, kept
+  compiling by an `#[allow(dead_code)]`. `from_wrapped_components` and
+  `TryFrom<&[u8]>` cover both construction paths.
+- **`XWING_DRAFT_VERSION` is removed.** `pub const XWING_DRAFT_VERSION: &str =
+  "09"` was read by nothing, asserted by no test, and stale (the draft is at
+  10) — a conformance claim with no verifier behind it, in a crate whose
+  conformance is actually established by the CCTV vectors and the age-go
+  differential oracle. Provenance moved to the crate's module docs, where it
+  reads as documentation instead of masquerading as a checked value. Free to
+  remove before the `v0.1.0` tag, breaking after; the reasoning is
+  `docs/plans/normative-source-refresh.md` (#25).
 - **Crate renamed `age-hpke-pq` → `age-pq-hpke`.** Import paths change from
   `age_hpke_pq::` to `age_pq_hpke::`. No wire-format
   change: stanza tag, HRPs and algorithm identifiers are untouched, so existing

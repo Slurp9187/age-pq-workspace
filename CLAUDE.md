@@ -397,6 +397,13 @@ attacker-relevant.
 External APIs that take raw bytes and are the *legitimate* Tier-2
 escape points. Anything outside this list is suspect.
 
+A few rows carry Tier **1**. They are inventoried anyway — every external
+call that touches wrapped bytes belongs in this table, so that "considered and
+classified" is distinguishable from "missed" — but the access itself is a
+`with_secret` closure and nothing escapes it. Tag the call site with the tier
+the table gives it; a `// Tier-1` comment against a row that says 2 is a
+contradiction an audit will trip over, and one of the two is then wrong.
+
 **`age-pq-hpke`:**
 
 | Call | Where | Tier | Reason |
@@ -404,7 +411,8 @@ escape points. Anything outside this list is suspect.
 | `libcrux_ml_kem::*::encapsulate(&pk, [u8; 32])` | `src/kem/ml_kem/*.rs` | **3** | Randomness taken by value — consume via `into_inner` |
 | `libcrux_ml_kem::*::generate_key_pair([u8; 64])` | `src/kem/ml_kem/*.rs` | **3** | `d \|\| z` seed taken by value — consume via `into_inner` |
 | `libcrux_ml_kem::*::decapsulate(&sk, &ct)` | `src/kem/ml_kem/*.rs` | 2 | Borrows; ct is public bytes via `with_secret` |
-| `libcrux_ml_kem::*PublicKey::from([u8; N])` | `src/kem/ml_kem/*.rs` | 2 | Public-key bytes; `with_secret` deref |
+| `libcrux_ml_kem::*PublicKey::from([u8; N])` | `src/kem/ml_kem/*.rs` | 1 | Public-key bytes reached inside a `with_secret` closure; no reference escapes |
+| `libcrux_ml_kem::*::validate_public_key(&pk)` | `src/kem/ml_kem/*.rs` | 1 | FIPS 203 §7.2 check on the key built by the row above, inside the same closure |
 | `x25519_dalek::StaticSecret::from([u8; 32])` | `src/kem/x25519.rs` | **3** | Scalar taken by value — consume via `into_inner`; `StaticSecret` is itself `ZeroizeOnDrop` |
 | `x25519_dalek::StaticSecret::diffie_hellman(&PublicKey)` | `src/kem/x25519.rs` | 2 | Borrowed peer key |
 | `x448::Secret::from([u8; 56])` | `src/kem/x448.rs` | **3** | Scalar taken by value — consume via `into_inner` after clamping on the wrapper |

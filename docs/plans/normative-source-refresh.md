@@ -75,7 +75,8 @@ had to move age-go too, and the oracle would be red.
 ## The conformance gap this surfaced
 
 Both normative lineages **mandate** the ML-KEM encapsulation key check, and this
-workspace does not perform it:
+workspace did not perform it (fixed on `fix/pre-freeze-test-hygiene`; see
+[`../design/mlkem-encapsulation-key-check.md`](../design/mlkem-encapsulation-key-check.md)):
 
 > `ML-KEM-768.Encaps(pk_M)` MUST perform the encapsulation key check of
 > [MLKEM] §7.2 and raise an error if it fails.
@@ -88,9 +89,12 @@ workspace does not perform it:
 
 `age-pq-hpke/src/kem/ml_kem/mlkem{512,768,1024}.rs::validate_public_key` was a
 no-op that only re-wrapped the bytes, so an all-`0xFF` encapsulation key parsed
-successfully. Tracked and fixed separately — this document records only that the
-requirement is **normative in both lineages**, so the fix is conformance, not
-gold-plating.
+successfully. Fixed separately — this document records only that the requirement
+is **normative in both lineages**, so the fix is conformance, not gold-plating.
+The two quotations above are the citations the fix now carries in
+`Error::InvalidMlKemEncapsulationKey` and `mlkem768.rs::validate_public_key`;
+they cited -07 §4 briefly, a revision nobody had opened, and were corrected to
+match this page.
 
 Note the deliberate asymmetry, which the fix must respect: the same drafts state
 that `Decap` is **NOT** required to perform the §7.3 decapsulation key check.
@@ -133,8 +137,14 @@ the `v0.1.0` freeze (DECIDE-13) and awkward after.
       diff tool, since the draft itself carries no change log.
 - [ ] Reconcile the CONCRETE revision cited across the mirror,
       `conformance-workspace.md`, and hpke-pq-05.
-- [ ] Delete `XWING_DRAFT_VERSION`; move provenance into the module doc with the
-      revisions actually diffed.
+- [x] Delete `XWING_DRAFT_VERSION`; move provenance into the module doc with the
+      revisions actually diffed. **Done** on `fix/pre-freeze-test-hygiene`: the
+      constant is gone and `age-pq-hpke/src/lib.rs`'s module doc now carries a
+      *Normative provenance* section, which states plainly that the mirror is
+      pinned to -03/-07, that only the interop-critical invariants were checked
+      against -10/-05, and that the rest of the 03 → 05 delta is still
+      unenumerated. Taken in that pass because removing a `pub` item is free
+      before the `v0.1.0` tag (DECIDE-13) and a breaking change after it.
 - [ ] Confirm MLKEM768-P256 — the third variant in hpke-pq-05, and the one this
       workspace has never tracked — has no bearing on MLKEM768-X25519. It is a
       candidate sibling for #19 either way.

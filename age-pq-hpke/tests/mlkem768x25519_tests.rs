@@ -165,6 +165,13 @@ fn test_derand_with_all_zero_eseed() {
 /// `&[u8; 64]`, so the compiler already proves that property and no runtime
 /// test can. Swapping the halves is the property the empty test was reaching
 /// for: it is the one `eseed` mistake the type system cannot catch.
+///
+/// Two properties, asserted separately because the swap alone does not imply
+/// the second: (1) the halves are not interchangeable, and (2) **neither half
+/// is ignored** — perturbing one half at a time must move the ciphertext. A
+/// swap test on its own passes even if the implementation reads only
+/// `eseed[0..32]`, which is exactly the "dropped on the floor" failure. Which
+/// half feeds which role is pinned by `test_official_kat_vectors`, not here.
 #[test]
 fn test_derand_eseed_halves_are_bound_to_their_roles() {
     let mut rng = ChaCha20Rng::seed_from_u64(42);
@@ -189,10 +196,23 @@ fn test_derand_eseed_halves_are_bound_to_their_roles() {
         "swapping the halves must change the shared secret"
     );
 
-    // Both are still self-consistent, so the difference is the role binding
-    // and not one half having been dropped on the floor.
+    // Both are still self-consistent: the swap changed the output without
+    // producing a ciphertext its own shared secret cannot reproduce.
     assert!(ss.ct_eq(&sk.decapsulate(&ct).unwrap()));
     assert!(ss_swapped.ct_eq(&sk.decapsulate(&ct_swapped).unwrap()));
+
+    // Neither half is dropped on the floor. Perturb one half at a time and
+    // require the ciphertext to move; the swap above cannot show this, because
+    // swapping still changes the input to a function that reads only one half.
+    for byte in [0usize, 32] {
+        let mut perturbed = eseed;
+        perturbed[byte] ^= 0xFF;
+        let (ct_perturbed, _) = pk.encapsulate_derand(&perturbed).unwrap();
+        assert_ne!(
+            ct, ct_perturbed,
+            "eseed[{byte}] is ignored: its half of the seed reaches no derivation"
+        );
+    }
 }
 
 /// A genuinely derived encapsulation key still parses — the FIPS 203 section
@@ -268,6 +288,47 @@ fn all_zero_key_is_rejected_for_its_x25519_half_not_its_ml_kem_half() {
     assert!(matches!(
         EncapsulationKey::try_from(&all_zero).unwrap_err(),
         Error::InvalidX25519PublicKey
+    ));
+}
+
+/// A key that is malformed in **both** halves is attributed to the ML-KEM half,
+/// because `EncapsulationKey::try_from` checks that half first.
+///
+/// This is the only case in this file that leaves both halves invalid, and it
+/// exists to pin the check *order*: filippo.io/hpke's `hybridKEM.NewPublicKey`
+/// (pq.go, `NewPublicKey`) validates the ML-KEM half before handing the tail to
+/// `curve.NewPublicKey`, so age v1.3.1 reports `invalid MLKEM768-X25519 public
+/// key` for this input rather than a curve error. Reversing the two lines in
+/// `try_from` keeps rejecting the key but changes which error it names, and
+/// nothing else in the workspace would notice.
+#[test]
+fn a_key_malformed_in_both_halves_is_attributed_to_the_ml_kem_half() {
+    let mut rng = ChaCha20Rng::seed_from_u64(11);
+    let (_sk, pk) = generate_keypair(&mut rng).unwrap();
+
+    let mut bytes = pk.to_bytes();
+    // Bad ML-KEM: first 12-bit coefficient pushed to 0xFFF = 4095 > q - 1.
+    bytes[0] = 0xFF;
+    bytes[1] |= 0x0F;
+    // Bad curve point: all-zero is the canonical low-order point.
+    bytes[MLKEM768X25519_ENCAPSULATION_KEY_SIZE - 32..].fill(0);
+
+    // Each half really is invalid on its own, so the assertion below is about
+    // ordering and not about only one of them being broken.
+    assert!(matches!(
+        validate_encapsulation_key_mlkem_half(&bytes).unwrap_err(),
+        Error::InvalidMlKemEncapsulationKey
+    ));
+    let mut zero_curve_only = pk.to_bytes();
+    zero_curve_only[MLKEM768X25519_ENCAPSULATION_KEY_SIZE - 32..].fill(0);
+    assert!(matches!(
+        EncapsulationKey::try_from(&zero_curve_only).unwrap_err(),
+        Error::InvalidX25519PublicKey
+    ));
+
+    assert!(matches!(
+        EncapsulationKey::try_from(&bytes).unwrap_err(),
+        Error::InvalidMlKemEncapsulationKey
     ));
 }
 

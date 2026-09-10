@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- **`HybridRecipient::from_bytes` now validates the ML-KEM half, not just the
+  length.** A 1216-byte buffer whose first 1184 bytes are not a canonical
+  ML-KEM-768 encapsulation key (FIPS 203 §7.2 modulus check) is rejected at
+  parse, which is where age reports it — `ParseHybridRecipient` fails with
+  "malformed recipient …: invalid MLKEM768-X25519 public key" before any
+  encryption starts. Previously such a key reached `wrap_file_key` and failed
+  there, or, before the upstream `age-pq-hpke` fix in this same release, did not
+  fail at all.
+
+  Callers that construct recipients from arbitrary 1216-byte buffers (fuzz
+  harnesses, property tests over random bytes) will start seeing errors. Cheap
+  now, expensive after the v0.1.0 tag.
+
+  The X25519 half is deliberately **not** checked here: age parses an all-zero
+  curve point successfully and rejects it only at wrap, and `wrap_file_key`
+  reaches that same rejection at that same moment. `from_bytes(vec![0u8; 1216])`
+  therefore still succeeds, on purpose — see
+  [`docs/design/mlkem-encapsulation-key-check.md`](../docs/design/mlkem-encapsulation-key-check.md).
+  That staging is no longer only a claim: differential **D5**
+  (`tests/differential_age_go.rs`) runs the real age CLI against both crafted
+  recipients and requires `malformed recipient` for one and `failed to wrap key`
+  for the other, so an age release that moved the curve check earlier turns this
+  suite red instead of silently invalidating the API split.
+
+- **`FromStr` forwards the parse error instead of collapsing it.**
+  `<HybridRecipient as FromStr>::Err` is now `age::EncryptError` and
+  `<HybridIdentity as FromStr>::Err` is `age::DecryptError`, replacing
+  `&'static str` "failed to parse HybridRecipient" / "…HybridIdentity".
+  `from_str` is the path the crate's own documentation example uses, so it was
+  the documented way to learn the least about a bad recipient — which half is
+  malformed is exactly what the new ML-KEM check exists to report. Both errors
+  remain payload-free. Callers matching on the old `&'static str` must change;
+  free before the `v0.1.0` tag.
+
 - **`HybridRecipient::pub_key` is now private.** It was a `pub Vec<u8>` field
   with no length validation anywhere, which made the `expect` in `to_string()`
   reachable simply by assigning a longer vector. Use `HybridRecipient::from_bytes`
@@ -39,6 +73,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+
+- **`HybridRecipient::generate` builds its recipient through `from_bytes`.** It
+  used a struct literal, bypassing both the length check and the new ML-KEM
+  check. A freshly derived key cannot fail either, so nothing observable
+  changes — but the invariant had two construction paths and now has one.
+
+- **A private key no longer reaches panic output.**
+  `hybrid_recipient_tests.rs` compared two identity strings with `assert_eq!`,
+  which renders both operands with `Debug` on failure — the complete
+  `AGE-SECRET-KEY-PQ-…` seed, twice, into a retained CI log. They are wrapped in
+  `secure_gate::Dynamic<String>` and compared with `ct_eq` now, as
+  `differential_age_go.rs` already did.
+
+- **Two tests that could not fail.**
+  `hybrid_recipient_keypair_generation_and_file_encryption` had no assertions at
+  all and wrote a freshly generated **private key** to a temp file nothing ever
+  read. It now asserts the on-disk file carries an age v1 header and the
+  `mlkem768x25519` stanza tag and decrypts back to the plaintext, and the
+  private-key write is gone. `age_cli_interop_roundtrip_tests.rs` similarly
+  wrote a `temp_recipient` file nothing read (public data, so dead code only);
+  removed.
 
 - **Interop tests can no longer route through our own age plugin.** Anyone who
   has `cargo install`ed `age-plugin-pq` has it on `PATH`, and on Windows the

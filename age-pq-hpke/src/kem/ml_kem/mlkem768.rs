@@ -64,9 +64,10 @@ pub(crate) fn decapsulate_with_keypair(
 /// wrapper type. Part 2 is the modulus check, which libcrux implements as
 /// `ByteEncode_12(ByteDecode_12(ek)) == ek`: every 12-bit coefficient must be
 /// below q = 3329, so the byte string is the canonical encoding of the
-/// polynomial it decodes to. X-Wing
-/// (draft-connolly-cfrg-xwing-kem-07 section 4) makes this a MUST for
-/// `ML-KEM-768.Encaps`, and age rejects a recipient that fails it.
+/// polynomial it decodes to. draft-connolly-cfrg-xwing-kem-10 section 5.1 and
+/// draft-ietf-hpke-pq-05 section 3 both make this a MUST for
+/// `ML-KEM-768.Encaps`, and age rejects a recipient that fails it. The pinned
+/// revisions are tracked in `docs/plans/normative-source-refresh.md` (#25).
 ///
 /// `libcrux_ml_kem::mlkem768::validate_public_key` is `#[cfg(not(eurydice))]`;
 /// that gate is never set for a normal cargo build, but the call would be
@@ -129,5 +130,35 @@ mod tests {
     fn all_zero_public_key_passes_the_modulus_check() {
         let pk_m = MlKem768PublicKey1184::from([0u8; MLKEM768_PK_SIZE]);
         assert!(validate_public_key(&pk_m).is_ok());
+    }
+
+    /// The last 32 bytes of `ek` are `rho`, the seed for matrix expansion, not
+    /// coefficients — every 32-byte string is a valid `rho`, so the section 7.2
+    /// modulus check does not and must not look at them.
+    ///
+    /// Pinned because it is a boundary a "stricter is safer" change would cross
+    /// silently: age v1.3.1 accepts the same three mutations (bytes 1152, 1170
+    /// and 1183 flipped), so rejecting them here would be a divergence in the
+    /// direction this whole change exists to remove. Any recipient that fails
+    /// to decrypt because its `rho` was corrupted fails at *decryption*, in
+    /// both implementations alike.
+    #[test]
+    fn a_corrupted_rho_still_passes_the_modulus_check_as_it_does_in_age() {
+        const RHO_OFFSET: usize = MLKEM768_PK_SIZE - 32;
+        let kp = keypair_from_seed(MlKemSeed64::from([7u8; 64]));
+        let pk_bytes: [u8; MLKEM768_PK_SIZE] = kp
+            .public_key()
+            .as_ref()
+            .try_into()
+            .expect("libcrux public key is MLKEM768_PK_SIZE bytes");
+
+        for offset in [RHO_OFFSET, RHO_OFFSET + 18, MLKEM768_PK_SIZE - 1] {
+            let mut mutated = pk_bytes;
+            mutated[offset] ^= 0xFF;
+            assert!(
+                validate_public_key(&MlKem768PublicKey1184::from(mutated)).is_ok(),
+                "byte {offset} is part of rho, which the modulus check does not cover"
+            );
+        }
     }
 }

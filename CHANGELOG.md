@@ -70,6 +70,79 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The ML-KEM encapsulation key check is enforced; it previously did nothing**
+  (conformance, not a security fix). `validate_public_key` in
+  `age-pq-hpke/src/kem/ml_kem/mlkem{512,768,1024}.rs` wrapped its argument in
+  libcrux's newtype and threw the result away — the wrap is infallible and the
+  function returned `()`, so its caller had nothing to check and 1184 of a
+  recipient's 1216 attacker-supplied bytes were unvalidated. All three now call
+  `libcrux_ml_kem::mlkem*::validate_public_key` and return `Result`.
+
+  Both normative lineages make it a MUST — draft-connolly-cfrg-xwing-kem-**10**
+  §5.1 ("ML-KEM-768.Encaps(pk_M) MUST perform the encapsulation key check of
+  [MLKEM] §7.2 and raise an error if it fails") and draft-ietf-hpke-pq-**05** §3
+  ("an ML-KEM encapsulation key check failure causes an HPKE EncapError"). Those
+  are the revisions actually read; which pins are stale, and why, is
+  [`docs/plans/normative-source-refresh.md`](docs/plans/normative-source-refresh.md)
+  (issue #25). Measured against age v1.3.1: it rejects
+  both an all-`0xFF` ML-KEM half **and** a single 12-bit coefficient pushed
+  above q − 1 with `malformed recipient …: invalid MLKEM768-X25519 public key`,
+  at parse time. We accepted both — so this **removes** a divergence from age
+  and rage rather than creating one.
+
+  Severity is conformance and interoperability plus a legible error, not a
+  vulnerability: validation is no defence against recipient substitution, and no
+  CCTV vector changes. What it prevents is accepting keys no conformant
+  implementation accepts, and silently producing files the intended recipient
+  cannot decrypt (ML-KEM binds `H(ek)` over the *raw* bytes, so a non-canonical
+  alias of a real key yields a ciphertext its canonical decapsulation key cannot
+  reproduce). Full write-up, including what **not** to extend it to, in
+  [`docs/design/mlkem-encapsulation-key-check.md`](docs/design/mlkem-encapsulation-key-check.md).
+
+  `Cargo.lock` unchanged — libcrux-ml-kem 0.0.8 already exposes the check.
+
+- **Three claims in comments that no test checked** — the same defect shape as
+  the no-op validator above, one level up. Each was found by mutating the code
+  the comment describes and observing that nothing went red:
+
+  * **The parse-vs-wrap stage contract.** `HybridRecipient::from_bytes` checks
+    the ML-KEM half and defers the curve point to `wrap_file_key` *because that
+    is what age does*. Nothing verified it. Differential **D5** in
+    `age-pq-keys/tests/differential_age_go.rs` now runs the CLI against a
+    bad-ML-KEM recipient and a low-order-curve recipient and requires
+    `malformed recipient` for the first, `failed to wrap key` for the second.
+    Confirmed green against age v1.3.1, and against filippo.io/hpke v0.4.0's
+    source. It is the one differential that reads age's stderr; a stage is not
+    visible in an exit code.
+  * **The check order** in `EncapsulationKey::try_from`. The comment claims
+    ML-KEM is checked before the curve point to match filippo.io/hpke; reversing
+    the two lines failed zero tests. A key malformed in *both* halves now pins
+    the attribution (`a_key_malformed_in_both_halves_is_attributed_to_the_ml_kem_half`).
+  * **`test_derand_eseed_halves_are_bound_to_their_roles`** said the swap it
+    tests rules out "one half having been dropped on the floor". It does not —
+    deriving the X25519 ephemeral from `eseed[0..32]` leaves it green. It now
+    perturbs each half separately and requires the ciphertext to move.
+
+  Also pinned: `a_corrupted_rho_still_passes_the_modulus_check_as_it_does_in_age`,
+  because `rho` is a seed rather than coefficients and the §7.2 check must *not*
+  reach it — a boundary a "stricter is safer" change would cross silently.
+
+- **Four tests that could not fail** (last pass before the v0.1.0 freeze).
+  `age-pq-hpke/tests/error_tests.rs::test_max_size_key_x25519` ended
+  `let _ = result;`; its all-`0xFF` key is exactly what the repaired validator
+  now rejects, so it asserts that, renamed
+  `all_ff_encapsulation_key_is_rejected_by_the_ml_kem_modulus_check`.
+  `mlkem768x25519_tests.rs::test_derand_invalid_eseed_length` had an **empty
+  body** — the property it named is unrepresentable (`encapsulate_derand` takes
+  `&[u8; 64]`), so it is replaced by
+  `test_derand_eseed_halves_are_bound_to_their_roles`, the one `eseed` mistake
+  the type system cannot catch.
+  `age-pq-keys/tests/hybrid_recipient_tests.rs::hybrid_recipient_keypair_generation_and_file_encryption`
+  had no assertions and wrote a freshly generated **private key** to a temp file
+  nothing read; it now asserts the on-disk age header and round-trips through
+  the file, and the private-key write is gone. `age_cli_interop_roundtrip_tests.rs`
+  no longer writes a `temp_recipient` file nothing reads.
+
 - **`cargo fetch` works again on MSRV 1.70.** It failed on every branch,
   including `main`: three transitive crates in the WASI dependency chain
   (`wit-bindgen`, `wit-bindgen-core`, `wasip2`) are edition 2024, which Cargo
