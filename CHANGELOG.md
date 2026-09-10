@@ -8,7 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0-rc.1] - unreleased
+## [0.2.0-rc.1] - 2026-09-10
 
 **The MSRV 1.85 cohort bump (issue #2).** The 1.70 line is frozen at
 `v0.1.0-rc.1`; this release moves the whole workspace to **rustc 1.85**,
