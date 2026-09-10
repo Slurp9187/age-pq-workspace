@@ -5,7 +5,7 @@
 //! - draft-ietf-hpke-pq-03 Appendix A test vectors
 
 use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
-use age_pq_hpke::{kdf::Kdf, Error, HkdfSha256, Shake256Kdf};
+use age_pq_hpke::{Error, HkdfSha256, Shake256Kdf, kdf::Kdf};
 use serde::Deserialize;
 
 use std::fs;

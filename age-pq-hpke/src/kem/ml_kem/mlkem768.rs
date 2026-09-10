@@ -5,9 +5,9 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem768::{
-    decapsulate, encapsulate, generate_key_pair as mlkem768_generate_key_pair,
-    validate_public_key as mlkem768_validate_public_key, MlKem768Ciphertext, MlKem768KeyPair,
-    MlKem768PublicKey,
+    MlKem768Ciphertext, MlKem768KeyPair, MlKem768PublicKey, decapsulate, encapsulate,
+    generate_key_pair as mlkem768_generate_key_pair,
+    validate_public_key as mlkem768_validate_public_key,
 };
 use secure_gate::RevealSecret;
 

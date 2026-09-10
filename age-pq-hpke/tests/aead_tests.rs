@@ -1,5 +1,5 @@
 #[cfg(test)]
-use age_pq_hpke::{aead::Aead, new_aead, ChaCha20Poly1305Aead};
+use age_pq_hpke::{ChaCha20Poly1305Aead, aead::Aead, new_aead};
 
 #[test]
 fn test_new_aead_valid() {

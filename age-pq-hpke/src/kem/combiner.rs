@@ -1,7 +1,7 @@
+use crate::SharedSecret;
 use crate::aliases::{
     MlKemSharedSecret, X25519EncapsulationKey, X25519EphemeralShare, X25519SharedSecret,
 };
-use crate::SharedSecret;
 use secure_gate::RevealSecret;
 use sha3::{Digest, Sha3_256};
 

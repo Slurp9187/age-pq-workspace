@@ -13,8 +13,8 @@
 //!   [`draft-ietf-hpke-pq-03`](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03).
 //!   Registered variants: SHAKE128, SHAKE256.
 
-use crate::aliases::{KdfBytes, LabeledIkm, LabeledInfo, Salt};
 use crate::Error;
+use crate::aliases::{KdfBytes, LabeledIkm, LabeledInfo, Salt};
 use byteorder::{BigEndian, ByteOrder};
 use hkdf::Hkdf;
 use secure_gate::{RevealSecret, RevealSecretMut};

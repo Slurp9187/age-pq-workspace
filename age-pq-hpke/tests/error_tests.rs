@@ -1,11 +1,11 @@
 #![cfg(test)]
 
-use age_pq_hpke::kem::mlkem768x25519::{Ciphertext as X25519CT, EncapsulationKey as X25519PK};
 use age_pq_hpke::kem::Kem;
+use age_pq_hpke::kem::mlkem768x25519::{Ciphertext as X25519CT, EncapsulationKey as X25519PK};
 
 use age_pq_hpke::{
-    aead::Aead as AeadTrait, new_aead, new_kdf, new_sender_with_testing_randomness,
-    ChaCha20Poly1305Aead, Error, MlKem768X25519,
+    ChaCha20Poly1305Aead, Error, MlKem768X25519, aead::Aead as AeadTrait, new_aead, new_kdf,
+    new_sender_with_testing_randomness,
 };
 
 // Comprehensive error tests for all defined Error variants.
@@ -209,7 +209,7 @@ fn test_randomness_error_variant() {
 #[test]
 fn test_random_invalid_keys() {
     use rand::RngExt;
-    use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+    use rand_chacha::{ChaCha20Rng, rand_core::SeedableRng};
 
     let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
     for _ in 0..10 {

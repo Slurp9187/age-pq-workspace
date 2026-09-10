@@ -64,20 +64,20 @@
 //! [`rage`]: https://github.com/str4d/rage
 mod aliases;
 
-use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
+use age::{Identity as AgeIdentity, Recipient as AgeRecipient, secrecy};
 use age_core::format::{FileKey, Stanza};
+use age_pq_hpke::Error as HpkeError;
 use age_pq_hpke::hpke::{new_recipient, new_sender};
 use age_pq_hpke::kem::mlkem768x25519::{EncapsulationKey, MLKEM768X25519_ENCAPSULATION_KEY_SIZE};
 use age_pq_hpke::kem::{Kem, MlKem768X25519};
-use age_pq_hpke::Error as HpkeError;
 use age_pq_hpke::{aead::new_aead, kdf::new_kdf};
-use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
+use base64::prelude::{BASE64_STANDARD_NO_PAD, Engine as _};
 // `ExposeSecret` here is `age`'s (re-exported `secrecy`) trait, needed for `FileKey`.
 // secure-gate wrappers are read through `RevealSecret` / `RevealSecretMut` instead, so
 // the two never compete: each method resolves on its own receiver type.
 use crate::aliases::{FileKeyBytes, RecipientBytes, Seed32, SeedBytes};
 use secrecy::ExposeSecret;
-use secure_gate::{bech32_code_length, Case, RevealSecret, ToBech32};
+use secure_gate::{Case, RevealSecret, ToBech32, bech32_code_length};
 use std::collections::HashSet;
 use std::str::FromStr;
 
@@ -259,7 +259,7 @@ impl HybridRecipient {
                 return Err(age::EncryptError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("invalid MLKEM768-X25519 recipient: {e}"),
-                )))
+                )));
             }
         }
         Ok(Self { pub_key })

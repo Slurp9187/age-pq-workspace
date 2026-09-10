@@ -9,9 +9,9 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem1024::{
-    decapsulate, encapsulate, generate_key_pair as mlkem1024_generate_key_pair,
-    validate_public_key as mlkem1024_validate_public_key, MlKem1024Ciphertext, MlKem1024KeyPair,
-    MlKem1024PublicKey,
+    MlKem1024Ciphertext, MlKem1024KeyPair, MlKem1024PublicKey, decapsulate, encapsulate,
+    generate_key_pair as mlkem1024_generate_key_pair,
+    validate_public_key as mlkem1024_validate_public_key,
 };
 use secure_gate::RevealSecret;
 

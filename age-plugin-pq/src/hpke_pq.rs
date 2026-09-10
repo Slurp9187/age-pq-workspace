@@ -2,7 +2,7 @@
 //! Age-specific HPKE utilities for the post-quantum hybrid plugin.
 
 use crate::aliases::{AeadKey32, KdfBytes};
-use age_pq_hpke::{kdf::new_kdf, Error};
+use age_pq_hpke::{Error, kdf::new_kdf};
 use secure_gate::RevealSecret;
 
 pub(crate) const KEM_ID: u16 = 0x647a; // XWing768X25519

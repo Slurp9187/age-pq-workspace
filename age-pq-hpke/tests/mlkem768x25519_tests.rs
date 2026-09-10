@@ -1,8 +1,8 @@
 //! Unit tests for mlkem768x25519.
 
 use age_pq_hpke::kem::mlkem768x25519::{
-    generate_keypair, Ciphertext, DecapsulationKey, EncapsulationKey,
-    MLKEM768X25519_CIPHERTEXT_SIZE, MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
+    Ciphertext, DecapsulationKey, EncapsulationKey, MLKEM768X25519_CIPHERTEXT_SIZE,
+    MLKEM768X25519_ENCAPSULATION_KEY_SIZE, generate_keypair,
 };
 
 use age_pq_hpke::{ConstantTimeEq, Error};

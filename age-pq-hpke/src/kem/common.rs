@@ -5,8 +5,8 @@ use crate::error::{Error, Result as CrateResult};
 use crate::kdf::HPKE_VERSION_LABEL;
 use byteorder::{BigEndian, ByteOrder};
 use secure_gate::{RevealSecret, RevealSecretMut};
-use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake256;
+use sha3::digest::{ExtendableOutput, Update, XofReader};
 use std::any::Any;
 
 /// HPKE KEM identifier for MLKEM768-X25519.

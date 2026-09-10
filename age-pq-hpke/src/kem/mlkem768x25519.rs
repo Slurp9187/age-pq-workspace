@@ -15,8 +15,8 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use crate::kem::common::{
-    expand_seed, shake256_labeled_derive, Kem, PrivateKey, PublicKey, KEM_ID, MASTER_SEED_SIZE,
-    PRIVATE_KEY_SIZE, SHARED_SECRET_SIZE,
+    KEM_ID, Kem, MASTER_SEED_SIZE, PRIVATE_KEY_SIZE, PrivateKey, PublicKey, SHARED_SECRET_SIZE,
+    expand_seed, shake256_labeled_derive,
 };
 use secure_gate::RevealSecret;
 

@@ -131,7 +131,7 @@
 use age::Encryptor;
 use age_pq_keys::{HybridIdentity, HybridRecipient};
 use secure_gate::{
-    fixed_newtype, Case, ConstantTimeEq, Dynamic, EncodedSecret, RevealSecret, ToBech32,
+    Case, ConstantTimeEq, Dynamic, EncodedSecret, RevealSecret, ToBech32, fixed_newtype,
 };
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;

@@ -170,7 +170,7 @@ fn parse_rejects_a_recipient_string_with_a_malformed_ml_kem_half() {
 /// would refuse. Its agreement with the real encoder is asserted at the call
 /// site, on unmutated bytes.
 fn re_encode(bytes: &[u8]) -> String {
-    use secure_gate::{bech32_code_length, Case, ToBech32};
+    use secure_gate::{Case, ToBech32, bech32_code_length};
     const HRP: &str = "age1pq";
     const CODE_LENGTH: usize = bech32_code_length(HRP.len(), 1216);
     bytes

@@ -5,8 +5,8 @@
 //! Currently the only registered algorithm is ChaCha20-Poly1305 (RFC 9180
 //! Table 5, `AEAD_ID = 0x0003`).
 
-use crate::aliases::{AeadKey32, Nonce12};
 use crate::Error;
+use crate::aliases::{AeadKey32, Nonce12};
 use aead::{Aead as CryptoAead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce as ChaNonce};
 use secure_gate::RevealSecret;

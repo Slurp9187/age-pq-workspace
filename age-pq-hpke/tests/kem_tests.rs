@@ -1,5 +1,5 @@
 mod tests {
-    use age_pq_hpke::{kem::Kem, ConstantTimeEq, Error, MlKem768X25519};
+    use age_pq_hpke::{ConstantTimeEq, Error, MlKem768X25519, kem::Kem};
 
     #[test]
     fn test_mlkem768_properties() {
