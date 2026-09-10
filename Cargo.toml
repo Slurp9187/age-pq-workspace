@@ -17,7 +17,7 @@ publish = false
 version = "0.2.0-rc.1"
 
 rust-version = "1.85"
-edition = "2021"
+edition = "2024"
 # Confirmed against the LICENSE-MIT / LICENSE-APACHE files in the repository
 # root and in each crate, not assumed: dual MIT / Apache-2.0, at the user's
 # option, which is the Rust ecosystem norm.
