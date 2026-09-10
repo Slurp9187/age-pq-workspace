@@ -100,10 +100,18 @@ history loses more than the tidiness gains. Mark them frozen:
 > [root `CHANGELOG.md`](../CHANGELOG.md).
 ```
 
-The checker skips any file containing that marker and **says so on every run** —
-an unexplained skip is how a check quietly stops covering what people believe it
-covers. It also fails if *every* discovered file is frozen, because a check that
-passes while inspecting nothing is not a check.
+The marker must be a **standalone line above the first version heading**. That is
+not fussiness: a changelog that *describes* this protocol quotes the marker in
+prose, and a whole-file substring test then marks that file frozen and skips it.
+Exactly that happened here — the root changelog excluded itself the first time
+it documented the freezing rule, and the run reported success having inspected
+nothing.
+
+The checker skips any frozen file and **says so on every run** — an unexplained
+skip is how a check quietly stops covering what people believe it covers. It
+also fails if *every* discovered file is frozen, because a check that passes
+while inspecting nothing is not a check. That guard is what caught the
+self-exclusion bug above, rather than a person noticing.
 
 ## Enforcing it
 

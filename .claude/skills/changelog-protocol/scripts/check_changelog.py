@@ -90,6 +90,23 @@ def existing_tags() -> set[str]:
     return {line.strip() for line in out.stdout.splitlines() if line.strip()}
 
 
+def is_frozen(path: pathlib.Path) -> bool:
+    """True if the marker appears as a standalone line in the header block.
+
+    Deliberately not a whole-file substring test. A changelog that *describes*
+    the protocol quotes the marker in prose, and a naive `in` check then marks
+    that file frozen and skips it -- which is how the root changelog of the
+    project this came from briefly excluded itself. Only lines above the first
+    version heading count, and the line must be exactly the marker.
+    """
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## ["):
+            return False
+        if line.strip() == FROZEN:
+            return True
+    return False
+
+
 def top_heading(path: pathlib.Path) -> tuple[int, str, str] | None:
     """(line number, version, marker) of the newest version section."""
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -156,7 +173,7 @@ def main() -> int:
         # e.g. per-crate changelogs superseded by a single root one. Skipping is
         # announced rather than silent: an unexplained skip is how a check stops
         # covering what people believe it covers.
-        if FROZEN in path.read_text(encoding="utf-8"):
+        if is_frozen(path):
             print(f"  --  {rel}  frozen, skipped")
             continue
 

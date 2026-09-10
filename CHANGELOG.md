@@ -8,6 +8,51 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.0-rc.2] - unreleased
+
+Documentation and tooling only. **No source, dependency or wire-format change**
+— the code is byte-identical to `v0.1.0-rc.1`, and this candidate exists because
+the maintenance branch accumulated commits past that tag, not because anything
+about the release changed.
+
+### Changed
+
+- **The changelog protocol applies to this branch.** Two invariants: the top
+  section matches `[workspace.package] version`, and a version heading is dated
+  **iff** that tag exists. `- unreleased` while in flight; the ISO date goes in
+  when the tag is cut. The standing empty `## [Unreleased]` section is gone from
+  all four files — the versioned-but-undated section *is* the unreleased one,
+  and keeping both left a reader unable to tell which described the code in
+  front of them.
+
+- **One changelog, at the root.** The three crate `CHANGELOG.md` files are
+  frozen: history through `0.1.0-rc.1` kept verbatim behind a
+  `<!-- changelog-protocol: frozen -->` marker the checker skips. Per-crate
+  changelogs are justified by independent versioning and independent
+  distribution, and this workspace has neither — `publish = false`, one shared
+  version, one git tag. A future `0.1.x` patch goes in this file under a
+  `### <crate>` heading.
+
+### Added
+
+- `.claude/skills/changelog-protocol/` — the rules plus a portable checker,
+  carried on this branch so they travel with it rather than living only on
+  `main`, where someone patching `0.1.x` would not see them.
+
+  **This branch runs no CI**, by design: the workflow here is the frozen
+  MSRV-1.70 one and is not modified for tooling changes. Run the check by hand
+  before cutting anything:
+
+  ```sh
+  python .claude/skills/changelog-protocol/scripts/check_changelog.py
+  ```
+
+  It earned its place immediately — the `0.1.0-rc.2` bump was made in the
+  manifest alone, and the check caught the changelog still reading
+  `[0.1.0-rc.1]` before the mismatch could be committed.
+
+---
+
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** All three crates move to a
