@@ -602,7 +602,12 @@ None. All resolved — see the "Locked decisions" table at the top.
   `Arc<dyn Kdf>` (DECIDE-4) ripples through every constructor that currently
   takes `Box<dyn Kdf>` — minor surface change but visible. Confirm before
   PR 4.
-- **MSRV pin (1.70).** secure-gate `0.8.0-rc.9`'s manifest declares
+- **MSRV pin (1.70).** *(Superseded: the workspace moved to MSRV 1.85,
+  edition 2024 and secure-gate `main` 0.9.0-rc.9 in `0.2.0-rc.1`. The `half` /
+  `unicode-ident` caps described below are gone, and the `Default`-bound
+  `into_inner` ceiling in the next bullet no longer exists. Kept as the record
+  of what was true during this hardening work.)*
+  secure-gate `0.8.0-rc.9`'s manifest declares
   `edition = "2021"`, `rust-version = "1.70"` — matches the workspace
   exactly. The "MSRV 1.85" line in the upstream `lib.rs` doc is stale text,
   not what `cargo check` enforces. The workspace's deliberate version caps

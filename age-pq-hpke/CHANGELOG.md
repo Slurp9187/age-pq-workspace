@@ -11,6 +11,55 @@ Nothing yet.
 
 ---
 
+## [0.2.0-rc.1] - 2026-09-10
+
+**Part of the MSRV 1.85 cohort bump (issue #2).** The workspace moves to rustc
+1.85, edition 2024 and Cargo resolver 3. See the root `CHANGELOG.md` for the
+full rationale, the per-pin decisions, and what was deliberately not taken.
+**The wire format does not change.**
+
+### Changed
+
+- **BREAKING: the RNG trait bound on three public functions.**
+  `EncapsulationKey::encapsulate`, `DecapsulationKey::generate` and the free
+  `generate_keypair` move from `<R: TryRngCore + TryCryptoRng>` to
+  `<R: TryRng + TryCryptoRng>`, following rand_core 0.10's rename of `RngCore`
+  to `Rng` and `TryRngCore` to `TryRng`. This is a genuine signature change for
+  downstream callers, not an internal rename.
+
+- **`rand` 0.9 -> 0.10.** `rand::rngs::OsRng` is now `rand::rngs::SysRng`
+  (the `os_rng` feature became `sys_rng`, and is on by default). Note that
+  `SysRng` implements the fallible `TryRng` / `TryCryptoRng`, not the infallible
+  `Rng` / `CryptoRng`.
+
+- **`rand_core` moved to `[dev-dependencies]`.** Nothing in `src/` names it, and
+  rand_core 0.10 has no features at all — the `os_rng` feature it used to carry
+  went with `OsRng` itself, so the old
+  `rand_core = { version = "0.9", features = ["os_rng"] }` line could not have
+  been version-bumped in place.
+
+- **`libcrux-ml-kem` 0.0.8 -> 0.0.10.** The four functions this crate calls keep
+  their exact signatures, so the Tier-3 `into_inner()` hand-offs are unchanged.
+  `default-features = false` is kept, and its comment corrected: it selects the
+  ML-KEM variant explicitly (the default set also turns on mlkem512 and
+  mlkem1024). The previous rationale blamed "older Cargo" and tls_codec default
+  feature resolution, which was a Cargo-1.70 concern and stale at 1.85.
+
+- **`sha3` stays at 0.10 and `x25519-dalek` at 2.0**, deliberately — see the
+  root changelog.
+
+- Dev-dependencies `rand` and `rand_chacha` move to 0.10. Seeded ChaCha output
+  is bit-for-bit stable across this bump, and no fixed vector in this workspace
+  derives from a seeded `rand` stream.
+
+### Fixed
+
+- Three unreachable-`pub` items surfaced by the new workspace lint table:
+  `MLKEM768_CT_SIZE` (now `pub(crate)`, matching its neighbour
+  `MLKEM768_PK_SIZE`), `clamp_x25519_scalar` and `clamp_x448_scalar`.
+
+---
+
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** This crate now inherits

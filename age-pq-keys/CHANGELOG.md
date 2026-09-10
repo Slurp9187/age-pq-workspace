@@ -11,6 +11,46 @@ Nothing yet.
 
 ---
 
+## [0.2.0-rc.1] - 2026-09-10
+
+**Part of the MSRV 1.85 cohort bump (issue #2).** The workspace moves to rustc
+1.85, edition 2024 and Cargo resolver 3. See the root `CHANGELOG.md` for the
+full rationale, the per-pin decisions, and what was deliberately not taken.
+**The wire format does not change.**
+
+### Changed
+
+- **`secure-gate` moves from git `release/0.8` (0.8.0-rc.12) to git `main`
+  (0.9.0-rc.9).** This crate needed **no call-site changes**: `Case`,
+  `bech32_code_length` / `BECH32_CODE_LENGTH`, the `*_sized` encoders and the
+  plain-value `into_inner` all exist on rc.9. Had this landed on 0.9.0-rc.8
+  instead — which predates that work — the uppercase `AGE-SECRET-KEY-PQ-`
+  identity encoding would have regressed to lowercase, so the exact rc matters.
+
+- Dev-dependency exact pins (`proptest`, `tempfile`, `time`, `clap`) relax to
+  the workspace entries; the `unicode-ident` MSRV cap is gone.
+
+### Added
+
+- `#![forbid(unsafe_code)]` at the crate root. `CLAUDE.md` had always required
+  it, but this crate never actually carried it; it is now also enforced by
+  `[workspace.lints.rust] unsafe_code = "forbid"` plus `[lints] workspace = true`.
+
+### Fixed
+
+- `go_recipients_for_all_cases` in the differential harness carries a targeted
+  `#[allow(clippy::zombie_processes)]`. The lint fires on a `?` inside the
+  writer thread's closure, reading it as an early return from the function; it
+  is not one, and `child.wait_with_output()` is reached on every path. Verified
+  rather than restructured.
+
+### Verification
+
+19/19 C2SP CCTV hybrid vectors pass, and all five differentials against the Go
+`age` CLI v1.3.1 (D1-D5) pass, under rustc 1.85 and edition 2024.
+
+---
+
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** This crate now inherits
