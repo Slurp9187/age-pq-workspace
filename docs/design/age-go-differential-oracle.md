@@ -66,6 +66,11 @@ a direction our own encoder never emits would pass all four differentials.
   exists`) and between the developer's CLI and whatever `scripts/install-age.sh`
   pins for CI. Local development here ran against **v1.3.1**; CI installs
   **v1.3.2**. No measurement taken locally is presented as CI's behaviour.
+
+  Retired unknown, first CI run of PR #24: all four differentials passed against
+  v1.3.2 with their banners in the log, so the one CLI feature this oracle newly
+  depends on -- `age -d -i -`, reading the identity from stdin, measured only on
+  v1.3.1 while D3 was written -- is confirmed on the version CI actually uses.
 - **Nothing about the second KEM variant.** MLKEM1024-P384 (issue #19) does not
   exist yet, in this crate or in the age CLI.
 
