@@ -77,6 +77,84 @@ Pre-release candidates work the same way: `## [1.2.0-rc.1] - unreleased`
 becomes `## [1.2.0-rc.1] - 2026-09-10` when `v1.2.0-rc.1` is tagged, and
 `## [1.2.0-rc.2]` opens next.
 
+## Pushing tags with commits
+
+Self-contained; lift this whole section into a commit/push skill if you keep one.
+
+`gh` does not push tags. Use git. Create an **annotated** tag, then push the
+branch and that tag together:
+
+```sh
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push --follow-tags
+```
+
+`--follow-tags` pushes the usual branch/commits **and** annotated tags reachable
+from those commits that are missing on the remote. It does **not** push
+lightweight tags, and it does **not** push unrelated local tags.
+
+### Tag types
+
+- Annotated — required for `--follow-tags`: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+- Lightweight — local-only unless pushed by name: `git tag vX.Y.Z`
+
+### Moving a tag
+
+`--follow-tags` only pushes tags **missing** from the remote. It will not move
+one that already exists: it reports `Everything up-to-date` and the remote
+silently keeps the old commit while your local tag points somewhere else.
+Measured, not inferred:
+
+```
+push --follow-tags (new tag)     * [new tag] v0.0.98-rc.1
+move locally, push again         Everything up-to-date
+                                 remote 4a86d0b · local 08e98a8   <- diverged
+git push -f origin v0.0.98-rc.1  + 4a86d0b...08e98a8 (forced update)
+```
+
+So moving a tag is always `git push -f origin vX.Y.Z`, by name. This matters
+wherever pre-release tags are deliberately movable — the no-op is reported as
+success, which is the worst shape a failure can take.
+
+### When `--follow-tags` is wrong
+
+- **Lightweight tag** — push by name: `git push origin vX.Y.Z`
+- **Moving an existing tag** — force by name, as above
+- `--tags` **alone** pushes tags only, not the branch
+
+### Do not
+
+- **`git push --tags`, unless you have audited `git tag -l` against the remote.**
+  It publishes *every* local tag — old experiments, abandoned lines, scratch
+  markers. Under tag protection rules that can be irreversible: a pushed tag
+  matching an immutability rule cannot be deleted without first disabling the
+  rule. Check first:
+
+  ```sh
+  # tags you have locally that the remote does not
+  git tag -l > /tmp/local.txt
+  git ls-remote --tags origin | grep -v '\^{}' | sed 's|.*refs/tags/||' | sort > /tmp/remote.txt
+  comm -23 <(sort /tmp/local.txt) /tmp/remote.txt
+  ```
+
+- Assume `git push --tags` also updates the current branch. It does not.
+- Reach for `gh release create` merely to push a tag, unless a GitHub Release is
+  actually wanted.
+
+### If CI validates anything tag-dependent
+
+This protocol creates such a case: between dating a heading and creating the
+tag, the tree fails its own check —
+
+```
+::error::[X.Y.Z] is dated 2026-09-10 but tag vX.Y.Z does not exist
+```
+
+— so the tag must be visible to the workflow when it runs. `--follow-tags`
+sends both refs in one push and should satisfy that, but if you want certainty
+rather than reasoning, push the tag first and the branch second. That removes
+the timing question instead of arguing about it.
+
 ## One changelog or many?
 
 Per-crate / per-package changelogs are justified by **independent versioning and
