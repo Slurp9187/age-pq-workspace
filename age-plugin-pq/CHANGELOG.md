@@ -11,6 +11,43 @@ Nothing yet.
 
 ---
 
+## [0.2.0-rc.1] - 2026-09-10
+
+**Part of the MSRV 1.85 cohort bump (issue #2).** The workspace moves to rustc
+1.85, edition 2024 and Cargo resolver 3. See the root `CHANGELOG.md` for the
+full rationale, the per-pin decisions, and what was deliberately not taken.
+**The wire format does not change.**
+
+### Changed
+
+- **`rand` 0.9 -> 0.10.** `rand::rngs::OsRng` becomes `rand::rngs::SysRng` at
+  the import and both use sites (recipient encapsulation and identity-seed
+  generation). The crate relies on rand's **default** features for `sys_rng`;
+  adding `default-features = false` later would silently remove `SysRng` and
+  break key generation.
+
+- **`secure-gate` moves to git `main` (0.9.0-rc.9)** with no call-site changes —
+  `Case::Upper` still produces the `AGE-PLUGIN-PQ-` identity string.
+
+- **`time` now inherits the workspace entry** rather than declaring
+  `time = "0.3"` locally. The local declaration bypassed the workspace's MSRV
+  cap, so nothing was actually holding `time` below the version that requires
+  rustc 1.88.
+
+### Added
+
+- `#![forbid(unsafe_code)]` at the crate root, plus `[lints] workspace = true`
+  so the workspace's `unsafe_code = "forbid"` governs this crate.
+
+### Unchanged
+
+- The binary name stays `age-plugin-pq`, and the identity HRP stays
+  `AGE-PLUGIN-PQ-`. Plugin discovery depends on both, and
+  `identity_hrp_matches_the_binary_name_age_will_look_for` still guards the
+  coupling.
+
+---
+
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** This crate now inherits

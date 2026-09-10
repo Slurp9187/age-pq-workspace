@@ -16,7 +16,7 @@ pub(crate) const X448_KEY_SIZE: usize = 56;
 /// Clamps an X448 scalar in place per RFC 7748.
 ///
 /// [`X448Secret::from`] also clamps; this function is kept explicit for auditor visibility.
-pub fn clamp_x448_scalar(scalar: &mut [u8; X448_KEY_SIZE]) {
+pub(crate) fn clamp_x448_scalar(scalar: &mut [u8; X448_KEY_SIZE]) {
     scalar[0] &= 252;
     scalar[55] |= 128;
 }

@@ -6,7 +6,7 @@
 //! - assert unsupported family operations return `InvalidOperationForKdf`
 
 use age_pq_hpke::{
-    kdf::Kdf, new_kdf, Error, HkdfSha256, HkdfSha384, HkdfSha512, Shake128Kdf, Shake256Kdf,
+    Error, HkdfSha256, HkdfSha384, HkdfSha512, Shake128Kdf, Shake256Kdf, kdf::Kdf, new_kdf,
 };
 
 fn assert_hkdf_extract_output_len<K: Kdf>(kdf: K, expected_len: usize) -> Result<(), Error> {

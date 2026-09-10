@@ -1,27 +1,30 @@
+#![forbid(unsafe_code)]
+
 // src/main.rs
 use age_core::{
     format::{FileKey, Stanza},
     secrecy::ExposeSecret,
 };
 use age_plugin::{
+    Callbacks, PluginHandler,
     identity::{self, IdentityPluginV1},
     recipient::{self, RecipientPluginV1},
-    run_state_machine, Callbacks, PluginHandler,
+    run_state_machine,
 };
 use age_pq_hpke::compute_nonce;
 use age_pq_hpke::kem::mlkem768x25519::MLKEM768X25519_ENCAPSULATION_KEY_SIZE;
 use age_pq_hpke::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, EncapsulationKey};
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
-use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit, Nonce};
+use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce, aead::Aead};
 use clap::{CommandFactory, Parser};
-use rand::rngs::OsRng;
+use rand::rngs::SysRng;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read};
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 mod aliases;
 
 use crate::aliases::{FileKeyBytes, IdentityEncoding, SecretText, Seed32, SharedSecret32};
-use secure_gate::{bech32_code_length, Case, RevealSecret, RevealSecretMut, SecretLen, ToBech32};
+use secure_gate::{Case, RevealSecret, RevealSecretMut, SecretLen, ToBech32, bech32_code_length};
 
 mod hpke_pq;
 use hpke_pq::derive_key_and_nonce;
@@ -144,7 +147,7 @@ impl RecipientPluginV1 for RecipientPlugin {
 
         for (recip_idx, pk) in self.recipients.iter().enumerate() {
             let (ct, ss) = pk
-                .encapsulate(&mut OsRng)
+                .encapsulate(&mut SysRng)
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "encapsulation failed"))?;
 
             // `encapsulate` hands back a native [u8; 32]; wrap it so the shared
@@ -406,7 +409,7 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
     // `from_rng` fills the wrapper's own storage straight from the CSPRNG, so the
     // seed never exists as an unprotected buffer. It is wiped on drop, including
     // on the `?`-driven early returns below.
-    let seed = Seed32::from_rng(&mut OsRng)
+    let seed = Seed32::from_rng(&mut SysRng)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
     let sk = seed.with_secret(DecapsulationKey::from_seed);

@@ -3,7 +3,7 @@ use clap::{Arg, ArgAction, Command};
 use secure_gate::{Dynamic, RevealSecret};
 use std::io::Write;
 use std::path::Path;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("pq-keygen")
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("version")
                 .short('v')
                 .long("version")
-                .action(clap::ArgAction::Version)
+                .action(ArgAction::Version)
                 .help("Print the version information"),
         )
         .get_matches();

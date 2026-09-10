@@ -31,8 +31,13 @@ hpke   = { git = "https://github.com/str4d/rust-hpke",        rev = "1268205e" }
 x-wing = { git = "https://github.com/str4d/RustCrypto-KEMs",  rev = "f5dd74e2" }
 ```
 
-MSRV 1.85 applies inside `conformance/` only. The main workspace stays at 1.70
-until issue #2 lands.
+~~MSRV 1.85 applies inside `conformance/` only. The main workspace stays at 1.70
+until issue #2 lands.~~ — **superseded 2026-09-10.** Issue #2 landed in
+`0.2.0-rc.1`: the main workspace is on MSRV 1.85, edition 2024 and resolver 3.
+`conformance/` therefore no longer needs to be a separate MSRV island, and the
+`(post-1.85)` gating on the work items below is spent — those items are
+actionable now. Whether `conformance/` stays a separate workspace at all is now
+a question about `[patch.crates-io]` isolation and build time, not about MSRV.
 
 ## Work items
 
@@ -80,6 +85,15 @@ those crates are target-gated to WASI. Resolved with two lockfile-only pins,
 `getrandom` 0.3.1 and `uuid` 1.11.0, verified from a clean clone on rustc
 1.70.0. Documented in the root `CHANGELOG.md`, the README MSRV policy, and as a
 build rule in `CLAUDE.md` so a routine `cargo update` does not silently undo it.
+
+**Both pins were removed with the 1.85 bump (`0.2.0-rc.1`)** and the build rule
+with them — Cargo 1.85 parses edition 2024 natively, so the failure is
+structurally impossible; `getrandom` 0.3.1 also fell out of the graph when
+`rand_core` moved to 0.10, and `uuid` now floats to 1.26.1. Do not restore
+either pin from this paragraph. What survives is the *lesson*, kept in
+`CLAUDE.md` and the root README: this class of breakage is invisible to
+`check` / `build` / `test` / `clippy`, so anything touching the WASI end of the
+graph is verified with an all-target `cargo fetch`, never with a green test run.
 
 The CCTV harness was nonetheless written to use only already-locked crates
 (`sha2`, `hex`), and the two compressed vectors were pre-decompressed rather

@@ -1,6 +1,6 @@
 use age_pq_hpke::kem::Kem;
 use age_pq_hpke::{
-    new_aead, new_kdf, new_recipient, new_sender, AeadKey32, MlKem768X25519, Seed32,
+    AeadKey32, MlKem768X25519, Seed32, new_aead, new_kdf, new_recipient, new_sender,
 };
 
 #[test]

@@ -1,6 +1,6 @@
 [workspace]
 members = ["age-pq-hpke", "age-pq-keys", "age-plugin-pq"]
-resolver = "2"   # MSRV 1.70 → resolver 2 is required. LAST 1.70 RELEASE: move to "3" with the 1.85 bump.
+resolver = "3"   # MSRV 1.85 → resolver 3 (MSRV-aware selection). Requires Cargo 1.84+.
 
 # Shared package metadata (inherited by every member)
 [workspace.package]
@@ -12,12 +12,12 @@ publish = false
 # One version for all three crates. They are one release: `age-pq-keys` layers
 # on `age-pq-hpke` and `age-plugin-pq` exposes `age-pq-keys`, distribution is a
 # single git tag over the whole workspace, and a consumer pinning
-# `tag = "v0.1.0-rc.1"` gets all three at once. Per-crate numbers would give
+# `tag = "v0.2.0-rc.1"` gets all three at once. Per-crate numbers would give
 # that tag three answers to "which version is this?".
-version = "0.1.0-rc.1"
+version = "0.2.0-rc.1"
 
-rust-version = "1.70"
-edition = "2021"
+rust-version = "1.85"
+edition = "2024"
 # Confirmed against the LICENSE-MIT / LICENSE-APACHE files in the repository
 # root and in each crate, not assumed: dual MIT / Apache-2.0, at the user's
 # option, which is the Rust ecosystem norm.
@@ -55,28 +55,73 @@ panic = "unwind"
 [profile.bench]
 debug = true    # keep symbols for flamegraphs / profiling
 
-# Shared workspace lint tables require Cargo 1.74+; omitted so `cargo +1.70` stays warning-free.
+# Shared workspace lint tables need Cargo 1.74+, which the 1.85 floor now clears.
+#
+# These are inert unless each member opts in with `[lints] workspace = true` —
+# the mistake the pre-1.70 version of these tables made, which is why all three
+# member manifests now carry that line.
+#
+# `unsafe_code = "forbid"` is the load-bearing entry: CLAUDE.md has always
+# claimed `#![forbid(unsafe_code)]` at every crate root "no exceptions", but
+# only `age-pq-hpke` actually carried the attribute. Setting it here makes the
+# rule true for all three crates and enforced by the build rather than by
+# documentation. Cost is zero: the workspace contains exactly one `unsafe`
+# token, and it is that attribute.
+#
+# Deliberately NOT here: the clippy cast lints (`cast_possible_truncation` and
+# friends). They fire on ~19 `usize as u16` RFC 9180 length prefixes in
+# `age-pq-hpke`, which are wire-format-adjacent — fixing them is real work that
+# belongs in its own change, not riding along in a dependency bump whose whole
+# constraint is that the wire format must not move. Tracked separately rather
+# than blanket-allowed, because a crate-level `#![allow]` would put these tables
+# straight back into the decorative state they were in before.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+unused_lifetimes = "warn"
 
 [workspace.dependencies]
-# The 0.8.0-rc.* line is the MSRV-1.70 backport of secure-gate's `main`.
-# With the 1.85 bump, move to mainline 0.9.x (edition 2024, rust-version 1.85).
+# Mainline `main` (0.9.0-rc.9): edition 2024, rust-version 1.85. The
+# `release/0.8` backport line existed solely to hold MSRV 1.70 and is retired
+# with this release.
 #
-# Git source: rc.12 is not on crates.io. That is fine here — these crates are
-# experimental and distributed by git tag, never published to crates.io (see
-# `publish = false` above), so a git dependency costs nothing. Cargo.lock pins
-# the exact rev regardless of the branch.
-secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "release/0.8", features = ["rand", "ct-eq"] }
+# Git source: the 0.9.0-rc.* line is not on crates.io. That is fine here —
+# these crates are experimental and distributed by git tag, never published to
+# crates.io (see `publish = false` above), so a git dependency costs nothing.
+# Cargo.lock pins the exact rev regardless of the branch.
+secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "main", features = ["rand", "ct-eq"] }
 
-clap = { version = "=4.4.18", features = ["derive"] }
+# Was `=4.4.18`: genuine MSRV-1.70 scaffolding (clap 4.5.0 moved to 1.74).
+# The floor is 1.85 now and clap 4.6 declares exactly 1.85, so the cap is spent.
+clap = { version = "4", features = ["derive"] }
 
-# half 2.5.0+ requires rustc 1.81 (transitive via secure-gate); cap to stay at 1.70 MSRV.
-# Removable at MSRV 1.85.
-half = { version = ">=2.0, <2.5", default-features = false }
+# Was `=1.5.0`. Never MSRV scaffolding — 1.5, 1.6 and 1.7 all declare <= 1.66,
+# well under the old 1.70 floor. It was blanket exact-pin style, so relaxing it
+# costs nothing.
+#
+# It buys nothing yet either, and deliberately so: relaxing a requirement does
+# not re-resolve an already-locked package, so `Cargo.lock` still holds proptest
+# 1.5.0 and `cargo tree -i rand@0.8.5` still lists it beside `age` 0.11 and
+# `age-core` 0.11. Nor would updating it dedup `rand`: the first proptest off
+# `rand 0.8` is 1.7, which takes `rand 0.9` — a different duplicate, not one
+# fewer, since our own crates are on 0.10. Same for the two relaxations above:
+# the lock still holds clap 4.4.18 and tempfile 3.10.1. A future `cargo update`
+# is the first thing that exercises any of these ranges.
+proptest = "1"
 
-# unicode-ident 1.0.23+ requires rustc 1.71; cap to stay at 1.70 MSRV.
-# Removable at MSRV 1.85.
-unicode-ident = ">=1.0, <1.0.23"
+# Was `=3.10.1`. Never MSRV scaffolding either — tempfile has declared
+# rust-version 1.63 continuously from 3.10.0 through 3.27.0.
+tempfile = "3"
 
-proptest = "=1.5.0"
-tempfile = "=3.10.1"
-time = { version = "=0.3.40", features = ["formatting", "parsing"] }
+# The one cap that OUTLIVES the 1.70 line, so it stays: time 0.3.46+ requires
+# rustc 1.88, above this workspace's 1.85 floor. Verified against the crates.io
+# index rather than assumed — 0.3.41 declares 1.67.1, 0.3.42 declares 1.81,
+# 0.3.45 declares 1.83, and 0.3.46 through 0.3.49 declare 1.88.
+#
+# Resolver 3 prefers a compatible version but is only a preference —
+# `--ignore-rust-version`, or a consumer
+# resolving this tree with a higher toolchain, walks straight past it. A
+# manifest cap is a fact. `age-plugin-pq` inherits this entry rather than
+# declaring `time` itself, so the cap actually governs the whole graph.
+time = { version = ">=0.3.40, <0.3.46", features = ["formatting", "parsing"] }

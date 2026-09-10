@@ -16,13 +16,37 @@ env:
 
 jobs:
   msrv:
-    name: MSRV (1.70) — workspace
+    name: MSRV (1.85) — workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70
-      # half 2.5+ requires rustc 1.81; pin it back to hold the 1.70 MSRV.
-      - run: cargo update -p half --precise 2.4.1
+      # Keep this in step with rust-toolchain.toml, which pins the same version
+      # and is what every bare `cargo` in this repo actually obeys.
+      - uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt, clippy
+      # ---- formatting and lints (issue #2) --------------------------------
+      # Neither of these was in CI before the 1.85 bump. Both were run by hand
+      # on every change and believed to be upheld, which is the same shape as
+      # every other defect this repository has had to dig out: a standard with
+      # no verifier behind it. The edition-2024 move proved the point — rustfmt's
+      # style edition reorders `use` groups, so 27 files were left unformatted
+      # and nothing in CI would ever have said so.
+      #
+      # `--check` rather than a reformat: CI reports, it does not rewrite.
+      - run: cargo fmt --all -- --check
+      # `--all-features` deliberately. The workspace lint table added in this
+      # bump surfaced `unreachable_pub` items that only compile under the
+      # non-default mlkem512/mlkem1024 features, so a default-feature clippy
+      # run would have passed over them.
+      - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      # The `cargo update -p half --precise 2.4.1` step that used to sit here is
+      # gone with the 1.85 bump. It was holding half below 2.5 (which needs
+      # 1.81), and `half` has since left the dependency graph altogether — it
+      # arrived via secure-gate's 0.8 backport line. Left in place the step
+      # would not merely be redundant, it would FAIL: `cargo update -p` errors
+      # out on a package that is not in the graph, taking the job down before
+      # either oracle guard ran.
       - run: cargo check --workspace --all-targets
       # ---- differential-oracle anti-gutting guard, part 1 (issue #15) ------
       # A test target with zero #[test] fns prints "running 0 tests ... ok" and
@@ -187,8 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70
-      - run: cargo update -p half --precise 2.4.1
+      - uses: dtolnay/rust-toolchain@1.85
       # Run the vectors as their own job so a regression is legible at a glance
       # rather than buried in the workspace suite.
       - run: cargo test -p age-pq-keys --test testkit -- --nocapture

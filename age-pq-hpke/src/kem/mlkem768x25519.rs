@@ -15,8 +15,8 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use crate::kem::common::{
-    expand_seed, shake256_labeled_derive, Kem, PrivateKey, PublicKey, KEM_ID, MASTER_SEED_SIZE,
-    PRIVATE_KEY_SIZE, SHARED_SECRET_SIZE,
+    KEM_ID, Kem, MASTER_SEED_SIZE, PRIVATE_KEY_SIZE, PrivateKey, PublicKey, SHARED_SECRET_SIZE,
+    expand_seed, shake256_labeled_derive,
 };
 use secure_gate::RevealSecret;
 
@@ -24,8 +24,8 @@ use core::fmt;
 
 use libcrux_ml_kem::mlkem768::MlKem768KeyPair;
 
-use rand::rngs::OsRng;
-use rand::{TryCryptoRng, TryRngCore};
+use rand::rngs::SysRng;
+use rand::{TryCryptoRng, TryRng};
 
 use x25519_dalek::PublicKey as X25519PublicKey;
 
@@ -181,7 +181,7 @@ impl EncapsulationKey {
     }
 
     /// Encapsulates with fresh randomness from the provided CSPRNG.
-    pub fn encapsulate<R: TryRngCore + TryCryptoRng>(
+    pub fn encapsulate<R: TryRng + TryCryptoRng>(
         &self,
         rng: &mut R,
     ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
@@ -329,7 +329,7 @@ impl DecapsulationKey {
     }
 
     /// Generates a fresh decapsulation key from a CSPRNG.
-    pub fn generate<R: TryRngCore + TryCryptoRng>(rng: &mut R) -> Self {
+    pub fn generate<R: TryRng + TryCryptoRng>(rng: &mut R) -> Self {
         Self {
             seed: Seed32::from_rng(rng)
                 .expect("Failed to generate random bytes for decapsulation key seed"),
@@ -455,7 +455,7 @@ impl TryFrom<&[u8; MLKEM768X25519_CIPHERTEXT_SIZE]> for Ciphertext {
 // ---------------------------------------------------------------------------
 
 /// Generates a fresh hybrid keypair from a CSPRNG.
-pub fn generate_keypair<R: TryRngCore + TryCryptoRng>(
+pub fn generate_keypair<R: TryRng + TryCryptoRng>(
     rng: &mut R,
 ) -> CrateResult<(DecapsulationKey, EncapsulationKey)> {
     let sk = DecapsulationKey::generate(rng);
@@ -551,7 +551,7 @@ impl PublicKey for XWingPublicKey {
                 return Err(Error::InsufficientTestingRandomness);
             }
         } else {
-            let mut rng = OsRng;
+            let mut rng = SysRng;
             self.pk.encapsulate(&mut rng)?
         };
         let ct_bytes: [u8; MLKEM768X25519_CIPHERTEXT_SIZE] = ct.to_bytes();

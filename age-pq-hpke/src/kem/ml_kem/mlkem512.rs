@@ -9,16 +9,16 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem512::{
-    decapsulate, encapsulate, generate_key_pair as mlkem512_generate_key_pair,
-    validate_public_key as mlkem512_validate_public_key, MlKem512Ciphertext, MlKem512KeyPair,
-    MlKem512PublicKey,
+    MlKem512Ciphertext, MlKem512KeyPair, MlKem512PublicKey, decapsulate, encapsulate,
+    generate_key_pair as mlkem512_generate_key_pair,
+    validate_public_key as mlkem512_validate_public_key,
 };
 use secure_gate::RevealSecret;
 
 /// ML-KEM-512 public-key size in bytes.
 pub(crate) const MLKEM512_PK_SIZE: usize = 800;
 /// ML-KEM-512 ciphertext size in bytes.
-pub const MLKEM512_CT_SIZE: usize = 768;
+pub(crate) const MLKEM512_CT_SIZE: usize = 768;
 
 /// Derives an ML-KEM-512 key pair from a wrapped 64-byte (`d || z`) seed.
 pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem512KeyPair {

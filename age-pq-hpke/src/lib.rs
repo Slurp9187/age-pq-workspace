@@ -82,9 +82,9 @@ pub use aliases::*;
 pub use error::{Error, Result};
 
 // Re-export key HPKE components for easy access
-pub use crate::aead::{new_aead, Aead, ChaCha20Poly1305Aead};
+pub use crate::aead::{Aead, ChaCha20Poly1305Aead, new_aead};
 pub use hpke::{new_recipient, new_sender, new_sender_with_testing_randomness, open, seal};
-pub use kdf::{new_kdf, HkdfSha256, HkdfSha384, HkdfSha512, Kdf, Shake128Kdf, Shake256Kdf};
+pub use kdf::{HkdfSha256, HkdfSha384, HkdfSha512, Kdf, Shake128Kdf, Shake256Kdf, new_kdf};
 pub use kem::{Kem, PrivateKey, PublicKey};
 
 pub use kem::MlKem768X25519;

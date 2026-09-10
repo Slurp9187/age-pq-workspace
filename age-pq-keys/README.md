@@ -32,7 +32,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0-rc.1" }
 ```
 
 Then, run `cargo build` to include it.

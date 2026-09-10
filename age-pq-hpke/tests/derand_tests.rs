@@ -1,7 +1,7 @@
 // tests/derand_tests.rs
 
-use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
 use age_pq_hpke::ConstantTimeEq;
+use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
 
 const EXPECTED_CT_FIRST_32: [u8; 32] = [
     54, 105, 219, 179, 32, 45, 144, 182, 129, 59, 255, 3, 160, 229, 52, 47, 115, 181, 184, 250,

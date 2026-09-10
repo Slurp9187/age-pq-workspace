@@ -10,7 +10,7 @@
 //! Note: For full interop, run these alongside age-go binaries or use real files from age-go/testdata.
 //! Hardcoded vectors here are illustrative; replace with actual age-go outputs for production testing.
 
-use age::{secrecy::ExposeSecret, Decryptor, Encryptor, Identity, Recipient};
+use age::{Decryptor, Encryptor, Identity, Recipient, secrecy::ExposeSecret};
 use age_core::format::Stanza;
 use age_pq_keys::HybridRecipient;
 use std::io::{Read, Write};

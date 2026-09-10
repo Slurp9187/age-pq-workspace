@@ -14,6 +14,165 @@ Nothing yet.
 
 ---
 
+## [0.2.0-rc.1] - 2026-09-10
+
+**The MSRV 1.85 cohort bump (issue #2).** The 1.70 line is frozen at
+`v0.1.0-rc.1`; this release moves the whole workspace to **rustc 1.85**,
+**edition 2024** and Cargo **resolver 3**, and takes the dependency upgrades
+that 1.70 was holding back. Dependencies and toolchain only — **the wire format
+does not change**, which the 19 C2SP CCTV vectors and the five `age`-CLI
+differentials (D1-D5) gate.
+
+### Changed
+
+- **MSRV 1.70 -> 1.85.** `rust-toolchain.toml` and `[workspace.package]
+  rust-version` move together, as does CI. This was pre-decided; see the table
+  in `CLAUDE.md` for what it unlocked.
+
+- **Edition 2021 -> 2024**, landed as its own commit so a bisect can separate an
+  edition drop-order change from a dependency behaviour change. It required
+  **no source changes**. `cargo fix --edition` proposed three and all three were
+  reverted as machine noise: two `if let / else` blocks rewritten into
+  `match { Ok(x) => {} _ => {} }`, and `$id:expr` narrowed to `expr_2021` in a
+  crate-internal macro called only with integer literals. A forced full rebuild
+  with `-W if_let_rescope -W edition_2024_expr_fragment_specifier
+  -W tail_expr_drop_order` reports zero warnings, so the reverts are verified
+  rather than assumed. The edition's earlier temporary drop favours this
+  workspace: the Drop-bearing types here are secure-gate wrappers and
+  x25519-dalek secrets, so earlier drop means earlier zeroization.
+
+- **Cargo `resolver` 2 -> 3**, as the in-file comment had prescribed for this
+  bump. Its MSRV-aware selection is doing visible work: `cargo update` now
+  reports "locking to latest Rust 1.85 compatible versions".
+
+- **`secure-gate`: git `release/0.8` (0.8.0-rc.12) -> git `main`
+  (0.9.0-rc.9).** The 0.8 line existed solely as the MSRV-1.70 backport and is
+  retired. Features are unchanged (`rand`, `ct-eq`, plus `encoding-bech32` and
+  `std` on the two upper crates).
+
+  **rc.9, not rc.8, and the distinction is load-bearing.** 0.9.0-rc.8 was cut
+  before the `Case` work landed: it has no `Case`, no `bech32_code_length` /
+  `*_sized` encoders, and `into_inner` returning `InnerSecret<T>`. Since
+  uppercase bech32 is what produces the `AGE-SECRET-KEY-PQ-` /
+  `AGE-PLUGIN-PQ-` identity strings, adopting rc.8 would have been a
+  wire-format regression, and the only in-crate workaround
+  (`try_to_bech32(hrp)?.to_ascii_uppercase()`) leaves an unzeroized `String`
+  copy of the private key on the heap. rc.9 forward-ported all of it, so the
+  upper crates needed **no call-site churn at all**.
+
+- **`rand` / `rand_core` 0.9 -> 0.10** and **`libcrux-ml-kem` 0.0.8 -> 0.0.10**.
+  These are coupled to the secure-gate move rather than independent: 0.9's
+  `from_rng` bound is `TryRng + TryCryptoRng`, so the rand rename cannot be
+  sequenced separately without leaving the tree non-compiling. The renames:
+  `os_rng` -> `sys_rng`, `OsRng` -> `SysRng`, `RngCore` -> `Rng`,
+  `TryRngCore` -> `TryRng`, `rand::Rng` -> `rand::RngExt`.
+
+- **MSRV caps removed, per pin rather than by reflex.** `half` and
+  `unicode-ident` caps are gone (`half` left the graph entirely — it arrived via
+  secure-gate 0.8). `clap` `=4.4.18` -> `"4"` was genuine scaffolding (4.5.0
+  moved to 1.74). `proptest` `=1.5.0` -> `"1"` and `tempfile` `=3.10.1` -> `"3"`
+  were **not** scaffolding: both declared MSRVs well under 1.70 across their
+  whole range, so the exact pins were blanket style and never bought anything.
+
+- **`time` stays capped**, at `>=0.3.40, <0.3.46`. This is the one pin that
+  outlives the 1.70 line: `time` 0.3.46+ requires rustc 1.88, above the new
+  floor. Resolver 3 is only a preference, so the cap remains a manifest fact.
+  `age-plugin-pq` now inherits the workspace entry instead of declaring
+  `time = "0.3"` itself, which had bypassed the cap entirely.
+
+- **Both lockfile-only pins removed.** `getrandom` 0.3.1 fell out with
+  `rand_core` 0.9; `uuid` floats to 1.26.1. Their reason (Cargo 1.70 cannot
+  parse the edition-2024 WASI manifest chain) is dead at 1.85. Verified on the
+  failure's own terms rather than by a green test run, since this class of
+  breakage is invisible to `check` / `build` / `test`: `cargo fetch` across
+  `wasm32-wasip2` + linux + windows succeeds.
+
+- **One lockfile chain grew, and it is recorded here for the same reason.**
+  `libcrux-ml-kem` 0.0.10 pulls `libcrux-secrets` 0.0.6, which added
+  `[target."cfg(valgrind_ct_test)".dependencies.crabgrind]`. Cargo cannot
+  evaluate a custom `cfg` during resolution, so `crabgrind` 0.2.6 and its build
+  chain are now in `Cargo.lock` and reachable from `cargo tree --target all`.
+  Measured against `main`'s lockfile, that is **14 new entries** — `crabgrind`,
+  `bindgen` 0.72, `clang-sys`, `libloading`, `cexpr`, `prettyplease`, `glob`,
+  `either`, `itertools`, `pkg-config`, `windows-link`, and `regex` /
+  `regex-automata` / `aho-corasick` (the fifteenth new entry, `r-efi`, is
+  unrelated: it rides in with `getrandom` 0.4). That cfg is
+  never set, so none of it ever compiles — `cargo tree -e normal,build -i
+  crabgrind` prints nothing — but it *is* vendored by `cargo vendor`, fetched by
+  `cargo fetch --target all`, and would be scanned by a future `cargo audit` /
+  `cargo deny` job (this workspace has none today: `ci.yml` has exactly the
+  `msrv` and `conformance` jobs). Same invisible-to-`check`/`build`/`test` class
+  as the WASI chain the removed pins guarded, so it gets the same treatment: a
+  durable record rather than a surprise.
+
+### Added
+
+- **`[workspace.lints]` restored — with the member opt-in that the pre-1.70
+  version omitted.** All three members now carry `[lints] workspace = true`;
+  without it the tables are inert, which is what the earlier tables were for
+  their entire life.
+
+- **`unsafe_code = "forbid"` is now enforced.** `CLAUDE.md` has always claimed
+  `#![forbid(unsafe_code)]` at every crate root "no exceptions", but only
+  `age-pq-hpke` carried the attribute. The lint table plus the attribute added
+  to the other two roots makes the rule true for the first time. Cost was zero:
+  the workspace contains exactly one `unsafe` token, and it is that attribute.
+
+- Also added `unreachable_pub`, `unused_qualifications` and `unused_lifetimes`.
+  The clippy cast lints are deliberately **excluded**: they fire on ~19
+  `usize as u16` RFC 9180 length prefixes, which is real work on
+  wire-format-adjacent code and belongs in its own change, not a blanket
+  `#![allow]`.
+
+### Fixed
+
+- Five unreachable-`pub` items in `age-pq-hpke` found by the new lints
+  (`MLKEM768_CT_SIZE` now matches its already-`pub(crate)` neighbour
+  `MLKEM768_PK_SIZE`, as do the feature-gated `MLKEM512_CT_SIZE` and
+  `MLKEM1024_CT_SIZE`; plus the two scalar-clamp helpers), and one redundant
+  path qualification in the `pq-keygen` example.
+
+  The two feature-gated siblings were missed on the first pass because they only
+  compile under `--all-features`, which the plain `cargo clippy --all-targets`
+  used to verify the change does not enable — the lint table was already
+  emitting noise on every CI run, which is how such a table drifts back to being
+  decorative. The verification command below now carries `--all-features` for
+  exactly that reason.
+
+### Not taken, deliberately
+
+- **`sha3` 0.10 -> 0.12** and **`x25519-dalek` 2.0 -> 3.0.** Neither is forced
+  by this bump and both are deferred to a single RustCrypto gen-2 cohort change.
+  `sha3` 0.12 needs `digest` 0.11 while `sha2` / `hkdf` / `chacha20poly1305` /
+  `aead` stay on `digest` 0.10, which would put two digest generations in one
+  crypto tree, and it churns the X-Wing combiner and the SHAKE KDF — the two
+  modules that decide bytes on the wire. For `x25519-dalek`, the apparent
+  rand_core dedup win was **measured and found illusory**: `crypto-common`
+  (under `aead` 0.5) keeps `rand_core` 0.6.4 in the graph regardless, so taking
+  it alone dedups nothing while carrying `curve25519-dalek` 4->5 underneath the
+  low-order-point rejection.
+
+### Verification
+
+`cargo test --workspace --all-features -- --include-ignored`: **157 passed, 0
+failed, 0 ignored**, including 19/19 C2SP CCTV hybrid vectors and D1-D5 against
+the Go `age` CLI v1.3.1. `cargo clippy --workspace --all-features --all-targets
+-- -D warnings` clean — with `--all-features`, which is the feature set the test
+command above uses and the one the two feature-gated `unreachable_pub` fixes
+needed. Exactly one `libcrux-ml-kem` in the graph.
+
+Note on `cargo tree -d`: duplicate `rand` / `rand_core` remain and are
+**expected**, not a regression. `rand 0.8.5` has three consumers —
+`age 0.11`, `age-core 0.11`, and `proptest 1.5.0` (a dev-dependency of
+`age-pq-keys`) — while `rand_core 0.6.4` comes from `crypto-common` and
+`rand_core 0.5.1` from `x448 0.6`. `age 0.11` is the trait provider this
+workspace implements, so its generation is not ours to choose. `proptest` is
+ours, but the first release off `rand 0.8` is proptest 1.7, which takes
+`rand 0.9` — a different duplicate, not one fewer — so moving it is not a dedup
+and is not taken here.
+
+---
+
 ## [0.1.0-rc.1] - 2026-09-10
 
 **Release candidate for the frozen MSRV-1.70 line.** All three crates move to a

@@ -2,8 +2,8 @@
 
 mod tests {
     use age_pq_hpke::{
-        kem::Kem, new_aead, new_kdf, new_recipient, new_sender, new_sender_with_testing_randomness,
-        open, seal, ChaCha20Poly1305Aead, Error, HkdfSha256, MlKem768X25519,
+        ChaCha20Poly1305Aead, Error, HkdfSha256, MlKem768X25519, kem::Kem, new_aead, new_kdf,
+        new_recipient, new_sender, new_sender_with_testing_randomness, open, seal,
     };
 
     #[test]

@@ -10,7 +10,7 @@ use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 pub(crate) const X25519_KEY_SIZE: usize = 32;
 
 /// Clamps an X25519 scalar in place per RFC 7748.
-pub fn clamp_x25519_scalar(scalar: &mut [u8; CURVE_SEED_SIZE]) {
+pub(crate) fn clamp_x25519_scalar(scalar: &mut [u8; CURVE_SEED_SIZE]) {
     scalar[0] &= 248;
     scalar[31] &= 127;
     scalar[31] |= 64;

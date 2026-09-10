@@ -131,7 +131,7 @@
 use age::Encryptor;
 use age_pq_keys::{HybridIdentity, HybridRecipient};
 use secure_gate::{
-    fixed_newtype, Case, ConstantTimeEq, Dynamic, EncodedSecret, RevealSecret, ToBech32,
+    Case, ConstantTimeEq, Dynamic, EncodedSecret, RevealSecret, ToBech32, fixed_newtype,
 };
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -464,6 +464,12 @@ fn identities_are_uppercase_and_match_the_crate_encoder() {
 /// mid-write, silently and with no output at all. A writer thread plus
 /// `wait_with_output` on this thread avoids both, and keeps the private keys off
 /// disk entirely, which the file-redirect alternative does not.
+// False positive: the `?` clippy points at is inside the writer thread's
+// closure, which returns `io::Result<()>` of its own, so it never returns early
+// from *this* function. `child.wait_with_output()` below is unconditional on
+// every path, and the join that follows propagates the writer's error instead.
+// (clippy::zombie_processes does not model `?` across a closure boundary.)
+#[allow(clippy::zombie_processes)]
 fn go_recipients_for_all_cases() -> Vec<String> {
     let mut child = common::age_keygen_command_without_plugins()
         .arg("-y")

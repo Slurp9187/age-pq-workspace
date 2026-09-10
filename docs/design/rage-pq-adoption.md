@@ -95,10 +95,11 @@ the document organisation is what changed. (Reported by the peer session.)
 ## Q4 / Q5 — MSRV and secret handling: only couple if we adopt the code
 
 rage's `pq` branch is `rust-version = "1.85"` and uses `age_core::secrecy`. We
-are MSRV 1.70 for one more release (issue #2) and standardised on `secure-gate`.
+are **also on MSRV 1.85 now** (issue #2 landed in `0.2.0-rc.1`), and remain
+standardised on `secure-gate`.
 
-Adopting rage's *code* would force the MSRV bump and put two secret libraries in
-one tree. Using rage as an *oracle* in an isolated workspace does neither —
+That closes the MSRV half of this question but not the secret-handling half:
+adopting rage's *code* would still put two secret libraries in one tree. Using rage as an *oracle* in an isolated workspace does neither —
 which is a large part of why the oracle approach wins.
 
 ## Q6 — Maintenance status

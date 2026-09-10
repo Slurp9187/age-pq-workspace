@@ -21,17 +21,25 @@ mlkem1024 = ["libcrux-ml-kem/mlkem1024"]
 
 [dependencies]
 # Cryptographic dependencies - pinned to specific versions for security and reproducibility
-# default-features off: upstream `std` enables `tls_codec/std` while `tls_codec` is optional (`codec`),
-# which older Cargo rejects when resolving default features.
-libcrux-ml-kem = { version = "0.0.8", default-features = false, features = ["mlkem768", "rand"] }
+# default-features = false selects the ML-KEM variant explicitly: the default
+# feature set turns on mlkem512 and mlkem1024 as well, and this crate's own
+# `mlkem512` / `mlkem1024` features exist to forward that choice. (The previous
+# comment here blamed "older Cargo" and its tls_codec default-feature
+# resolution; that was a Cargo-1.70 rationale and is stale at 1.85. The flag
+# stays for the reason above.)
+libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem768", "rand"] }
 sha3 = { version = "0.10", default-features = false }
 
 x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize", "static_secrets"] }
 x448 = "0.6.0"
 
 thiserror = "2.0"
-rand = "0.9"
-rand_core = { version = "0.9", features = ["os_rng"] }
+# rand 0.10: `os_rng` -> `sys_rng`, `OsRng` -> `SysRng`, and rand_core renamed
+# `RngCore` -> `Rng` / `TryRngCore` -> `TryRng`. `sys_rng` is on by default.
+# `rand_core` moved to [dev-dependencies]: nothing in `src/` names it, and
+# rand_core 0.10 has no features at all (the `os_rng` feature it used to carry
+# was removed along with `OsRng` itself).
+rand = "0.10"
 chacha20poly1305 = "0.10"
 aead = { version = "0.5", default-features = false }
 byteorder = "1.5"
@@ -39,11 +47,13 @@ hkdf = "0.12"
 sha2 = "0.10"
 
 secure-gate = { workspace = true }
-unicode-ident = { workspace = true }
-half = { workspace = true   }
 
 [dev-dependencies]
-rand = "0.9"
-rand_chacha = "0.9"
+rand = "0.10"
+rand_chacha = "0.10"
+rand_core = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "=1.0.132"
+
+[lints]
+workspace = true

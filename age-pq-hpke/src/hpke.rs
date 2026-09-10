@@ -6,6 +6,7 @@
 //! both the standard two-stage (extract + expand) HKDF path and the
 //! one-stage SHAKE path used by `hpke-pq`.
 
+use crate::Error;
 use crate::aead::{Aead, CipherAead};
 use crate::aliases::{
     Aad, AeadKey32, ExporterContext, Info, KdfBytes, Nonce12, OneStageSecrets, Plaintext,
@@ -13,7 +14,6 @@ use crate::aliases::{
 };
 use crate::kdf::Kdf;
 use crate::kem::{PrivateKey, PublicKey};
-use crate::Error;
 use byteorder::{BigEndian, ByteOrder};
 use secure_gate::{RevealSecret, RevealSecretMut};
 use std::result::Result;

@@ -1,6 +1,6 @@
 // tests/determinism_tests.rs
-use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
 use age_pq_hpke::ConstantTimeEq;
+use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
 
 const FIXED_SEED: [u8; 32] = [42u8; 32];
 const FIXED_ESEED: [u8; 64] = [0u8; 64];

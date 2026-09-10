@@ -27,12 +27,24 @@ unified — the secure-gate sections below bind every crate in full.
 The workspace pin is a git dependency, not a registry version:
 
 ```toml
-secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "release/0.8", features = ["rand", "ct-eq"] }
+secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "main", features = ["rand", "ct-eq"] }
 ```
 
-`release/0.8` is the MSRV-1.70 backport line (`0.8.0-rc.12`); `main` is edition
-2024 / MSRV 1.85 and cannot be used until the cohort bump. **No encoding feature
-is enabled**, which is why the crates hand-roll bech32 — see issue #11.
+`main` is the line now: `0.9.0-rc.9`, edition 2024, `rust-version = 1.85`. The
+`release/0.8` backport existed solely to hold MSRV 1.70 and is **retired** — do
+not send fixes there, and read `main`'s changelog when planning anything.
+
+Note that the base workspace pin enables no encoding feature; `age-pq-keys` and
+`age-plugin-pq` add `features = ["encoding-bech32", "std"]` on top, which is
+what issue #11 moved the hand-rolled bech32 onto.
+
+One trap worth knowing if you meet it in an old branch or a stale cargo cache:
+`0.9.0-rc.8` was cut *before* the `Case` work landed, so it has no `Case`, no
+`bech32_code_length` / `*_sized` encoders, and `into_inner` returning
+`InnerSecret<T>`. `rc.9` forward-ported all of it. Since uppercase bech32 is
+what produces the `AGE-SECRET-KEY-PQ-` / `AGE-PLUGIN-PQ-` identity strings,
+rc.8 would be a wire-format regression. Anything below rc.9 on `main` is wrong
+for this workspace.
 
 `secrecy` still appears in `age-pq-keys`'s source, but only as `age`'s own
 re-export: `FileKey` is `age`'s type and keeps `age`'s accessor. Neither
@@ -43,7 +55,23 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
 
 ## Build rules — non-negotiable, workspace-wide
 
-- **`#![forbid(unsafe_code)]`** at every crate root. No exceptions.
+- **`#![forbid(unsafe_code)]`** at every crate root. No exceptions — and as of
+  `0.2.0-rc.1` this is *enforced* rather than merely asserted. For most of this
+  workspace's life only `age-pq-hpke` actually carried the attribute; the other
+  two roots had nothing, so the rule was documentation. It is now backed by
+  `[workspace.lints.rust] unsafe_code = "forbid"` in the root manifest, plus
+  `[lints] workspace = true` in all three member manifests.
+
+  **That member opt-in is the whole mechanism.** `[workspace.lints]` is inert
+  without it — an earlier version of these tables existed with no member
+  carrying `[lints]`, and governed nothing for its entire life. If you add a
+  fourth crate, it needs that line or it is silently unlinted.
+
+  The clippy cast lints (`cast_possible_truncation` and friends) are
+  deliberately *not* in the table: they fire on ~19 `usize as u16` RFC 9180
+  length prefixes in `age-pq-hpke`, which is real work on wire-format-adjacent
+  code and belongs in its own change. Do not "enable and blanket-`#![allow]`" —
+  that is exactly how the tables became decorative last time.
 - **`age-plugin-pq` must keep that exact binary name.** The other two crates use
   an `age-pq-*` prefix; this one deliberately does not, and it is not an
   oversight to tidy up. age locates a plugin by *constructing* the path:
@@ -107,49 +135,88 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   putting the fresh binary on `PATH` is what makes discovery testable, and it
   means age exercises the build from this run rather than a stale global
   install. Do not "fix" that by installing the plugin system-wide.
-- **MSRV is `1.70`** (workspace `rust-toolchain.toml`), and this is the **last
-  release on it**. The next release moves to **MSRV 1.85** — that decision is
-  made; it does not need re-litigating, but nothing in this release may depend
-  on it. Until the bump lands, `1.70` still binds: many deps are capped
-  (`half < 2.5`, `unicode-ident < 1.0.23`) specifically to hold the pin, and
-  `secure-gate` is on the `0.8.0-rc.*` line, which exists solely as the
-  MSRV-1.70 backport of `main`.
-
-  Plan and checklist: [`docs/plans/msrv-1.85-cohort-bump.md`](docs/plans/msrv-1.85-cohort-bump.md),
-  tracked as issue #2. Boundary-type decisions that constrain it:
+- **MSRV is `1.85`** (workspace `rust-toolchain.toml`), edition **2024**, Cargo
+  `resolver = "3"`. The 1.70 line is frozen at `v0.1.0-rc.1` and the cohort bump
+  (issue #2) landed in `0.2.0-rc.1`; `docs/plans/msrv-1.85-cohort-bump.md`
+  records what shipped. Boundary-type decisions that constrained it:
   [`docs/design/api-boundary-types.md`](docs/design/api-boundary-types.md).
 
-  **What the 1.85 bump unlocks** (checklist for that PR, not this one):
+  What that bump settled, so it is not re-litigated:
 
-  | Item | Today (1.70) | After 1.85 |
-  |------|--------------|------------|
-  | `secure-gate` | git `release/0.8` (`0.8.0-rc.12`) backport line | mainline `0.9.x` (edition 2024, `rust-version = 1.85`) |
-  | `half` | capped `>=2.0, <2.5` | cap removable (2.5+ needs 1.81) |
-  | `unicode-ident` | capped `>=1.0, <1.0.23` | cap removable (1.0.23+ needs 1.71) |
-  | Cargo `resolver` | `"2"` | `"3"` available |
-  | Edition | 2021 | 2024 available |
-  | Workspace lint tables | omitted (need Cargo 1.74+) | available |
+  | Item | Was (1.70) | Now |
+  |------|-----------|-----|
+  | `secure-gate` | git `release/0.8` (`0.8.0-rc.12`) backport | git `main` (`0.9.0-rc.9`) |
+  | `rand` / `rand_core` | `0.9` | `0.10` |
+  | `libcrux-ml-kem` | `0.0.8` | `0.0.10` |
+  | `half`, `unicode-ident` | capped for MSRV | **caps gone**; `half` left the graph with secure-gate 0.8 |
+  | `clap`, `proptest`, `tempfile` | exact `=` pins | carets |
+  | `time` | `=0.3.40` | **still capped**, `>=0.3.40, <0.3.46` — see below |
+  | Cargo `resolver` | `"2"` | `"3"` |
+  | Edition | 2021 | 2024 |
+  | Workspace lint tables | omitted | present, **with member opt-in** |
 
-  Moving to `secure-gate` `0.9.x` is the substantive half: the `0.8.0-rc.*`
-  line is a backport, so its changelog entries describe adaptations *away* from
-  `main`. Read `main`'s changelog, not the backport's, when planning it.
+  **`time` is the one cap that survived the bump.** `time` 0.3.46+ requires
+  rustc 1.88, which is above this workspace's floor, so the cap is load-bearing
+  and is not scaffolding to clean up. Resolver 3's MSRV-aware selection prefers
+  a compatible version but is only a *preference* — `--ignore-rust-version`, or
+  a consumer resolving this tree on a newer toolchain, walks straight past it.
+  A manifest cap is a fact. `age-plugin-pq` must keep inheriting the workspace
+  entry (`time = { workspace = true, … }`) rather than declaring `time = "0.3"`
+  itself, which used to bypass the cap entirely.
+
+  **Not taken in that bump, deliberately:** `sha3` 0.10 → 0.12 and
+  `x25519-dalek` 2.0 → 3.0. Neither is forced. `sha3` 0.12 needs `digest` 0.11
+  while `sha2` / `hkdf` / `chacha20poly1305` / `aead` all remain on `digest`
+  0.10, which would put two digest generations in one crypto tree, and it churns
+  the X-Wing combiner and SHAKE KDF — the two modules that decide bytes on the
+  wire. `x25519-dalek` 3.0's apparent dedup win is illusory: `crypto-common`
+  (under `aead` 0.5) keeps `rand_core` 0.6 in the graph regardless, so taking it
+  alone buys nothing while carrying `curve25519-dalek` 4→5 underneath the
+  low-order-point rejection. Move the whole RustCrypto gen-2 cohort together
+  (`sha2` 0.11 + `hkdf` 0.13 + `chacha20poly1305` 0.11 + `aead` 0.6 + `sha3`
+  0.12 + `x25519-dalek` 3.0) in its own change, gated on the CCTV vectors and
+  D1–D5, so exactly one commit can be blamed for a combiner-byte change.
+
+  **`cargo tree -d` will always show duplicate `rand` / `rand_core`, and that is
+  correct.** Measured with `cargo tree -i rand@0.8.5 --workspace -e normal,dev`,
+  `rand 0.8.5` has **three** consumers: `age 0.11`, `age-core 0.11`, and
+  `proptest 1.5.0` (a dev-dependency of `age-pq-keys`). `rand_core 0.6.4` comes
+  from `crypto-common`, `rand_core 0.5.1` from `x448 0.6`. `age 0.11` is the
+  trait provider this workspace implements, so its generation is not ours to
+  choose — **do not force-upgrade or `[patch]` `age` to collapse these.**
+  `proptest` is the one consumer that *is* ours, but moving it does not dedup
+  anything: the first release off `rand 0.8` is proptest 1.7, and it lands on
+  `rand 0.9` — a different duplicate, not one fewer. That trade is out of scope
+  for a dependency bump and is not taken. The criterion that *is* meaningful:
+  exactly one `libcrux-ml-kem`, and every direct declaration in the three crates
+  on the `rand` 0.10 generation.
 - **`panic = "unwind"`** in every profile. `Drop` runs on unwind; `panic = "abort"`
   skips destructors, which skips secure-gate zeroization. The workspace
   `[profile.dev]` / `[profile.release]` / `[profile.bench]` must not set
   `panic = "abort"`.
 - **No `cargo clean` casually** — `libcrux-ml-kem` and downstream verified
   crypto deps are slow to rebuild.
-- **Do not `cargo update` freely on the 1.70 line.** Two lockfile-only pins keep
-  `cargo fetch` working: `getrandom` at `0.3.1` and `uuid` at `1.11.0`. Newer
-  versions pull `wasip2` / `wit-bindgen` / `wit-bindgen-core`, which are edition
-  2024 and unparseable by Cargo 1.70, breaking any all-target prefetch (and so
-  vendoring and offline builds). Nothing else notices, because those crates are
-  target-gated to WASI and never compile here — so the breakage is invisible to
-  `check` / `build` / `test` and will not show up in CI's normal jobs.
+- **The two lockfile-only pins are gone.** `getrandom` at `0.3.1` and `uuid` at
+  `1.11.0` were held back only because newer versions pull `wasip2` /
+  `wit-bindgen` / `wit-bindgen-core`, which are edition 2024 and unparseable by
+  **Cargo 1.70** — breaking all-target prefetch, and so vendoring and offline
+  builds. Cargo 1.85 parses edition 2024 natively, so the reason is dead:
+  `getrandom` 0.3.1 fell out of the graph with `rand_core` 0.9, and `uuid`
+  floats again.
 
-  If `cargo fetch` starts failing with *"this version of Cargo is older than the
-  `2024` edition"*, this is the cause. Re-pin rather than chasing the manifest.
-  The 1.85 bump removes the need for both pins.
+  The class of bug is worth remembering even though this instance is closed: it
+  is **invisible to `check` / `build` / `test`**, because those crates are
+  target-gated to WASI and never compile here. Only a fetch sees it. So if you
+  ever change what resolves for WASI targets, verify with an actual all-target
+  fetch rather than a green test run:
+
+  ```sh
+  cargo fetch --target x86_64-pc-windows-msvc \
+              --target x86_64-unknown-linux-gnu \
+              --target wasm32-wasip2
+  ```
+
+  That is how the pins' removal was confirmed, rather than by assuming.
 - **No secrets in `static` or `lazy_static!`** — `Drop` does not run on statics.
   Const algorithm IDs, RFC version labels, and suite prefixes are fine
   (they aren't secrets); secret material never lives in a static.
@@ -208,10 +275,15 @@ use Tier 1.
 
 **Tier 3 — `into_inner` (consumption).**
 For moving a value into an API that takes `T` (or `[u8; N]`) by value when the
-wrapper will not be needed again. Since secure-gate `0.8.0-rc.12` it returns the
-**plain value** and `InnerSecret<T>` is gone: the wrapper's own storage is
-zeroized as the value leaves, but **protection ends at that call** rather than
-following the value into the caller.
+wrapper will not be needed again. It returns the **plain value**: the wrapper's
+own storage is zeroized as the value leaves, but **protection ends at that call**
+rather than following the value into the caller.
+
+(There was a window on secure-gate `main` — `0.9.0-rc.8` only — where this
+returned `InnerSecret<T>` instead, which merely derefs and cannot hand a
+`Vec<u8>` or `String` back by value at all. `0.9.0-rc.9` restored the plain
+value. If you are reading code that derefs an `into_inner()` result, it was
+written against rc.8 and is stale.)
 
 Read that as a boundary marker, not a downgrade. `into_inner` is the one call
 that says "this secret is leaving wrapper protection now", and it is greppable.
@@ -227,11 +299,11 @@ Tier-3 examples in this workspace:
 - `libcrux_ml_kem::*::generate_key_pair([u8; 64])` — takes the `d || z` seed by value
 - `x448::Secret::from([u8; 56])` — takes the clamped scalar by value
 
-**`into_inner` has no length ceiling.** Since secure-gate `0.8.0-rc.10` the
-bound is `Self::Inner: Sized + SentinelValue + Zeroize`, and the impl is
+**`into_inner` has no length ceiling.** The bound is
+`Self::Inner: Sized + SentinelValue + Zeroize`, and the impl is
 `impl<T: Default, const N: usize> SentinelValue for [T; N]` — the `Default`
-bound sits on the *element* type, so every array length qualifies on MSRV
-1.70. `into_inner` replaces the wrapper's contents with an inert sentinel,
+bound sits on the *element* type, so every array length qualifies (verified
+unchanged in `0.9.0-rc.9`). `into_inner` replaces the wrapper's contents with an inert sentinel,
 zeroizes that storage, and hands the caller the plain value.
 
 | Wrapper shape | Tier-3 (`into_inner`) | Tier-2 (`with_secret`) |
@@ -239,13 +311,12 @@ zeroizes that storage, and hands the caller the plain value.
 | `Fixed<[u8; N]>`, any `N` | ✅ available | ✅ available |
 | `Dynamic<Vec<u8>>` / `Dynamic<String>` | ✅ available | ✅ available |
 
-Historical note: before rc.10 the bound was `Self::Inner: Default + Zeroize`,
-and the stdlib's `Default for [T; N]` stopped at `N <= 32` on 1.70, so
-wrappers above 32 bytes (`MlKemSeed64` = 64, `X448Secret56` = 56,
-`ExpandedKeyMaterial96` = 96) were pinned to Tier-2 with a
-`// Tier-2 (forced)` marker. That ceiling is gone; the markers were removed
-in the rc.11 migration. If you meet one in an old branch, it is stale —
-promote it rather than propagating it.
+Historical note, kept because the marker still turns up in old branches:
+secure-gate once bounded this on `Self::Inner: Default + Zeroize`, and the
+stdlib's `Default for [T; N]` stopped at `N <= 32`, so wrappers above 32 bytes
+(`MlKemSeed64` = 64, `X448Secret56` = 56, `ExpandedKeyMaterial96` = 96) were
+pinned to Tier-2 with a `// Tier-2 (forced)` marker. That ceiling is long gone.
+If you meet such a marker, it is stale — promote it rather than propagating it.
 
 Any mutation (scalar clamping, for instance) must happen on the wrapper
 *before* consumption — `into_inner` leaves no wrapper to mutate through. See
@@ -321,14 +392,22 @@ let seed  = Seed32::from_rng(&mut rng).map_err(|_| Error::RandomnessError)?;
 ### Encoding and decoding
 
 When a secret is encoded or decoded, route through secure-gate's built-ins
-(`to_hex`, `try_from_hex`, `to_bech32`, `try_from_bech32m`, etc.) rather than
-calling the underlying `hex` / `base16ct` / `base64ct` / `bech32` crates
-directly on raw secret bytes. The built-ins use constant-time backends and
-offer `_zeroizing` variants that auto-zeroize the encoded form.
+(`to_hex`, `try_from_hex`, `try_to_bech32m`, `try_from_bech32m`, etc.) rather
+than calling the underlying `hex` / `base16ct` / `base64ct` / `bech32` crates
+directly on raw secret bytes. The built-ins use constant-time backends and every
+encoder already returns `EncodedSecret`, which zeroizes its buffer on drop.
+
+There are **no `*_zeroizing` encoder twins** — `to_hex_zeroizing` and friends do
+not exist in secure-gate 0.9. The only `_zeroizing` symbol in the crate is
+`EncodedSecret::into_zeroizing`, which downgrades to a `Zeroizing<String>` (it
+keeps the wiping, drops the redacted `Debug`). This matches the note in the
+*Tier-2 boundary inventory* below; if you meet a `*_zeroizing` encoder call in
+an old branch, it is stale and will not compile.
 
 ```rust
 // CORRECT
-let hex = key.to_hex_zeroizing();              // EncodedSecret (zeroizes on drop)
+let hex = key.to_hex();                        // EncodedSecret (zeroizes on drop)
+let owned = hex.into_zeroizing();              // escape hatch: Zeroizing<String>
 let key = Seed32::try_from_hex(&hex_str)?;
 
 // WRONG
@@ -373,7 +452,7 @@ assert!(pk_a.expose_secret() == pk_b.expose_secret());   // public — == is fin
 
 ### Length metadata — `SecretLen`, not `RevealSecret`
 
-Since secure-gate `0.8.0-rc.11`, `len()` / `byte_len()` / `is_empty()` live on
+`len()` / `byte_len()` / `is_empty()` live on
 a separate `SecretLen` trait rather than on `RevealSecret`, so `RevealSecret`
 can be implemented for every inner type instead of only the length-bearing
 shapes. `SecretLen` is implemented exactly where a length is meaningful:
@@ -427,7 +506,7 @@ contradiction an audit will trip over, and one of the two is then wrong.
 | Call | Reason |
 |------|--------|
 | `age::Recipient::wrap_file_key` / `age::Identity::unwrap_stanza` | Trait expects `&FileKey` / returns `Vec<Stanza>` |
-| ~~`bech32::encode` / `decode`~~ | **Removed in #11.** Neither crate depends on `bech32` directly any more; encoding goes through secure-gate's `try_to_bech32*` / `try_from_bech32*`. (The `*_zeroizing` twins this row recommended no longer exist either — they were dropped in secure-gate rc.12 in favour of `EncodedSecret`.) |
+| ~~`bech32::encode` / `decode`~~ | **Removed in #11.** Neither crate depends on `bech32` directly any more; encoding goes through secure-gate's `try_to_bech32*` / `try_from_bech32*`, which take a `Case` and return `EncodedSecret`. There are no `*_zeroizing` twins — every encoder returns `EncodedSecret` already. |
 | `base64::engine::*::encode_into_slice` / `decode` | If used directly; prefer secure-gate equivalents |
 
 **`age-plugin-pq`:**
