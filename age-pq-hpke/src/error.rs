@@ -51,6 +51,22 @@ pub enum Error {
     SequenceNumberOverflow,
 
     // === Other ===
+    /// The ML-KEM half of an encapsulation key failed the FIPS 203 section 7.2
+    /// encapsulation-key check.
+    ///
+    /// The check is `ByteEncode_12(ByteDecode_12(ek)) == ek`: every 12-bit
+    /// coefficient must be less than q = 3329, so the byte string is the
+    /// canonical encoding of the polynomial it decodes to. X-Wing
+    /// (draft-connolly-cfrg-xwing-kem-07 section 4) makes this a MUST on the
+    /// encapsulation side — and separately waives the section 7.3
+    /// decapsulation-key check, which is why nothing on the decap path
+    /// produces this variant.
+    ///
+    /// Distinct from [`Error::InvalidEncapsulationKeyLength`]: the key is the
+    /// right size, its contents are not a valid ML-KEM encoding.
+    #[error("Invalid ML-KEM encapsulation key")]
+    InvalidMlKemEncapsulationKey,
+
     /// Invalid X25519 public key format.
     #[error("Invalid X25519 public key")]
     InvalidX25519PublicKey,

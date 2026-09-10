@@ -242,10 +242,43 @@ impl EncapsulationKey {
         Self { pk_m, pk_x }
     }
 
-    /// Constructs from raw byte components.
-    pub fn from_components(pk_m: [u8; MLKEM768_PK_SIZE], pk_x: X25519PublicKey) -> Self {
+    /// Constructs from raw byte components, without validating `pk_m`.
+    ///
+    /// Crate-internal: the only caller derives `pk_m` from a seed, so it is a
+    /// canonical ML-KEM encoding by construction. Exposing this publicly would
+    /// make the FIPS 203 section 7.2 check in [`EncapsulationKey::try_from`]
+    /// advisory — any caller could route around it. Parse untrusted bytes
+    /// through `try_from`.
+    pub(crate) fn from_components(pk_m: [u8; MLKEM768_PK_SIZE], pk_x: X25519PublicKey) -> Self {
         Self::from_wrapped_components(MlKem768PublicKey1184::from(pk_m), pk_x)
     }
+}
+
+/// Applies the parse-time half of [`EncapsulationKey::try_from`]'s checks to a
+/// serialized `pk_m || pk_x` encapsulation key: the length, and the FIPS 203
+/// section 7.2 modulus check on the ML-KEM half.
+///
+/// This is exactly what age validates when it *parses* a recipient
+/// (`ParseHybridRecipient` -> `hpke.MLKEM768X25519().NewPublicKey`). The
+/// X25519 low-order rejection is deliberately **not** included: age accepts an
+/// all-zero curve point at parse and fails later, when it wraps the file key.
+/// Use this where age reports "malformed recipient"; use
+/// [`EncapsulationKey::try_from`] for the full check at encapsulation time.
+///
+/// # Errors
+///
+/// [`Error::InvalidEncapsulationKeyLength`] if `bytes` is not
+/// [`MLKEM768X25519_ENCAPSULATION_KEY_SIZE`] long, or
+/// [`Error::InvalidMlKemEncapsulationKey`] if the ML-KEM half is not a
+/// canonical ML-KEM-768 encapsulation key.
+pub fn validate_encapsulation_key_mlkem_half(bytes: &[u8]) -> CrateResult<()> {
+    if bytes.len() != MLKEM768X25519_ENCAPSULATION_KEY_SIZE {
+        return Err(Error::InvalidEncapsulationKeyLength);
+    }
+    let pk_m = MlKem768PublicKey1184::new_with(|pk_m_bytes| {
+        pk_m_bytes.copy_from_slice(&bytes[..MLKEM768_PK_SIZE]);
+    });
+    ml_kem::validate_public_key(&pk_m)
 }
 
 /// Parses `pk_m || pk_x` from a byte slice.
@@ -260,11 +293,16 @@ impl TryFrom<&[u8]> for EncapsulationKey {
             pk_m_bytes.copy_from_slice(&bytes[..MLKEM768_PK_SIZE]);
         });
 
+        // ML-KEM first, then the curve point: filippo.io/hpke's
+        // `hybridKEM.NewPublicKey` checks the halves in that order, so a key
+        // that is malformed in both produces the same error here as it does in
+        // age.
+        ml_kem::validate_public_key(&pk_m)?;
+
         let pk_x_bytes: [u8; x25519::X25519_KEY_SIZE] = bytes[MLKEM768_PK_SIZE..]
             .try_into()
             .map_err(|_| Error::ArraySizeError)?;
         let pk_x = x25519::parse_public_key(pk_x_bytes)?;
-        ml_kem::validate_public_key(&pk_m);
 
         Ok(Self::from_wrapped_components(pk_m, pk_x))
     }
@@ -372,8 +410,13 @@ impl Ciphertext {
         Self { ct_m, ct_x }
     }
 
-    /// Constructs from raw byte components.
-    pub fn from_components(ct_m: [u8; MLKEM768_CT_SIZE], ct_x: X25519PublicKey) -> Self {
+    /// Constructs from raw byte components (crate-internal).
+    ///
+    /// Kept off the public surface for the same reason as
+    /// [`EncapsulationKey::from_components`]: parsing untrusted bytes goes
+    /// through `try_from`, which checks the length and the curve point.
+    #[allow(dead_code)]
+    pub(crate) fn from_components(ct_m: [u8; MLKEM768_CT_SIZE], ct_x: X25519PublicKey) -> Self {
         Self::from_wrapped_components(MlKem768Ciphertext1088::from(ct_m), ct_x)
     }
 

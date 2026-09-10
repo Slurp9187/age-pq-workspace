@@ -103,5 +103,11 @@ fn from_bytes_rejects_a_wrong_length_recipient() {
             "{len}-byte input must be rejected"
         );
     }
+    // Still accepted, and deliberately so: an all-zero ML-KEM half is a
+    // canonical ByteEncode_12 output, so it passes the FIPS 203 section 7.2
+    // check that `from_bytes` now also applies. age parses this recipient too
+    // and only rejects it later, on the X25519 low-order point, when it wraps
+    // the file key. See `from_bytes_rejects_a_malformed_ml_kem_half` in
+    // hybrid_recipient_tests.rs.
     assert!(HybridRecipient::from_bytes(vec![0u8; 1216]).is_ok());
 }

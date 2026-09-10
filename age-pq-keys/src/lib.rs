@@ -65,7 +65,9 @@ mod aliases;
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
 use age_pq_hpke::hpke::{new_recipient, new_sender};
-use age_pq_hpke::kem::mlkem768x25519::MLKEM768X25519_ENCAPSULATION_KEY_SIZE;
+use age_pq_hpke::kem::mlkem768x25519::{
+    validate_encapsulation_key_mlkem_half, MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
+};
 use age_pq_hpke::kem::{Kem, MlKem768X25519};
 use age_pq_hpke::{aead::new_aead, kdf::new_kdf};
 use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
@@ -202,10 +204,21 @@ impl HybridRecipient {
         Self::from_bytes(bytes.into_inner())
     }
 
-    /// Wraps raw public-key bytes, validating the length.
+    /// Wraps raw public-key bytes, validating the length and the ML-KEM half.
     ///
     /// The only way to build a `HybridRecipient` from bytes. See the field
     /// comment for why the length check is not optional.
+    ///
+    /// The second check is the FIPS 203 section 7.2 modulus check on
+    /// `pub_key[..1184]`, which X-Wing makes a MUST for encapsulation. It sits
+    /// here, and not only in `wrap_file_key`, because that is where age
+    /// reports it: `ParseHybridRecipient` fails with "malformed recipient"
+    /// before any encryption starts.
+    ///
+    /// What is deliberately *not* checked here is the X25519 half. age parses
+    /// an all-zero curve point successfully and only rejects it when it wraps
+    /// the file key; `wrap_file_key` below reaches the same rejection at the
+    /// same moment, via `EncapsulationKey::try_from`.
     pub fn from_bytes(pub_key: Vec<u8>) -> Result<Self, age::EncryptError> {
         if pub_key.len() != MLKEM768X25519_ENCAPSULATION_KEY_SIZE {
             return Err(age::EncryptError::Io(std::io::Error::new(
@@ -213,6 +226,14 @@ impl HybridRecipient {
                 "hybrid recipient must be exactly 1216 bytes",
             )));
         }
+        validate_encapsulation_key_mlkem_half(&pub_key).map_err(|e| {
+            // Payload-free: `e` is a unit variant, so nothing of the key
+            // reaches the message.
+            age::EncryptError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid MLKEM768-X25519 public key: {e}"),
+            ))
+        })?;
         Ok(Self { pub_key })
     }
 

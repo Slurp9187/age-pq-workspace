@@ -102,12 +102,14 @@ fn test_insufficient_testing_randomness() {
 // Additional wild tests: Stress test with edge-case inputs
 
 #[test]
-fn test_max_size_key_x25519() {
-    let max_key: Vec<u8> = vec![0xFF; 1216]; // Exact length but invalid data (all FF, but 0 check)
+fn all_ff_encapsulation_key_is_rejected_by_the_ml_kem_modulus_check() {
+    // Correct length, but every 12-bit ML-KEM coefficient decodes to
+    // 0xFFF = 4095 > q - 1 = 3328, so the bytes are not a canonical
+    // ByteEncode_12 output. age v1.3.1 rejects this same recipient with
+    // "malformed recipient ...: invalid MLKEM768-X25519 public key".
+    let max_key: Vec<u8> = vec![0xFF; 1216];
     let result = X25519PK::try_from(max_key.as_slice());
-    // Should fail with InvalidX25519PublicKey if all zero, but here it's FF, so may pass validation but fail later.
-    // Just assert it's a result.
-    let _ = result; // Ensure try_from works without panic.
+    assert!(matches!(result, Err(Error::InvalidMlKemEncapsulationKey)));
 }
 
 #[test]
