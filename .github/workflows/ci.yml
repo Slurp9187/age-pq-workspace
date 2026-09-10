@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           TARGET=differential_age_go
-          MIN_TESTS=6
+          MIN_TESTS=7
           # This is the first step that links a test binary (`cargo check` above
           # produces no linkable rlibs), so it is the most likely place for a
           # codegen or link failure to surface. Keep the diagnostics: they are
@@ -99,13 +99,13 @@ jobs:
       # ---- differential-oracle anti-gutting guard, part 2 (issue #15) ------
       # Part 1 counts DECLARED tests and is blind to two cheap ways of gutting
       # this file. Both were measured against a real mutation, not reasoned
-      # about: six #[test] fns keeping their names with every body replaced by
-      # `{}` reports "6 passed, 0 ignored" in 0.00s, and adding #[ignore] to all
-      # six leaves --list unchanged. A count-shaped guard is green on both.
+      # about: #[test] fns keeping their names with every body replaced by `{}`
+      # report "N passed, 0 ignored" in 0.00s, and adding #[ignore] to all of
+      # them leaves --list unchanged. A count-shaped guard is green on both.
       #
       # So this step asserts on EVIDENCE A BODY MUST PRODUCE, plus two counts:
       #
-      #   body voided   -> no `D1:`..`D4:` banner is printed (each is emitted
+      #   body voided   -> no `D1:`..`D5:` banner is printed (each is emitted
       #                    only after require_age_cli() spawned the binary, so a
       #                    banner is positive proof the CLI ran)
       #   re-#[ignore]d -> no banner either, AND the plain run below (no
@@ -117,7 +117,7 @@ jobs:
       # `ignored: 0`. Hence the second, plain invocation — the only way an
       # ignored-count assertion means anything.
       #
-      # `--test-threads=1` so the six threads cannot splice a banner line;
+      # `--test-threads=1` so the threads cannot splice a banner line;
       # `--nocapture` so banners reach stdout at all. The whole target runs in
       # ~2.4 s, so serialising it costs nothing. Selection matches the workspace
       # step for the feature-resolution reason spelled out in part 1: this
@@ -128,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           TARGET=differential_age_go
-          MIN_PASSED=6
+          MIN_PASSED=7
           MIN_PLAIN_PASSED=2   # the two guard tests that need no age binary
           if ! out="$(cargo test --workspace --all-features --test "$TARGET" \
                         -- --include-ignored --nocapture --test-threads=1 \
@@ -153,13 +153,13 @@ jobs:
           fi
           # Match the differential name only, never the version substring: CI
           # installs v1.3.2 and local development is on v1.3.1.
-          for d in D1 D2 D3 D4; do
+          for d in D1 D2 D3 D4 D5; do
             if ! printf '%s\n' "$out" | grep -Fq "$d: "; then
               echo "::error::'$TARGET' printed no $d banner; that body ran nothing against the age CLI"
               exit 1
             fi
           done
-          echo "$TARGET: all four differential banners present"
+          echo "$TARGET: all five differential banners present"
           # Second, plain invocation: nothing is rebuilt, and it is the only
           # check that can see an all-#[ignore]d file (which would otherwise
           # still be green here and run nothing on a developer's `cargo test`).

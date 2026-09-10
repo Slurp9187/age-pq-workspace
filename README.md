@@ -146,9 +146,17 @@ edition"*, restore these pins. The MSRV 1.85 bump removes the need for both.
 
 ## Specification
 
-- X-Wing KEM: [draft-connolly-cfrg-xwing-kem-09](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
-- HPKE-PQ: [draft-ietf-hpke-pq-03](https://datatracker.ietf.org/doc/draft-ietf-hpke-pq/)
-- Reference: [filippo.io/hpke-pq](https://filippo.io/hpke-pq)
+- X-Wing KEM: [draft-connolly-cfrg-xwing-kem-10](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
+- HPKE-PQ: [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/draft-ietf-hpke-pq/)
+- Reference: [filippo.io/hpke-pq](https://filippo.io/hpke-pq), mirrored in
+  `age-pq-hpke/docs/hpke-pq.md` — the mirror is still pinned to `-03`/`hybrid-kems-07`.
+
+The two revisions above are the ones checked directly, and only on the
+invariants that would break interop (KEM id, `Nenc`/`Npk`, combiner input order,
+`XWingLabel`). The rest of the 03 → 05 delta has not been enumerated; the
+refresh is tracked in
+[`docs/plans/normative-source-refresh.md`](docs/plans/normative-source-refresh.md)
+(issue #25).
 
 ## Security
 

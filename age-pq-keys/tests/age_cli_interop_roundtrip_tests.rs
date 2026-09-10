@@ -24,13 +24,12 @@ fn test_create_and_verify_pq_encryption_with_cli() {
 
     // Generate PQ keys (same as binary)
     let (recipient, identity) = HybridRecipient::generate().unwrap();
-    let recipient_str = recipient.to_string();
     let secret_str = identity.to_string();
     let identity_str = &secret_str;
 
-    // Write to temp files (auto-cleaned up)
-    let mut temp_recipient = NamedTempFile::new().unwrap();
-    temp_recipient.write_all(recipient_str.as_bytes()).unwrap();
+    // Only the identity reaches the CLI (`age -d -i`); the recipient is used
+    // in-process below. A `temp_recipient` file used to be written here and
+    // never read.
     let mut temp_identity = NamedTempFile::new().unwrap();
     temp_identity.write_all(identity_str.as_bytes()).unwrap();
 

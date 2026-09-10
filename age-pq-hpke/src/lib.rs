@@ -4,9 +4,30 @@
 //!
 //! Post-quantum hybrid X-Wing KEM (ML-KEM-768 + X25519) with full HPKE support.
 //!
-//! This crate implements the hybrid post-quantum KEM construction from
-//! [draft-ietf-hpke-pq-03](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03)
-//! using formally verified primitives from `libcrux` and `x25519-dalek`.
+//! This crate implements the hybrid post-quantum KEM construction from the
+//! `draft-ietf-hpke-pq` line, using formally verified primitives from `libcrux`
+//! and `x25519-dalek`.
+//!
+//! ## Normative provenance
+//!
+//! Stated here rather than as a constant. There used to be a
+//! `pub const XWING_DRAFT_VERSION: &str = "09"` above; nothing read it, no test
+//! asserted it, and it went stale without anything noticing — a conformance
+//! claim with no verifier behind it. Provenance belongs in prose; what belongs
+//! in code is what can be checked.
+//!
+//! * The in-tree normative mirror is this crate's `docs/hpke-pq.md`, pinned to
+//!   `draft-ietf-hpke-pq-03` / `draft-irtf-cfrg-hybrid-kems-07`.
+//! * The invariants that would break interop — HPKE KEM id `0x647a`,
+//!   `Nenc`/`Npk` = 1120/1216, the combiner's input order, and `XWingLabel` —
+//!   were checked directly against `draft-connolly-cfrg-xwing-kem-10` and
+//!   `draft-ietf-hpke-pq-05` and are unchanged. The rest of the 03 → 05 delta
+//!   has **not** been enumerated.
+//! * The refresh, and the drift that motivated it, are tracked in
+//!   `docs/plans/normative-source-refresh.md` (issue #25).
+//!
+//! What actually verifies conformance is the corpus, not a version string: the
+//! 19 C2SP CCTV vectors and the age-go differential oracle in `age-pq-keys`.
 //!
 //! ## Security Properties
 //!
@@ -53,8 +74,6 @@ pub mod kem;
 pub mod aead;
 pub mod hpke;
 pub mod kdf;
-
-pub const XWING_DRAFT_VERSION: &str = "09";
 
 pub const MASTER_SEED_SIZE: usize = 32;
 pub const SHARED_SECRET_SIZE: usize = 32;

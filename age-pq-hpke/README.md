@@ -98,7 +98,10 @@ let pt = recipient.open(b"", &ct).unwrap();
 
 ## Specification
 
-Implements X-Wing per [draft-connolly-cfrg-xwing-kem-09](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/).
+Implements X-Wing per [draft-connolly-cfrg-xwing-kem-10](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
+and [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/draft-ietf-hpke-pq/),
+checked on the interop-critical invariants only — see the *Normative provenance*
+section of the crate docs, and `docs/plans/normative-source-refresh.md` (#25).
 
 Closely follows the reference implementation details at [filippo.io/hpke-pq](https://filippo.io/hpke-pq).
 

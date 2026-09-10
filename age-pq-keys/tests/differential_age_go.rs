@@ -8,7 +8,7 @@
 //! showing up in a single fixture and a much better chance of showing up in
 //! sixty-four.
 //!
-//! Four differentials run here, in both directions across the boundary:
+//! Five differentials run here, in both directions across the boundary:
 //!
 //! | # | direction | what it proves |
 //! |---|-----------|----------------|
@@ -16,6 +16,13 @@
 //! | D2 | `age-keygen -pq` → our parser | our identity **and** recipient decoders accept *arbitrary fresh* Go output, re-encode it identically, and derive the same recipient Go printed |
 //! | D3 | we encrypt → `age -d` | our stanza, carried inside the `age` crate's STREAM payload, is readable by Go |
 //! | D4 | `age -e` → we decrypt | Go's stanza and payload are readable by us |
+//! | D5 | two malformed recipients → `age -e` | age rejects a bad **ML-KEM** half at *parse* and a low-order **curve point** at *wrap*, which is the staging [`HybridRecipient::from_bytes`] is built around |
+//!
+//! D1-D4 are about wire format. D5 is about an **API decision**: it is the only
+//! thing in the repository that would go red if a future age moved the curve
+//! check earlier, at which point our `from_bytes` would start accepting
+//! recipients age calls malformed. See its own doc comment for why it is the
+//! one test here that reads age's stderr.
 //!
 //! The length matrix in D3/D4 additionally pins the **`age` crate's** STREAM
 //! framing against Go's across the 64 KiB chunk boundary. That is real
@@ -57,10 +64,18 @@
 //!   encryptions of the same plaintext to the same recipient differ in bytes
 //!   while matching in length. Agreement is provable only by decrypting, which
 //!   is what D3 and D4 do.
-//! * Nothing about the **age version CI runs**. These assert on exit codes and
+//! * Nothing about the **age version CI runs**. D1-D4 assert on exit codes and
 //!   stdout bytes only — never on stderr text, error strings, or the `# created:`
 //!   timestamp, all of which differ between platforms and between the local CLI
 //!   and whatever `scripts/install-age.sh` pins.
+//!
+//!   **D5 is the one exception, deliberately.** The *stage* at which a check
+//!   runs is not visible in an exit code — both of its inputs exit 1 — so the
+//!   message is the only signal there is. It matches two short substrings
+//!   (`malformed recipient`, `failed to wrap key`), never a whole message, and
+//!   never the version. The cost is real and accepted: a reworded age error
+//!   fails D5 with no staging change behind it. Read the messages it prints
+//!   before changing anything on our side.
 //!
 //! ## Secret hygiene
 //!
@@ -87,9 +102,9 @@
 //!
 //! A test target with zero tests prints `running 0 tests … ok` and *exits 0*, so
 //! a CI step that merely names this file would catch its deletion but not its
-//! gutting. Worse, and measured: six `#[test]` fns whose bodies are all replaced
-//! by `{}` still report `6 passed`, so a guard that counts names or results is
-//! green on a completely voided oracle.
+//! gutting. Worse, and measured: `#[test]` fns whose bodies are all replaced by
+//! `{}` still report every one of them as passed, so a guard that counts names
+//! or results is green on a completely voided oracle.
 //!
 //! Two mechanisms answer that, and they are aimed at different halves:
 //!
@@ -101,7 +116,7 @@
 //!   shrunk to nothing; and the encoder check catches a crate-side encoding slip
 //!   that leaves every other test in this file green.
 //! * The `.github/workflows/ci.yml` guards require the **banners** each
-//!   differential prints (`D1:` … `D4:`) to appear in the run's output. A banner
+//!   differential prints (`D1:` … `D5:`) to appear in the run's output. A banner
 //!   is emitted only after `common::require_age_cli()` has successfully spawned
 //!   the binary, so its presence is positive evidence that a body ran real work
 //!   against the real CLI — which a voided body cannot fake and an `#[ignore]`d
@@ -900,4 +915,172 @@ fn we_decrypt_what_go_encrypts() {
     }
 
     report("D4 Go encrypt → our decrypt", ORACLE_STREAM_CASES, failures);
+}
+
+/// Encodes raw 1216-byte recipient bytes the way the crate does, bypassing
+/// `HybridRecipient` so D5 can build recipients the constructor refuses.
+///
+/// The HRP is re-declared for [`IDENTITY_HRP`]'s reason, and checked against the
+/// real encoder inside D5 before any mutated key is built — an encoder that had
+/// drifted would make age reject every case for a bech32 reason and turn the
+/// whole differential green and vacuous.
+fn encode_recipient_bytes(bytes: &[u8]) -> String {
+    const RECIPIENT_HRP: &str = "age1pq";
+    const CODE_LENGTH: usize = secure_gate::bech32_code_length(RECIPIENT_HRP.len(), 1216);
+    bytes
+        .try_to_bech32_sized::<CODE_LENGTH>(RECIPIENT_HRP, Case::Lower)
+        .expect("1216 bytes always encode")
+        .into_inner()
+}
+
+/// Replaces any whitespace-delimited token longer than 64 characters with its
+/// length, so a message that quotes a whole recipient stays readable.
+///
+/// Length only, and no digest: the caller already prints a [`public_handle`] of
+/// the input it built. This runs *after* [`common::safe_stderr`], never instead
+/// of it — eliding by length is not a redaction rule.
+fn elide_long_tokens(s: &str) -> String {
+    s.split_whitespace()
+        .map(|token| {
+            if token.chars().count() > 64 {
+                format!("[{}-char token elided]", token.chars().count())
+            } else {
+                token.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// D5: age stages the two encapsulation-key checks where we stage them.
+///
+/// This is the differential that holds up an API decision rather than a wire
+/// format. `HybridRecipient::from_bytes` validates the **ML-KEM** half and
+/// deliberately does not validate the curve point; the low-order rejection
+/// happens later, in `wrap_file_key`. That split exists for exactly one reason:
+/// it is what age does. `hpke.MLKEM768X25519().NewPublicKey` checks the ML-KEM
+/// half and then calls `crypto/ecdh`'s `NewPublicKey`, which only length-checks
+/// — the low-order point is not refused until `ECDH` runs at wrap time.
+///
+/// Nothing else in the repository would notice if that changed. A future age
+/// that hardened `ParseHybridRecipient` into rejecting the curve point would
+/// leave our `from_bytes` accepting a recipient age calls malformed, and every
+/// prose statement of the contract (this crate's `from_bytes` doc, the staging
+/// note on `age-pq-hpke`'s `EncapsulationKey::try_from`, the design note and
+/// three CHANGELOGs) would become false together, silently.
+///
+/// **This test asserts on age's stderr text, which the other four deliberately
+/// never do.** The stage a check runs at is not observable in an exit code —
+/// both inputs exit non-zero — so the message is the only signal there is. The
+/// cost is accepted knowingly: a reworded age error fails this test without any
+/// staging having changed. If that happens, read the messages printed below
+/// before touching anything on our side.
+#[test]
+#[ignore = "requires age CLI >= 1.3 on PATH; run with --include-ignored"]
+fn go_stages_the_encapsulation_key_checks_where_we_do() {
+    let version = common::require_age_cli();
+    eprintln!("D5: parse-vs-wrap staging against age {version}, 2 cases");
+
+    let genuine = our_recipient_for_case(0);
+    // The local encoder must agree with the crate's before it is used to build
+    // recipients the crate would refuse to build.
+    assert_eq!(
+        encode_recipient_bytes(genuine.as_bytes()),
+        genuine.to_string(),
+        "encode_recipient_bytes no longer matches the crate's encoder"
+    );
+
+    // Case A — bad ML-KEM half, genuine curve point. Rejected at PARSE.
+    let mut bad_ml_kem = genuine.as_bytes().to_vec();
+    bad_ml_kem[0] = 0xFF;
+    bad_ml_kem[1] |= 0x0F;
+
+    // Case B — genuine ML-KEM half, all-zero (low-order) curve point. An
+    // all-zero ML-KEM half would also be canonical, so the ML-KEM half is left
+    // genuine to keep the attribution unambiguous. Rejected at WRAP.
+    let mut low_order_curve = genuine.as_bytes().to_vec();
+    let curve_offset = low_order_curve.len() - 32;
+    low_order_curve[curve_offset..].fill(0);
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let plaintext_path = dir.path().join("d5.bin");
+    fs::write(&plaintext_path, b"d5").expect("write plaintext");
+
+    let mut failures = vec![];
+
+    for (label, bytes, expected, forbidden) in [
+        (
+            "A (bad ML-KEM half)",
+            &bad_ml_kem,
+            "malformed recipient",
+            "failed to wrap key",
+        ),
+        (
+            "B (low-order curve point)",
+            &low_order_curve,
+            "failed to wrap key",
+            "malformed recipient",
+        ),
+    ] {
+        let recipient = encode_recipient_bytes(bytes);
+        let output = common::age_command_without_plugins()
+            .args([
+                "-e".as_ref(),
+                "-r".as_ref(),
+                recipient.as_ref(),
+                "-o".as_ref(),
+                dir.path().join("d5.age").as_os_str(),
+                plaintext_path.as_os_str(),
+            ])
+            .output()
+            .expect("age -e did not run");
+
+        // age echoes the whole recipient back in `malformed recipient %q`.
+        // That is public data, but 1959 characters of bech32 in a panic message
+        // buries the part a reader needs — measured, by writing this test with
+        // the expectations deliberately swapped. `public_handle` correlates the
+        // case; `elide_long_tokens` keeps the sentence.
+        let stderr = elide_long_tokens(&common::safe_stderr(&output.stderr));
+        let handle = public_handle(&recipient);
+
+        if output.status.success() {
+            failures.push(format!(
+                "case {label} [{handle}]: age accepted a recipient it must reject"
+            ));
+            continue;
+        }
+        if !stderr.contains(expected) {
+            failures.push(format!(
+                "case {label} [{handle}]: expected {expected:?} in age's stderr, got: {stderr}"
+            ));
+        }
+        if stderr.contains(forbidden) {
+            failures.push(format!(
+                "case {label} [{handle}]: age reported {forbidden:?}, so it now stages this \
+                 check differently from us: {stderr}"
+            ));
+        }
+    }
+
+    // Our side of the same two cases, asserted here so the contract and its
+    // oracle cannot drift apart in separate files.
+    assert!(
+        HybridRecipient::from_bytes(bad_ml_kem).is_err(),
+        "we must reject a bad ML-KEM half at parse, as age does"
+    );
+    let deferred = HybridRecipient::from_bytes(low_order_curve)
+        .expect("we must accept a low-order curve point at parse, as age does");
+    // `Encryptor::with_recipients` already calls `wrap_file_key` (it needs the
+    // labels), so the rejection surfaces there rather than at `wrap_output`.
+    // Either is "at wrap"; chaining them keeps the assertion about the stage
+    // and not about which age-rs call happens to reach it.
+    let wrapped = Encryptor::with_recipients(std::iter::once(&deferred as &dyn age::Recipient))
+        .map_err(|_| ())
+        .and_then(|encryptor| encryptor.wrap_output(Vec::new()).map_err(|_| ()));
+    assert!(
+        wrapped.is_err(),
+        "we must reject a low-order curve point at wrap, as age does"
+    );
+
+    report("D5 parse-vs-wrap staging", 2, failures);
 }

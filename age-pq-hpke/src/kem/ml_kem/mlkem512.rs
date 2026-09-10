@@ -9,8 +9,9 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem512::{
-    decapsulate, encapsulate, generate_key_pair as mlkem512_generate_key_pair, MlKem512Ciphertext,
-    MlKem512KeyPair, MlKem512PublicKey,
+    decapsulate, encapsulate, generate_key_pair as mlkem512_generate_key_pair,
+    validate_public_key as mlkem512_validate_public_key, MlKem512Ciphertext, MlKem512KeyPair,
+    MlKem512PublicKey,
 };
 use secure_gate::RevealSecret;
 
@@ -50,9 +51,38 @@ pub(crate) fn decapsulate_with_keypair(
     MlKemSharedSecret::from(decapsulate(sk_m, &ct_m))
 }
 
-/// Minimal parse/shape validation for ML-KEM public-key bytes.
-pub(crate) fn validate_public_key(pk_m: &MlKem512PublicKey800) {
+/// FIPS 203 section 7.2 encapsulation-key check — see `mlkem768.rs` for the
+/// full rationale.
+pub(crate) fn validate_public_key(pk_m: &MlKem512PublicKey800) -> CrateResult<()> {
+    // Tier-1: public wire data, kept wrapped for redacted Debug and length.
     pk_m.with_secret(|bytes| {
-        let _ = MlKem512PublicKey::from(*bytes).as_ref();
-    });
+        if mlkem512_validate_public_key(&MlKem512PublicKey::from(*bytes)) {
+            Ok(())
+        } else {
+            Err(Error::InvalidMlKemEncapsulationKey)
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derived_public_key_passes_and_a_bad_coefficient_fails() {
+        let kp = keypair_from_seed(MlKemSeed64::from([7u8; 64]));
+        let mut pk_bytes: [u8; MLKEM512_PK_SIZE] = kp
+            .public_key()
+            .as_ref()
+            .try_into()
+            .expect("libcrux public key is MLKEM512_PK_SIZE bytes");
+        assert!(validate_public_key(&MlKem512PublicKey800::from(pk_bytes)).is_ok());
+
+        pk_bytes[0] = 0xFF;
+        pk_bytes[1] |= 0x0F;
+        assert!(matches!(
+            validate_public_key(&MlKem512PublicKey800::from(pk_bytes)),
+            Err(Error::InvalidMlKemEncapsulationKey)
+        ));
+    }
 }

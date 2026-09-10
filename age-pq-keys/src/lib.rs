@@ -65,8 +65,9 @@ mod aliases;
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
 use age_pq_hpke::hpke::{new_recipient, new_sender};
-use age_pq_hpke::kem::mlkem768x25519::MLKEM768X25519_ENCAPSULATION_KEY_SIZE;
+use age_pq_hpke::kem::mlkem768x25519::{EncapsulationKey, MLKEM768X25519_ENCAPSULATION_KEY_SIZE};
 use age_pq_hpke::kem::{Kem, MlKem768X25519};
+use age_pq_hpke::Error as HpkeError;
 use age_pq_hpke::{aead::new_aead, kdf::new_kdf};
 use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
 // `ExposeSecret` here is `age`'s (re-exported `secrecy`) trait, needed for `FileKey`.
@@ -172,12 +173,11 @@ impl HybridRecipient {
             .with_secret(|b| Seed32::try_from(b.as_slice()))
             .map_err(|_| "Invalid seed length")?;
         let pub_key_bytes = pk.bytes();
-        Ok((
-            Self {
-                pub_key: pub_key_bytes,
-            },
-            HybridIdentity { seed },
-        ))
+        // Through `from_bytes`, not a struct literal: the length and ML-KEM
+        // invariants have exactly one enforcement point. A freshly derived key
+        // cannot fail either check, so this is a funnel rather than a guard —
+        // but a second construction path is how an invariant stops being one.
+        Ok((Self::from_bytes(pub_key_bytes)?, HybridIdentity { seed }))
     }
 
     /// Parses a hybrid recipient from its string representation.
@@ -202,16 +202,63 @@ impl HybridRecipient {
         Self::from_bytes(bytes.into_inner())
     }
 
-    /// Wraps raw public-key bytes, validating the length.
+    /// Wraps raw public-key bytes, validating the length and the ML-KEM half.
     ///
     /// The only way to build a `HybridRecipient` from bytes. See the field
     /// comment for why the length check is not optional.
+    ///
+    /// The second check is the FIPS 203 section 7.2 modulus check on
+    /// `pub_key[..1184]`, which X-Wing makes a MUST for encapsulation. It sits
+    /// here, and not only in `wrap_file_key`, because that is where age
+    /// reports it: `ParseHybridRecipient` fails with "malformed recipient"
+    /// before any encryption starts.
+    ///
+    /// What is deliberately *not* checked here is the X25519 half. age parses
+    /// an all-zero curve point successfully and only rejects it when it wraps
+    /// the file key; `wrap_file_key` below reaches the same rejection at the
+    /// same moment, via `EncapsulationKey::try_from`.
+    ///
+    /// That staging is a fact about *another program*, so it is checked rather
+    /// than asserted: `differential_age_go.rs`'s D5
+    /// (`go_stages_the_encapsulation_key_checks_where_we_do`) runs the age CLI
+    /// against a bad-ML-KEM recipient and a low-order-curve recipient and
+    /// requires "malformed recipient" for the first and "failed to wrap key"
+    /// for the second. If a future age moves the curve check earlier, that test
+    /// goes red and this method's split needs revisiting; without it, this
+    /// paragraph would simply become false in silence.
     pub fn from_bytes(pub_key: Vec<u8>) -> Result<Self, age::EncryptError> {
         if pub_key.len() != MLKEM768X25519_ENCAPSULATION_KEY_SIZE {
             return Err(age::EncryptError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "hybrid recipient must be exactly 1216 bytes",
             )));
+        }
+        // Run the full check and *defer* one of its two failures, rather than
+        // asking `age-pq-hpke` for a "check only the ML-KEM half" entry point.
+        // Both express the same staging; this one leaves no partially-validating
+        // function in a public API for a later caller to mistake for a full
+        // check. The halves are checked in a fixed order, so reaching the curve
+        // error already proves the ML-KEM half passed.
+        match EncapsulationKey::try_from(pub_key.as_slice()) {
+            Ok(_) => {}
+            // Deferred on purpose, matching age: its curve half goes through
+            // Go's `crypto/ecdh`, whose X25519 `NewPublicKey` only checks
+            // length, so a low-order point surfaces from `ECDH()` at wrap time
+            // and not at parse. `wrap_file_key` reaches the same rejection at
+            // the same moment. D5 verifies this against the real CLI.
+            Err(HpkeError::InvalidX25519PublicKey) => {}
+            // Payload-free: every variant here is a unit variant, so nothing of
+            // the key reaches the message. Forwarded rather than spelled out so
+            // a variant added upstream cannot make this message a lie -- `Error`
+            // is `#[non_exhaustive]`, so that is a real possibility, not a
+            // hypothetical. The prefix names the recipient, not the error, so
+            // the two halves of the message do not restate each other.
+            Err(e) => {
+                return Err(age::EncryptError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid MLKEM768-X25519 recipient: {e}"),
+                )))
+            }
         }
         Ok(Self { pub_key })
     }
@@ -235,10 +282,18 @@ impl HybridRecipient {
 }
 
 impl FromStr for HybridRecipient {
-    type Err = &'static str;
+    /// The same error [`HybridRecipient::parse`] produces, forwarded rather
+    /// than collapsed.
+    ///
+    /// It used to be `&'static str` "failed to parse HybridRecipient", which
+    /// threw away the one thing a caller wants: *which* half is bad. The
+    /// crate-level example uses `from_str`, so that was the documented path and
+    /// the least informative one. Payload-free either way — see
+    /// [`HybridRecipient::from_bytes`].
+    type Err = age::EncryptError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s).map_err(|_| "failed to parse HybridRecipient")
+        Self::parse(s)
     }
 }
 
@@ -361,10 +416,15 @@ impl HybridIdentity {
 }
 
 impl FromStr for HybridIdentity {
-    type Err = &'static str;
+    /// Forwarded from [`HybridIdentity::parse`], for symmetry with
+    /// [`HybridRecipient`]'s `FromStr`. Nothing is gained *or* lost in
+    /// information terms here: `parse` deliberately reports a single
+    /// "malformed hybrid identity" for every failure, so that the error carries
+    /// nothing derived from the secret — not even a decoded length.
+    type Err = age::DecryptError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s).map_err(|_| "failed to parse HybridIdentity")
+        Self::parse(s)
     }
 }
 
