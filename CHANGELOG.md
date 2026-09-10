@@ -10,6 +10,41 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Differential oracle against the Go `age` CLI** (issue #15).
+  `age-pq-keys/tests/differential_age_go.rs` checks this crate against the real
+  binary over many cases instead of the single checked-in fixture: 64
+  deterministic key-derivation cases (`age-keygen -y`), 8 fresh Go keypairs fed
+  back through our decoder (`age-keygen -pq`), and 22 payload cases in each
+  direction (we encrypt → `age -d`, `age -e` → we decrypt) across age's 64 KiB
+  STREAM chunk boundary.
+
+  Cases are a pure function of their index — `seed(i) = SHA-256(domain ‖ i)` —
+  because the input that reproduces a failure is a private key. A randomised
+  oracle would force a choice between an unreproducible failure and printing key
+  material into a CI log; deriving the cases removes the choice. Failure
+  messages carry a case index, a differential name and lengths, and nothing
+  else. **No new dependency: `Cargo.lock` is unchanged.**
+
+  What it deliberately does not prove — plugin routing, ciphertext bytes,
+  anything version-specific — and the rationale for each mechanism is in
+  [`docs/design/age-go-differential-oracle.md`](docs/design/age-go-differential-oracle.md).
+
+- **Anti-gutting guard for the oracle**, as two steps in the `msrv` CI job. A
+  test target with zero `#[test]` functions prints `running 0 tests … ok` and
+  **exits 0**, so a job that merely names the file catches its deletion and not
+  its gutting. The first step asserts a floor on the *declared* count. The
+  second asserts on **evidence a body must produce**: each differential prints a
+  `D1:`…`D4:` banner only after it has successfully spawned the age binary, and
+  all four are required, because counting is not enough — six `#[test]` fns with
+  their names kept and every body replaced by `{}` still reports `6 passed`. It
+  also re-runs the target *without* `--include-ignored` and requires a floor
+  there, which is the only way to see a file whose tests have all been
+  `#[ignore]`d away. Two binary-free tests cover what neither can see — a matrix
+  shrunk below its floor, a generator weakened, or the crate's identity encoder
+  drifting from the oracle's.
+
 ### Changed (BREAKING)
 
 - **Crates renamed to a consistent `age-pq-*` prefix.**
@@ -46,6 +81,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   removing `wasip2`) and `uuid` 1.22.0 → 1.11.0 (drops `getrandom` 0.4, removing
   the `wit-bindgen-*` and `wit-component` chain). Both are lockfile-only; no
   manifest requirement changed, and the 1.85 bump can simply drop the pins.
+
+- **Child-process helpers resolve `age` and `age-keygen` to an absolute path**
+  before applying the plugin-free `PATH` (`age-pq-keys/tests/common.rs`).
+  Program resolution and plugin blocking are two different jobs, and conflating
+  them was a live hazard: the WinGet `age` package ships
+  `age-plugin-batchpass.exe` in the same directory as `age.exe`, so the filter
+  removed the only directory holding age itself. It worked anyway because Rust
+  on Windows falls back to the parent's `PATH` — a fallback Unix does not make
+  once the environment is overridden. The filtered `PATH` now governs only what
+  the child sees when *it* looks for a plugin.
+
+- **`common::safe_stderr` filters identity strings out of child stderr** before
+  it can reach a panic message, and the existing CLI round-trip test was routed
+  through it. `age-keygen -y` echoes the **entire** identity when it cannot
+  parse one; `age -d -i FILE` does not, naming the file instead. Filtering at
+  the single place bytes become a message beats reasoning about the asymmetry
+  per call site. The `docs/design/pre-freeze-audit.md` entry that recorded this
+  leak as "not reproduced" is corrected there — it had measured only the second
+  path.
 
 ### Changed
 

@@ -24,6 +24,70 @@ jobs:
       # half 2.5+ requires rustc 1.81; pin it back to hold the 1.70 MSRV.
       - run: cargo update -p half --precise 2.4.1
       - run: cargo check --workspace --all-targets
+      # ---- differential-oracle anti-gutting guard, part 1 (issue #15) ------
+      # A test target with zero #[test] fns prints "running 0 tests ... ok" and
+      # EXITS 0 (measured, not assumed). A CI step that merely names the file
+      # therefore catches deletion but not gutting. This step asserts on a count.
+      #
+      #   deleted  -> `cargo test --test <t>` exits 101, "no test target named"
+      #   removed  -> the --list summary drops below the floor
+      #
+      # What it CANNOT see (measured, both):
+      #   * bodies replaced by `{}` — --list counts names, not work
+      #   * tests all re-#[ignore]d — --list counts ignored tests too
+      # Part 2 below is what catches those. Do not add claims here that this
+      # step does not actually make.
+      #
+      # Selection matches the workspace test step deliberately. `-p age-pq-keys`
+      # resolves a DIFFERENT feature set (libcrux-ml-kem {mlkem768,rand} vs
+      # {mlkem512,mlkem768,mlkem1024,rand} under --all-features), which links a
+      # different test binary and, with no build cache here, pays a second cold
+      # libcrux-ml-kem + age-pq-hpke + age-pq-keys build. With --workspace
+      # --all-features this step is a strict prefix of work the run needs anyway.
+      #
+      # It sits before the age installer only because it needs no binary — not
+      # to "fail fast": this is the step that pays the cold test-profile build
+      # (minutes), while the installer takes seconds.
+      #
+      # Three deliberate choices, each measured:
+      #   * NO `-q`. `cargo test -q -- --list` suppresses the summary line
+      #     entirely, so a quiet guard sees an empty string for BOTH a healthy
+      #     and a gutted target — a vacuous pass.
+      #   * sed, not grep. grep exits 1 on zero matches, and the reflex repair
+      #     `|| true` converts a libtest format change into a silent pass. sed
+      #     exits 0 with empty output, which the -z test below turns into a
+      #     named failure. No path here passes without a number.
+      #   * `--color never`, because the job sets CARGO_TERM_COLOR: always.
+      - name: Oracle guard — declared test count
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=differential_age_go
+          MIN_TESTS=6
+          # This is the first step that links a test binary (`cargo check` above
+          # produces no linkable rlibs), so it is the most likely place for a
+          # codegen or link failure to surface. Keep the diagnostics: they are
+          # printed on failure and kept out of the success path so `sed` only
+          # ever sees the --list summary.
+          err="$(mktemp)"
+          if ! listing="$(cargo test --workspace --all-features --test "$TARGET" \
+                            -- --list --color never 2>"$err")"; then
+            cat "$err"
+            echo "::error::test target '$TARGET' is missing or does not build"
+            exit 1
+          fi
+          declared="$(printf '%s\n' "$listing" \
+            | sed -n 's/^\([0-9][0-9]*\) tests\?, [0-9][0-9]* benchmarks$/\1/p')"
+          if [ -z "$declared" ]; then
+            echo "::error::could not parse the libtest --list summary for '$TARGET'"
+            printf '%s\n' "$listing"
+            exit 1
+          fi
+          echo "$TARGET declares $declared test(s); floor is $MIN_TESTS"
+          if [ "$declared" -lt "$MIN_TESTS" ]; then
+            echo "::error::'$TARGET' declares $declared test(s), below the floor of $MIN_TESTS"
+            exit 1
+          fi
       # Interop tests are #[ignore]d so a normal `cargo test` reports them as
       # ignored rather than silently passing when the binary is absent. CI runs
       # them explicitly via --include-ignored, where a missing age is a hard
@@ -32,6 +96,91 @@ jobs:
       - name: Install age CLI
         run: sudo ./scripts/install-age.sh
       - run: cargo test --workspace --all-features -- --include-ignored
+      # ---- differential-oracle anti-gutting guard, part 2 (issue #15) ------
+      # Part 1 counts DECLARED tests and is blind to two cheap ways of gutting
+      # this file. Both were measured against a real mutation, not reasoned
+      # about: six #[test] fns keeping their names with every body replaced by
+      # `{}` reports "6 passed, 0 ignored" in 0.00s, and adding #[ignore] to all
+      # six leaves --list unchanged. A count-shaped guard is green on both.
+      #
+      # So this step asserts on EVIDENCE A BODY MUST PRODUCE, plus two counts:
+      #
+      #   body voided   -> no `D1:`..`D4:` banner is printed (each is emitted
+      #                    only after require_age_cli() spawned the binary, so a
+      #                    banner is positive proof the CLI ran)
+      #   re-#[ignore]d -> no banner either, AND the plain run below (no
+      #                    --include-ignored) drops to 0 passed
+      #   deleted/dead  -> cargo exits 101 and the output is echoed
+      #
+      # An earlier version of this step checked `ignored -ne 0` instead. That
+      # branch was unreachable: under --include-ignored libtest always reports
+      # `ignored: 0`. Hence the second, plain invocation — the only way an
+      # ignored-count assertion means anything.
+      #
+      # `--test-threads=1` so the six threads cannot splice a banner line;
+      # `--nocapture` so banners reach stdout at all. The whole target runs in
+      # ~2.4 s, so serialising it costs nothing. Selection matches the workspace
+      # step for the feature-resolution reason spelled out in part 1: this
+      # re-runs the target the --workspace line already ran, which is duplicate
+      # EXECUTION (seconds), not duplicate compilation.
+      - name: Oracle guard — cases actually executed
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=differential_age_go
+          MIN_PASSED=6
+          MIN_PLAIN_PASSED=2   # the two guard tests that need no age binary
+          if ! out="$(cargo test --workspace --all-features --test "$TARGET" \
+                        -- --include-ignored --nocapture --test-threads=1 \
+                           --color never 2>&1)"; then
+            printf '%s\n' "$out"
+            echo "::error::'$TARGET' failed"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+          result="$(printf '%s\n' "$out" | sed -n '/^test result: /p' | tail -n 1)"
+          pattern='s/^test result: [A-Za-z]*\. \([0-9][0-9]*\) passed; [0-9][0-9]* failed; [0-9][0-9]* ignored.*/'
+          passed="$(printf '%s\n' "$result" | sed -n "${pattern}\1/p")"
+          if [ -z "$passed" ]; then
+            echo "::error::could not parse the libtest result line for '$TARGET'"
+            printf 'line was: %s\n' "$result"
+            exit 1
+          fi
+          echo "$TARGET: $passed passed (floor: $MIN_PASSED)"
+          if [ "$passed" -lt "$MIN_PASSED" ]; then
+            echo "::error::only $passed test(s) ran in '$TARGET'; floor is $MIN_PASSED"
+            exit 1
+          fi
+          # Match the differential name only, never the version substring: CI
+          # installs v1.3.2 and local development is on v1.3.1.
+          for d in D1 D2 D3 D4; do
+            if ! printf '%s\n' "$out" | grep -Fq "$d: "; then
+              echo "::error::'$TARGET' printed no $d banner; that body ran nothing against the age CLI"
+              exit 1
+            fi
+          done
+          echo "$TARGET: all four differential banners present"
+          # Second, plain invocation: nothing is rebuilt, and it is the only
+          # check that can see an all-#[ignore]d file (which would otherwise
+          # still be green here and run nothing on a developer's `cargo test`).
+          if ! plain="$(cargo test --workspace --all-features --test "$TARGET" \
+                          -- --color never 2>&1)"; then
+            printf '%s\n' "$plain"
+            echo "::error::'$TARGET' failed without --include-ignored"
+            exit 1
+          fi
+          plain_result="$(printf '%s\n' "$plain" | sed -n '/^test result: /p' | tail -n 1)"
+          plain_passed="$(printf '%s\n' "$plain_result" | sed -n "${pattern}\1/p")"
+          if [ -z "$plain_passed" ]; then
+            echo "::error::could not parse the plain libtest result line for '$TARGET'"
+            printf 'line was: %s\n' "$plain_result"
+            exit 1
+          fi
+          echo "$TARGET: $plain_passed test(s) run without --include-ignored (floor: $MIN_PLAIN_PASSED)"
+          if [ "$plain_passed" -lt "$MIN_PLAIN_PASSED" ]; then
+            echo "::error::only $plain_passed test(s) in '$TARGET' run without --include-ignored; the binary-free guards must not be #[ignore]d"
+            exit 1
+          fi
 
   conformance:
     name: C2SP CCTV hybrid vectors
