@@ -1,3 +1,16 @@
+> **Superseded — kept for provenance, not for following.**
+>
+> This is a 2025-era upgrade guide written before the workspace took its current
+> shape, and its instructions are now wrong in ways that would undo shipped
+> decisions. In particular: the crate it calls `pq-xwing-hpke` is now
+> `age-pq-hpke`; `secrecy` is not a direct dependency of any crate here (only
+> `age`'s re-export of `FileKey` reaches it) — secret handling goes through
+> `secure-gate`, per the workspace rules in `CLAUDE.md`; and the dependency
+> versions below are two generations stale, the workspace being on
+> `age-plugin = "0.7"` / `age-core = "0.12"` since `0.2.0-rc.2` (issue #29).
+> Read it as a record of what the plugin was being steered towards, and take
+> current rules from `CLAUDE.md` and the root `CHANGELOG.md`.
+
 ### Full Instructions for Fixing/Upgrading `age-plugin-pq`
 
 Based on our lessons on the codebase (pq-xwing-hpke with kem.rs/hpke.rs full HPKE, official Go pq.go using hpke.Seal/Open, updated plugin with full context/multi-file, and rage x25519.rs style), the official `age-plugin` crate API (v0.6.1 with PluginHandler, run_state_machine, IdentityPluginV1/RecipientPluginV1, error enums, callbacks), and the dummy "unencrypted" rage example (handlers, main with clap, wrap/unwrap dummies), here's the minimum self-contained guide to upgrade `age-plugin-pq` into a superior, compliant bridge plugin matching the latest code:

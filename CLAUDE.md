@@ -86,7 +86,8 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   `[[bin]] name` stays put, but package ≠ binary is a trap for the next person,
   so both stay as they are.
 
-  Both halves of that coupling are now guarded rather than merely documented:
+  All three halves of that coupling are now guarded rather than merely
+  documented (the third arrived with the `age` 0.12 migration, below):
 
   - Change the **HRP** and `identity_hrp_matches_the_binary_name_age_will_look_for`
     (`age-plugin-pq/tests/integration.rs`) fails, naming the binary age would
@@ -94,6 +95,22 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
     emits, so it needs no age binary.
   - Rename the **bin target** and the same test fails to compile, because
     `env!("CARGO_BIN_EXE_age-plugin-pq")` no longer resolves.
+  - Change the **case** of either HRP and one of
+    `plugin_identity_hrp_is_uppercase_as_age_0_12_requires` /
+    `plugin_recipient_hrp_is_lowercase_as_age_0_12_requires` (same file) fails.
+    This is the constraint the 0.12 migration discovered: `age-plugin` 0.7 and
+    `age` 0.12 both match plugin HRPs with a case-**sensitive** `starts_with`
+    (`AGE-PLUGIN-` for identities, `age1` for recipients), and `bech32` 0.9 →
+    0.11 made `Hrp` case-preserving where 0.9's `decode` pre-lowercased it.
+    age-go does the same (`plugin/encode.go`; only the bech32 *data* part is
+    folded). So the identity emitters at `age-plugin-pq/src/main.rs:439` and
+    `:489` must stay `Case::Upper`, and the recipient emitter at `:426` must
+    stay `Case::Lower`. Flip any one and you still get valid bech32 that still
+    round trips through our own parser, while every 0.12-generation client
+    rejects it as an invalid HRP — silently, in the same plugin-not-found shape
+    as a rename. All three sites are mutation-checked. (`age::x25519` is
+    unaffected: it compares `Hrp == Hrp`, and that `PartialEq` is explicitly
+    case-insensitive. The narrowing is to the *plugin* prefix tests only.)
 
 - **Never let an interop test reach our own plugin.** If a test in
   `age-pq-keys` handed `age` an `AGE-PLUGIN-PQ-` identity, age would spawn *our*
@@ -175,10 +192,12 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   | `age-core` (`age-pq-keys`, `age-plugin-pq`) | `0.11` | `0.12` |
   | `age-plugin` (`age-plugin-pq`) | `0.6` | `0.7` |
 
-  **Zero source changes.** The `Recipient` / `Identity` trait signatures are
-  byte-identical across the jump, the `"postquantum"` label is unchanged, and
-  the wire format does not move — 19/19 CCTV vectors and D1–D5 verified
-  per-vector before *and* after, not just as a summary line.
+  **No changes to any crate's `src/`.** The `Recipient` / `Identity` trait
+  signatures are byte-identical across the jump, the `"postquantum"` label is
+  unchanged, and the wire format does not move — 19/19 CCTV vectors and D1–D5
+  verified per-vector before *and* after, not just as a summary line. (Test
+  code did change: the migration added the two HRP-case guards listed in the
+  plugin-discovery section above.)
 
   What it drags in, and this is the part that will surprise an auditor:
   **`age` 0.12 depends non-optionally on `ml-kem 0.2`, `p256 0.13`, `hpke 0.12`
@@ -186,18 +205,34 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   workspace's graph. It is **not** a second implementation of our KEM: it backs
   `age` 0.12's own `native::tagpq` recipient (`mlkem768p256tag`, HRP
   `age1tagpq`, label `MLKEM768-P256`), which is a different format from our
-  `mlkem768x25519` and shares no code with it. Reach is asymmetric and worth
-  knowing: `age-pq-keys` gets `ml-kem` + `p256` + `hpke` + `aes-gcm`;
-  `age-plugin-pq` gets `hpke` + `aes-gcm` only (`age-core` takes `hpke` with
-  `default-features = false, features = ["alloc"]`, and no `ml-kem`);
-  **`age-pq-hpke` gets nothing new** — it has no `age` edge at all, so the
-  verified-ML-KEM crate is the only ML-KEM in that crate's graph.
+  `mlkem768x25519` and shares no code with it.
+
+  Reach is asymmetric, and **the two resolution modes disagree — deliberately,
+  so state which one you measured.** Per-package (`cargo tree -p <crate> …`,
+  the crate's own dependency edges): `age-pq-keys` reaches `ml-kem` + `p256` +
+  `hpke` + `aes-gcm`; `age-plugin-pq` reaches `hpke` + `aes-gcm` only, because
+  `age-core` takes `hpke` with `default-features = false, features = ["alloc"]`
+  and no `ml-kem`. Workspace-wide (`cargo tree --workspace …`, which is how CI
+  and every bare `cargo build` / `cargo test` in this repo resolve), feature
+  unification turns `hpke`'s `p256` feature on for *everyone* — `age` enables
+  it, there is one `hpke` build, and the plugin binary therefore links `p256`,
+  `elliptic-curve`, `crypto-bigint`, `sec1`, `der`, `const-oid`, `ff`, `group`
+  and `primeorder` as dead code it never calls. The **ML-KEM half of the claim
+  survives both modes**: `cargo tree -i ml-kem --workspace -e normal` shows
+  `ml-kem 0.2.3 <- age 0.12.1 <- age-pq-keys` and nothing else, so `ml-kem` does
+  not reach `age-plugin-pq` either way. **`age-pq-hpke` gets nothing new** in
+  either mode — it has no `age` edge at all, so the verified-ML-KEM crate is the
+  only ML-KEM in that crate's graph.
 
   Two consequences that are documentation, not code: the "formally verified
   ML-KEM" claim is now a claim about *our path*, not about the graph (see
-  `docs/design/hpke-import-vs-own.md`), and `hpke 0.12` pulls a **pre-release**,
-  `kem 0.3.0-pre.0`, transitively. The pre-release is pinned by `hpke` and is
-  not ours to cap; `Cargo.lock` is what holds it.
+  `docs/design/hpke-import-vs-own.md`), and a **pre-release** rides in
+  transitively — `kem 0.3.0-pre.0`, pulled by **`ml-kem 0.2.3`** with an *exact*
+  pin (`[dependencies.kem] version = "=0.3.0-pre.0"`), not by `hpke`, whose
+  manifest declares no `kem` dependency at all. Because the puller is `ml-kem`,
+  the pre-release rides only on `age-pq-keys` and the `=` pin means `cargo
+  update` cannot move it even within the pre-release line. Either way it is not
+  ours to cap; `Cargo.lock` is what holds it.
 
   **Not taken in that bump, deliberately:** `sha3` 0.10 → 0.12 and
   `x25519-dalek` 2.0 → 3.0. Neither is forced. `sha3` 0.12 needs `digest` 0.11
@@ -216,8 +251,9 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   that cohort.** Both crates `age` 0.12 pulls non-optionally pin the gen-1 side,
   read from their manifests rather than inferred: `hpke 0.12` declares `digest`
   0.10, `sha2` 0.10, `aead` 0.5, `hkdf` 0.12 and `hmac` 0.12; `ml-kem 0.2.3`
-  declares `sha3` 0.10.8 (its only other deps being `rand_core` 0.6.4 and
-  `hybrid-array` 0.2.0-rc.9). So the gen-2 move is no longer only ours to make:
+  declares `sha3` 0.10.8 (its full dependency list being `hybrid-array`
+  0.2.0-rc.9, `kem` `=0.3.0-pre.0`, `rand_core` 0.6.4, `sha3` 0.10.8, and
+  `zeroize` 1.8.1 optional). So the gen-2 move is no longer only ours to make:
   **it cannot happen before `age` itself moves**, or the split it was deferred
   to avoid appears anyway, now with the deciding side outside this workspace's
   control — and note `sha3` in particular, the crate the deferred bump is named

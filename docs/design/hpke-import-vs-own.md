@@ -57,10 +57,22 @@ from the adjacent question's side.
 unverified RustCrypto. It would not change which crates are compiled: `hpke`
 0.12 and `ml-kem` 0.2.3 are already linked into `age-pq-keys` by `age` itself.
 The property being defended is *which code our `mlkem768x25519` stanza runs*,
-not the contents of the dependency graph. Note also that the `hpke` crate in the
-table's right-hand column is the same crate as the `hpke 0.12.0` now compiled
-into both `age-pq-keys` and `age-plugin-pq` via `age-core` 0.12 — unforked, and
-carrying zero `unsafe` in its `src/`.
+Note carefully what is and is not shared with the table's right-hand column.
+`hpke 0.12.0` — the **unforked upstream** — is now compiled into both
+`age-pq-keys` and `age-plugin-pq` via `age-core` 0.12, and it carries zero
+`unsafe` in its `src/` (verified: `grep -rn unsafe` over `hpke-0.12.0/src`
+returns nothing). But upstream 0.12.0 implements **DH-KEMs only** — its
+`src/kem/` contains exactly `dhkem.rs`. The ML-KEM KEMs the right-hand column is
+about (`src/kem/mlkem_nistp.rs`) exist **solely on str4d's fork**, and none of
+that code is in our graph today. So the lineage is unforked and clean; the
+ML-KEM half of the import is still an import, and still costs what the table
+says it costs.
+
+Reach caveat for the `hpke` that *is* here: measured per-package it reaches
+`age-plugin-pq` with `aes-gcm` and no `p256`, but a workspace-wide build unifies
+features and turns `hpke`'s `p256` on for every member, so the plugin binary
+links the P-256 stack as dead code. `ml-kem` reaches `age-pq-keys` only, in both
+modes.
 
 ## The argument being retired
 

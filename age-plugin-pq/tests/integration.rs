@@ -67,9 +67,15 @@ fn keygen() -> (String, String) {
         .expect("no recipient line in --keygen output")
         .trim()
         .to_owned();
+    // Case-insensitively, deliberately. The HRP's *case* is what
+    // `plugin_identity_hrp_is_uppercase_as_age_0_12_requires` asserts, so this
+    // helper must not pre-filter on it: a case-sensitive `starts_with` here
+    // makes a lowercased HRP die on the `expect` below with "no plugin
+    // identity" — which reads as a broken keygen — and the case assertion's
+    // diagnostic never prints.
     let identity = stdout
         .lines()
-        .find(|l| l.starts_with("AGE-PLUGIN-"))
+        .find(|l| l.trim().to_ascii_uppercase().starts_with("AGE-PLUGIN-"))
         .expect("no plugin identity in --keygen output")
         .trim()
         .to_owned();
@@ -161,7 +167,10 @@ fn identity_hrp_matches_the_binary_name_age_will_look_for() {
 /// that release pair, and only the combination bites:
 ///
 /// * the prefix constant flipped from `"age-plugin-"` to `"AGE-PLUGIN-"`
-///   (`age-plugin-0.7.0/src/lib.rs:193`, `age-0.12.1/src/plugin.rs:32`), and
+///   (`age-plugin-0.7.0/src/lib.rs:193`, `age-0.12.1/src/plugin.rs:31`; the
+///   use site is `age-0.12.1/src/plugin.rs:167-172`, the `starts_with` test
+///   that returns the literal `"invalid HRP"` quoted below — a use site rots
+///   less silently than a constant's line number), and
 /// * `bech32` 0.9 -> 0.11 made `Hrp` **case-preserving**, where 0.9's `decode`
 ///   returned the HRP pre-lowercased.
 ///
@@ -208,6 +217,53 @@ fn plugin_identity_hrp_is_uppercase_as_age_0_12_requires() {
              `AGE-PLUGIN-` prefix that age-plugin 0.7 and age 0.12 test for"
         );
     }
+}
+
+/// The mirror image of the rule above, from the same `bech32` 0.9 -> 0.11
+/// case-preservation change: the plugin **recipient** HRP must stay
+/// **lowercase**.
+///
+/// Both clients test the recipient prefix case-sensitively, against an HRP that
+/// is no longer folded for them:
+///
+/// * `age` 0.12.1 does `hrp.as_str().starts_with("age1")`
+///   (`src/plugin.rs:112-113`, constant at `:30`), and
+/// * age-go does `strings.HasPrefix(hrp, "age1")` on the raw HRP that
+///   `bech32.Decode` returns (`plugin/encode.go:62`); only the *data* part is
+///   case-folded there (`internal/bech32/bech32.go:160`).
+///
+/// So flipping `main.rs:426` from `Case::Lower` to `Case::Upper` would emit
+/// valid bech32, still round trip through our own parser, and make this
+/// plugin's recipients undiscoverable in exactly the way a lowercased identity
+/// would. `age-pq-keys` is incidentally covered by its own `age1pq1` prefix
+/// assertions and the Go fixture byte-identity test; `age-plugin-pq` had no
+/// such assertion, because `keygen`'s recipient return was bound to `_` at
+/// every call site. This is that assertion, and like its identity twin it needs
+/// no `age` binary.
+#[test]
+fn plugin_recipient_hrp_is_lowercase_as_age_0_12_requires() {
+    let (recipient, _identity) = keygen();
+
+    // The HRP is everything up to bech32's separator; the data part that
+    // follows is lowercase by construction and must not be inspected here.
+    let sep = recipient
+        .rfind('1')
+        .expect("bech32 string must contain the '1' separator");
+    let hrp = &recipient[..sep];
+
+    assert!(
+        !hrp.chars().any(|c| c.is_ascii_uppercase()),
+        "plugin recipient HRP {hrp:?} from --keygen (main.rs:426) contains uppercase. age 0.12 \
+         and age-go both match plugin recipients with a case-SENSITIVE \
+         `starts_with(\"age1\")` against an HRP they no longer case-fold, so an uppercased HRP \
+         is rejected and the recipient becomes unparseable. Emit Case::Lower."
+    );
+    assert_eq!(
+        hrp, "age1pq",
+        "plugin recipient HRP must be exactly `age1pq`: age derives the plugin name by \
+         stripping `age1`, and that name is what it appends to `age-plugin-` when locating \
+         this binary"
+    );
 }
 
 /// Feeds the native PQ identity fixture through `--identity` and returns the

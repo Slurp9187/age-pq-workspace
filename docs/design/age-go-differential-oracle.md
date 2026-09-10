@@ -133,11 +133,11 @@ key to disk.
 `PLAINTEXT_LENGTHS = [0, 1, 15, 16, 17, 64, 1024, 65_535, 65_536, 65_537, 131_072]`,
 cycled by case index, each filled by SHA-256 counter mode over the index.
 
-65_536 is age's STREAM chunk size (`age-0.11.2/src/primitives/stream.rs:22`,
+65_536 is age's STREAM chunk size (`age-0.12.1/src/primitives/stream.rs:22`,
 `CHUNK_SIZE = 64 * 1024`) and 131_072 is exactly two chunks. Those two are the
 interesting sizes: an exact multiple forces the encryptor to flag a *full* chunk
 as last rather than emit an empty one, and the reader rejects an empty final
-chunk outright (`stream.rs:441`, `err-stream-last-chunk-empty`). The pinned
+chunk outright (`stream.rs:446`, `err-stream-last-chunk-empty`). The pinned
 digest test asserts both are still present, because dropping them is the cheap
 way to make D3/D4 look fine while testing nothing at the boundary.
 
