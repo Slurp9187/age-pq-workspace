@@ -18,7 +18,7 @@ use secure_gate::RevealSecret;
 /// ML-KEM-1024 public-key size in bytes.
 pub(crate) const MLKEM1024_PK_SIZE: usize = 1568;
 /// ML-KEM-1024 ciphertext size in bytes.
-pub const MLKEM1024_CT_SIZE: usize = 1568;
+pub(crate) const MLKEM1024_CT_SIZE: usize = 1568;
 
 /// Derives an ML-KEM-1024 key pair from a wrapped 64-byte (`d || z`) seed.
 pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem1024KeyPair {

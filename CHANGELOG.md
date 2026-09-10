@@ -87,6 +87,24 @@ differentials (D1-D5) gate.
   breakage is invisible to `check` / `build` / `test`: `cargo fetch` across
   `wasm32-wasip2` + linux + windows succeeds.
 
+- **One lockfile chain grew, and it is recorded here for the same reason.**
+  `libcrux-ml-kem` 0.0.10 pulls `libcrux-secrets` 0.0.6, which added
+  `[target."cfg(valgrind_ct_test)".dependencies.crabgrind]`. Cargo cannot
+  evaluate a custom `cfg` during resolution, so `crabgrind` 0.2.6 and its build
+  chain are now in `Cargo.lock` and reachable from `cargo tree --target all`.
+  Measured against `main`'s lockfile, that is **14 new entries** — `crabgrind`,
+  `bindgen` 0.72, `clang-sys`, `libloading`, `cexpr`, `prettyplease`, `glob`,
+  `either`, `itertools`, `pkg-config`, `windows-link`, and `regex` /
+  `regex-automata` / `aho-corasick` (the fifteenth new entry, `r-efi`, is
+  unrelated: it rides in with `getrandom` 0.4). That cfg is
+  never set, so none of it ever compiles — `cargo tree -e normal,build -i
+  crabgrind` prints nothing — but it *is* vendored by `cargo vendor`, fetched by
+  `cargo fetch --target all`, and would be scanned by a future `cargo audit` /
+  `cargo deny` job (this workspace has none today: `ci.yml` has exactly the
+  `msrv` and `conformance` jobs). Same invisible-to-`check`/`build`/`test` class
+  as the WASI chain the removed pins guarded, so it gets the same treatment: a
+  durable record rather than a surprise.
+
 ### Added
 
 - **`[workspace.lints]` restored — with the member opt-in that the pre-1.70
@@ -108,10 +126,18 @@ differentials (D1-D5) gate.
 
 ### Fixed
 
-- Three unreachable-`pub` items in `age-pq-hpke` found by the new lints
+- Five unreachable-`pub` items in `age-pq-hpke` found by the new lints
   (`MLKEM768_CT_SIZE` now matches its already-`pub(crate)` neighbour
-  `MLKEM768_PK_SIZE`; the two scalar-clamp helpers), and one redundant path
-  qualification in the `pq-keygen` example.
+  `MLKEM768_PK_SIZE`, as do the feature-gated `MLKEM512_CT_SIZE` and
+  `MLKEM1024_CT_SIZE`; plus the two scalar-clamp helpers), and one redundant
+  path qualification in the `pq-keygen` example.
+
+  The two feature-gated siblings were missed on the first pass because they only
+  compile under `--all-features`, which the plain `cargo clippy --all-targets`
+  used to verify the change does not enable — the lint table was already
+  emitting noise on every CI run, which is how such a table drifts back to being
+  decorative. The verification command below now carries `--all-features` for
+  exactly that reason.
 
 ### Not taken, deliberately
 
@@ -130,14 +156,20 @@ differentials (D1-D5) gate.
 
 `cargo test --workspace --all-features -- --include-ignored`: **157 passed, 0
 failed, 0 ignored**, including 19/19 C2SP CCTV hybrid vectors and D1-D5 against
-the Go `age` CLI v1.3.1. `cargo clippy --workspace --all-targets -- -D warnings`
-clean. Exactly one `libcrux-ml-kem` in the graph.
+the Go `age` CLI v1.3.1. `cargo clippy --workspace --all-features --all-targets
+-- -D warnings` clean — with `--all-features`, which is the feature set the test
+command above uses and the one the two feature-gated `unreachable_pub` fixes
+needed. Exactly one `libcrux-ml-kem` in the graph.
 
 Note on `cargo tree -d`: duplicate `rand` / `rand_core` remain and are
-**expected**, not a regression. `rand 0.8.5` comes from `age 0.11` /
-`age-core 0.11`, `rand_core 0.6.4` from `crypto-common`, `rand_core 0.5.1` from
-`x448 0.6`. `age 0.11` is the trait provider this workspace implements, so its
-generation is not ours to choose.
+**expected**, not a regression. `rand 0.8.5` has three consumers —
+`age 0.11`, `age-core 0.11`, and `proptest 1.5.0` (a dev-dependency of
+`age-pq-keys`) — while `rand_core 0.6.4` comes from `crypto-common` and
+`rand_core 0.5.1` from `x448 0.6`. `age 0.11` is the trait provider this
+workspace implements, so its generation is not ours to choose. `proptest` is
+ours, but the first release off `rand 0.8` is proptest 1.7, which takes
+`rand 0.9` — a different duplicate, not one fewer — so moving it is not a dedup
+and is not taken here.
 
 ---
 

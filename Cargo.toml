@@ -98,7 +98,16 @@ clap = { version = "4", features = ["derive"] }
 
 # Was `=1.5.0`. Never MSRV scaffolding — 1.5, 1.6 and 1.7 all declare <= 1.66,
 # well under the old 1.70 floor. It was blanket exact-pin style, so relaxing it
-# costs nothing and drops one of the two remaining `rand 0.8` consumers.
+# costs nothing.
+#
+# It buys nothing yet either, and deliberately so: relaxing a requirement does
+# not re-resolve an already-locked package, so `Cargo.lock` still holds proptest
+# 1.5.0 and `cargo tree -i rand@0.8.5` still lists it beside `age` 0.11 and
+# `age-core` 0.11. Nor would updating it dedup `rand`: the first proptest off
+# `rand 0.8` is 1.7, which takes `rand 0.9` — a different duplicate, not one
+# fewer, since our own crates are on 0.10. Same for the two relaxations above:
+# the lock still holds clap 4.4.18 and tempfile 3.10.1. A future `cargo update`
+# is the first thing that exercises any of these ranges.
 proptest = "1"
 
 # Was `=3.10.1`. Never MSRV scaffolding either — tempfile has declared
@@ -106,8 +115,12 @@ proptest = "1"
 tempfile = "3"
 
 # The one cap that OUTLIVES the 1.70 line, so it stays: time 0.3.46+ requires
-# rustc 1.88, above this workspace's 1.85 floor. Resolver 3 prefers a compatible
-# version but is only a preference — `--ignore-rust-version`, or a consumer
+# rustc 1.88, above this workspace's 1.85 floor. Verified against the crates.io
+# index rather than assumed — 0.3.41 declares 1.67.1, 0.3.42 declares 1.81,
+# 0.3.45 declares 1.83, and 0.3.46 through 0.3.49 declare 1.88.
+#
+# Resolver 3 prefers a compatible version but is only a preference —
+# `--ignore-rust-version`, or a consumer
 # resolving this tree with a higher toolchain, walks straight past it. A
 # manifest cap is a fact. `age-plugin-pq` inherits this entry rather than
 # declaring `time` itself, so the cap actually governs the whole graph.

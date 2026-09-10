@@ -179,12 +179,18 @@ false. They are kept because each one would have caused a wrong move.
 
 2. **"`cargo tree -d` should show one `rand`, one `rand_core`."** Recorded on
    issue #2 as an acceptance criterion; it is **not achievable and should not
-   be pursued**. `rand 0.8.5` comes from `age 0.11` / `age-core 0.11`,
-   `rand_core 0.6.4` from `crypto-common` (under `aead` 0.5 /
-   `chacha20poly1305` 0.10), `rand_core 0.5.1` from `x448 0.6`. `age 0.11` is
-   the trait provider this workspace implements. The meaningful criterion is
-   **exactly one `libcrux-ml-kem`**, plus every direct declaration on the 0.10
-   generation — both of which hold.
+   be pursued**. Measured with `cargo tree -i rand@0.8.5 --workspace -e
+   normal,dev`, `rand 0.8.5` has **three** consumers: `age 0.11`, `age-core
+   0.11`, and `proptest 1.5.0` — a dev-dependency of `age-pq-keys`, i.e. the one
+   that *is* ours. `rand_core 0.6.4` comes from `crypto-common` (under `aead`
+   0.5 / `chacha20poly1305` 0.10), `rand_core 0.5.1` from `x448 0.6`. `age 0.11`
+   is the trait provider this workspace implements, so its generation is not
+   ours to choose. Moving `proptest` does not help either: the first release off
+   `rand 0.8` is proptest 1.7, which takes `rand 0.9` — a *different* duplicate,
+   not one fewer, since our own crates are on 0.10. So the criterion fails on
+   three counts, not two, and no reachable move satisfies it. The meaningful
+   criterion is **exactly one `libcrux-ml-kem`**, plus every direct declaration
+   on the 0.10 generation — both of which hold.
 
 3. **"All four exact pins are MSRV scaffolding."** Only two were. `clap`
    `=4.4.18` genuinely held 1.70 (4.5.0 moved to 1.74), and `time` `=0.3.40`
@@ -203,6 +209,21 @@ false. They are kept because each one would have caused a wrong move.
    cargo will not *check*, not that it compiles. The libcrux workspace root says
    1.89. **Settled by building:** `cargo build --workspace --all-targets` on
    1.85.1 succeeds, and the full suite passes.
+
+   It did, however, grow the lockfile in a way no build or test can see.
+   `libcrux-ml-kem` 0.0.10 pulls `libcrux-secrets` 0.0.6, which declares
+   `[target."cfg(valgrind_ct_test)".dependencies.crabgrind]`. Cargo cannot
+   evaluate a custom `cfg` at resolution time, so `crabgrind` 0.2.6 plus its
+   build chain (`bindgen` 0.72, `clang-sys`, `libloading`, `regex` and friends —
+   14 new lockfile entries, counted by diffing package names against `main`'s
+   `Cargo.lock`) are in `Cargo.lock` and reachable from `cargo tree --target all`,
+   even though the cfg is never set and none of it compiles
+   (`cargo tree -e normal,build -i crabgrind` prints nothing). It will be
+   vendored, fetched by `cargo fetch --target all`, and scanned by any future
+   `cargo audit` / `cargo deny` job — this workspace has none today. Same
+   invisible-to-`check`/`build`/`test` class as the WASI chain the removed
+   lockfile pins guarded, which is why it is written down rather than left to be
+   rediscovered.
 
 6. **"`#![forbid(unsafe_code)]` at every crate root"** (CLAUDE.md, "no
    exceptions"). This was simply false — only `age-pq-hpke` carried it. Fixed

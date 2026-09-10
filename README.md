@@ -48,8 +48,8 @@ workspace and pin a single tag or revision:
 
 ```toml
 [dependencies]
-age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0" }
-age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0" }
+age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0-rc.1" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0-rc.1" }
 ```
 
 The crates share one version and ship under one tag: `age-pq-keys` and
@@ -57,17 +57,21 @@ The crates share one version and ship under one tag: `age-pq-keys` and
 whatever a single tag points at. Mixing tags between them is not a supported
 combination.
 
-To follow the MSRV-1.70 line and pick up patches automatically, use the branch
-rather than a tag once one exists — `branch = "release/0.1"`. See
+**Use a tag that exists.** `git tag -l` is the authority; today that is
+`v0.1.0-rc.1`, the frozen MSRV-1.70 line. The `0.2` line (MSRV 1.85, this
+branch) is untagged until its own release candidate ships — pin a revision if
+you need it before then. No `release/0.*` branch is published yet either; see
 [`docs/plans/msrv-1.85-cohort-bump.md`](docs/plans/msrv-1.85-cohort-bump.md)
-(DECIDE-13) for how the `0.1` / `0.2` lines split.
+(DECIDE-13) for how the `0.1` / `0.2` lines split and when a branch appears.
 
 ## Requirements
 
-- **Rust 1.70+** (MSRV, matching `age 0.11.2`)
-- age CLI **v1.3.0+** for native PQ stanza support in CLI interop tests
-  (older versions require the [age-go PQ plugin](https://github.com/FiloSottile/age);
-  tests skip gracefully when the CLI is unavailable)
+- **Rust 1.85+** (MSRV; edition 2024, Cargo resolver 3). The MSRV-1.70 line is
+  frozen at the `v0.1.0-rc.1` tag.
+- age CLI **v1.3.0+** for native PQ stanza support in CLI interop tests. Those
+  tests are `#[ignore]`d, so an ordinary `cargo test` never needs the binary;
+  when you *do* ask for them with `--include-ignored` and it is missing or too
+  old, they **panic rather than skip** — see *Running the tests* below.
 
 ## Workspace layout
 
@@ -84,14 +88,20 @@ age-pq-workspace/
 ### Workspace conventions
 
 - **One lockfile** — `Cargo.lock` lives at the workspace root; per-crate lockfiles are not used.
-- **`[patch]` table** — the root `Cargo.toml` redirects git dependencies between members
-  to local paths, so cross-crate edits are tested immediately without publishing.
+- **Path dependencies between members** — `age-pq-keys` and `age-plugin-pq` depend on
+  `age-pq-hpke` by path, so cross-crate edits are tested immediately and the root
+  `Cargo.toml` carries no `[patch]` table at all.
 - **Shared metadata** — `rust-version`, `edition`, `license`, `repository`, `authors`, etc.
   are inherited from `[workspace.package]`.
-- **Shared dependencies** — `secure-gate`, `clap`, and MSRV-cap phantom deps (`half`, `unicode-ident`)
-  are declared once in `[workspace.dependencies]`.
-- **Shared lints** — `[workspace.lints.rust]` and `[workspace.lints.clippy]` enforce a
-  consistent lint baseline (RustCrypto/KEMs style; `unsafe_code = "deny"`).
+- **Shared dependencies** — `secure-gate`, `clap`, `proptest`, `tempfile` and the capped
+  `time` are declared once in `[workspace.dependencies]`.
+- **Shared lints** — `[workspace.lints.rust]` only: `unsafe_code = "forbid"`,
+  `unreachable_pub`, `unused_qualifications`, `unused_lifetimes`. There is no
+  `[workspace.lints.clippy]` table — the clippy cast lints fire on ~19 `usize as u16`
+  RFC 9180 length prefixes and are deferred to their own change rather than
+  blanket-allowed. **The tables are inert without `[lints] workspace = true` in every
+  member manifest**, which is what the pre-1.70 version of them lacked; all three
+  members now carry it.
 - **Build profiles** — `opt-level = 2` in dev (crypto math is unusably slow at O0);
   debug symbols retained in bench for profiling.
 
@@ -119,30 +129,37 @@ external binary.
 
 ## MSRV policy
 
-MSRV is **Rust 1.70**, matching `age 0.11.2`. Two transitive dependencies require
-upper-bound caps to stay within MSRV:
+MSRV is **Rust 1.85** as of `0.2.0-rc.1` (edition 2024, Cargo resolver 3). The
+1.70 line is frozen at the `v0.1.0-rc.1` tag and is not maintained.
+
+Exactly **one** upper-bound cap survives the bump, and it is not MSRV
+scaffolding for a floor we have already left — it is a live constraint:
 
 | Dep | Cap | Reason |
 |---|---|---|
-| `half` | `< 2.5` | `half 2.5.0+` requires rustc 1.81 (transitive via `secure-gate`) |
-| `unicode-ident` | `< 1.0.23` | `unicode-ident 1.0.23+` requires rustc 1.71 |
+| `time` | `>=0.3.40, <0.3.46` | `time 0.3.46+` requires rustc **1.88**, above this workspace's 1.85 floor (verified against the crates.io index: 0.3.45 declares 1.83, 0.3.46 declares 1.88) |
 
-These caps are declared as phantom `[workspace.dependencies]` so `cargo update` respects
-them automatically.
+Resolver 3 prefers an MSRV-compatible version, but that is only a preference —
+`--ignore-rust-version`, or a consumer resolving this tree on a newer toolchain,
+walks straight past it. A manifest cap is a fact, so the cap stays. It is
+declared in `[workspace.dependencies]`; `age-plugin-pq` **inherits** that entry
+rather than declaring `time` itself, which is what makes the cap govern the
+whole graph.
 
-Two further constraints are **lockfile-only**, because the crates involved are
-target-gated to WASI and cannot be capped through a manifest requirement:
+The `half` and `unicode-ident` caps and the `getrandom` / `uuid` lockfile-only
+pins that this section used to document are **gone**, removed with the 1.85 bump
+(`half` left the graph entirely along with secure-gate 0.8). Do not restore
+them: `getrandom` 0.3.1 is a version `rand_core` 0.10 no longer uses.
 
-| Dep | Pin | Reason |
-|---|---|---|
-| `getrandom` | `0.3.1` | newer takes `wasi 0.14`, pulling edition-2024 `wasip2` |
-| `uuid` | `1.11.0` | newer takes `getrandom 0.4`, pulling edition-2024 `wit-bindgen-*` |
+The lesson those pins taught does survive, and it is worth keeping: their
+failure mode — Cargo unable to *parse* an edition-2024 manifest for a
+WASI-gated crate it would never build — is invisible to `check` / `build` /
+`test` / `clippy`, so a green CI run proves nothing about it. Verify anything
+that moves the WASI end of the graph with an all-target fetch, not a test run:
 
-Without them `cargo fetch` fails on 1.70 — Cargo cannot parse an edition-2024
-manifest even for a target it will never build. Ordinary `check` / `build` /
-`test` are unaffected, so the breakage is invisible to CI's normal jobs; if
-`cargo fetch` starts reporting *"this version of Cargo is older than the `2024`
-edition"*, restore these pins. The MSRV 1.85 bump removes the need for both.
+```sh
+cargo fetch --target wasm32-wasip2 --target x86_64-unknown-linux-gnu --target x86_64-pc-windows-msvc
+```
 
 ## Specification
 

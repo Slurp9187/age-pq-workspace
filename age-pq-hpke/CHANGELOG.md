@@ -54,9 +54,16 @@ full rationale, the per-pin decisions, and what was deliberately not taken.
 
 ### Fixed
 
-- Three unreachable-`pub` items surfaced by the new workspace lint table:
+- Five unreachable-`pub` items surfaced by the new workspace lint table:
   `MLKEM768_CT_SIZE` (now `pub(crate)`, matching its neighbour
-  `MLKEM768_PK_SIZE`), `clamp_x25519_scalar` and `clamp_x448_scalar`.
+  `MLKEM768_PK_SIZE`), the same constants in the feature-gated `mlkem512` /
+  `mlkem1024` siblings, and `clamp_x25519_scalar` / `clamp_x448_scalar`.
+
+  The two feature-gated ones were missed at first because they compile only
+  under `--all-features`, so a plain `cargo clippy --all-targets` never sees
+  them while `cargo test --workspace --all-features` — what CI runs — prints
+  them on every run. Verification for this crate is now done with
+  `--all-features --all-targets`.
 
 ---
 

@@ -178,12 +178,18 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   D1–D5, so exactly one commit can be blamed for a combiner-byte change.
 
   **`cargo tree -d` will always show duplicate `rand` / `rand_core`, and that is
-  correct.** `rand 0.8.5` comes from `age 0.11` / `age-core 0.11`, `rand_core
-  0.6.4` from `crypto-common`, and `rand_core 0.5.1` from `x448 0.6`. `age 0.11`
-  is the trait provider this workspace implements, so its generation is not ours
-  to choose — **do not force-upgrade or `[patch]` `age` to collapse these.** The
-  criterion that *is* meaningful: exactly one `libcrux-ml-kem`, and every direct
-  declaration in the three crates on the `rand` 0.10 generation.
+  correct.** Measured with `cargo tree -i rand@0.8.5 --workspace -e normal,dev`,
+  `rand 0.8.5` has **three** consumers: `age 0.11`, `age-core 0.11`, and
+  `proptest 1.5.0` (a dev-dependency of `age-pq-keys`). `rand_core 0.6.4` comes
+  from `crypto-common`, `rand_core 0.5.1` from `x448 0.6`. `age 0.11` is the
+  trait provider this workspace implements, so its generation is not ours to
+  choose — **do not force-upgrade or `[patch]` `age` to collapse these.**
+  `proptest` is the one consumer that *is* ours, but moving it does not dedup
+  anything: the first release off `rand 0.8` is proptest 1.7, and it lands on
+  `rand 0.9` — a different duplicate, not one fewer. That trade is out of scope
+  for a dependency bump and is not taken. The criterion that *is* meaningful:
+  exactly one `libcrux-ml-kem`, and every direct declaration in the three crates
+  on the `rand` 0.10 generation.
 - **`panic = "unwind"`** in every profile. `Drop` runs on unwind; `panic = "abort"`
   skips destructors, which skips secure-gate zeroization. The workspace
   `[profile.dev]` / `[profile.release]` / `[profile.bench]` must not set
@@ -386,14 +392,22 @@ let seed  = Seed32::from_rng(&mut rng).map_err(|_| Error::RandomnessError)?;
 ### Encoding and decoding
 
 When a secret is encoded or decoded, route through secure-gate's built-ins
-(`to_hex`, `try_from_hex`, `to_bech32`, `try_from_bech32m`, etc.) rather than
-calling the underlying `hex` / `base16ct` / `base64ct` / `bech32` crates
-directly on raw secret bytes. The built-ins use constant-time backends and
-offer `_zeroizing` variants that auto-zeroize the encoded form.
+(`to_hex`, `try_from_hex`, `try_to_bech32m`, `try_from_bech32m`, etc.) rather
+than calling the underlying `hex` / `base16ct` / `base64ct` / `bech32` crates
+directly on raw secret bytes. The built-ins use constant-time backends and every
+encoder already returns `EncodedSecret`, which zeroizes its buffer on drop.
+
+There are **no `*_zeroizing` encoder twins** — `to_hex_zeroizing` and friends do
+not exist in secure-gate 0.9. The only `_zeroizing` symbol in the crate is
+`EncodedSecret::into_zeroizing`, which downgrades to a `Zeroizing<String>` (it
+keeps the wiping, drops the redacted `Debug`). This matches the note in the
+*Tier-2 boundary inventory* below; if you meet a `*_zeroizing` encoder call in
+an old branch, it is stale and will not compile.
 
 ```rust
 // CORRECT
-let hex = key.to_hex_zeroizing();              // EncodedSecret (zeroizes on drop)
+let hex = key.to_hex();                        // EncodedSecret (zeroizes on drop)
+let owned = hex.into_zeroizing();              // escape hatch: Zeroizing<String>
 let key = Seed32::try_from_hex(&hex_str)?;
 
 // WRONG

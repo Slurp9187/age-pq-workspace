@@ -190,6 +190,18 @@ fn hex_encode(b: &[u8]) -> String {
 
 #[test]
 fn cctv_hybrid_vectors() {
+    // Floor guard, the counterpart of `oracle_case_generation_is_pinned` in
+    // `differential_age_go.rs`. "19/19 CCTV vectors" is quoted as an acceptance
+    // criterion in CHANGELOG.md and CLAUDE.md, but this test prints no count of
+    // its own — a silently shortened VECTORS list would report "ok" and a
+    // reviewer reading CI logs could not tell 19/19 from 3/3. Deleting a vector
+    // now has to be a deliberate edit of this number.
+    assert_eq!(
+        VECTORS.len(),
+        19,
+        "the C2SP CCTV hybrid suite is 19 vectors; VECTORS was changed"
+    );
+
     let mut failures = vec![];
     let mut passed = 0usize;
 

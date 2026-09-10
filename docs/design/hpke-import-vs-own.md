@@ -11,17 +11,27 @@ MLKEM768-X25519 construction we do, should we import it instead of maintaining
 **Decision: keep ours.** But the *reason* has changed, and the old reason should
 stop being cited.
 
-## On the 1.70 line there is no decision
+## ~~On the 1.70 line there is no decision~~ — superseded, the question is live
 
-`rust-hpke` is `edition = 2024`, `rust-version = "1.85"`. It cannot compile
+~~`rust-hpke` is `edition = 2024`, `rust-version = "1.85"`. It cannot compile
 against this workspace's MSRV at all. The question only becomes live after the
-cohort bump (issue #2).
+cohort bump (issue #2).~~
+
+**Updated 2026-09-10.** The cohort bump landed in `0.2.0-rc.1`: this workspace
+is on MSRV 1.85 and edition 2024, so the MSRV objection is gone and `rust-hpke`
+would compile here. The decision is unchanged, but it now rests entirely on the
+two properties in the table below — formally verified ML-KEM, and
+`#![forbid(unsafe_code)]`. The second of those got *stronger* in the same bump:
+the workspace lint table plus the missing crate-root attributes made the
+unsafe-forbid rule true for all three crates rather than only `age-pq-hpke`.
+See [`rage-pq-adoption.md`](rage-pq-adoption.md) Q4/Q5 for the same MSRV fact
+from the adjacent question's side.
 
 ## What the trade actually is, after 1.85
 
 | | `age-pq-hpke` (ours) | `rust-hpke` (str4d fork `1268205e`) |
 |---|---|---|
-| ML-KEM backend | `libcrux-ml-kem 0.0.8` — **formally verified** (hax/F*) | RustCrypto `ml-kem 0.3` — **not verified** |
+| ML-KEM backend | `libcrux-ml-kem 0.0.10` — **formally verified** (hax/F*) | RustCrypto `ml-kem 0.3` — **not verified** |
 | `#![forbid(unsafe_code)]` | every crate root, non-negotiable | not declared (`src/lib.rs` sets only `no_std`) |
 | MLKEM768-X25519 | implemented, KAT + 19 CCTV vectors | implemented |
 | MLKEM1024-P384 | not implemented | **already implemented, with KATs** |
