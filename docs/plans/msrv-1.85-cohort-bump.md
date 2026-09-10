@@ -28,17 +28,33 @@ motivation — this workspace is the remaining upstream blocker for
 path, #3 renamed public types). Graduating to `0.1.0` early would mean cutting
 `0.1.1` immediately for work that belongs in `0.1.0`.
 
-**Order matters.** The `v0.1.0` tag has to be cut from the last 1.70 commit,
+**Order matters.** The freeze tag has to be cut from the last 1.70 commit,
 *before* the bump touches anything — bump first and version after, and there is
 no clean point left to tag:
 
-1. Finish the remaining 1.70 work on `0.0.x` (#11, and the age-go half of #15).
-2. Set the crate versions to `0.1.0`, commit, **tag `v0.1.0`**. That tag is the
-   frozen MSRV-1.70 line.
+1. ~~Finish the remaining 1.70 work on `0.0.x`~~ **done** — #11 (PR #23), the
+   age-go half of #15 (PR #24), and the FIPS 203 encapsulation key check with
+   its test-hygiene sweep (PR #27).
+2. ~~Set the crate versions to `0.1.0`~~ — **amended: the first tag is
+   `v0.1.0-rc.1`, not `v0.1.0`.** The crates move to a single
+   `version.workspace = true` at `0.1.0-rc.1` and are tagged as a release
+   candidate, so the frozen line can be exercised as a release — pinned by tag,
+   built from a clean clone — before the number becomes permanent. `v0.1.0`
+   follows when the candidate has been exercised; further candidates are
+   `-rc.2`, and so on.
 3. Only then start #2. `main` becomes `0.2.0`.
-4. Create `release/0.1` **lazily** — branch it from the tag if and when a patch
-   is actually needed. Nothing to maintain until then, and the tag marks the
-   boundary either way.
+4. Create `release/0.1` **lazily** — branch it from whichever tag proves final,
+   if and when a patch is actually needed. Nothing to maintain until then, and
+   the tag marks the boundary either way.
+
+**Why an `-rc` rather than going straight to `v0.1.0`.** A tag is cheap to add
+and awkward to move once anything pins it. The candidate costs one extra tag and
+buys the chance to find a packaging-level problem — a missing licence file, an
+`include` that omits something, a crate that does not build from a clean clone at
+the pinned toolchain — while the number can still change without anyone having
+depended on it. Two such problems were in fact found while cutting this one: the
+repository root and `age-plugin-pq` both declared `MIT OR Apache-2.0` with no
+licence text present.
 
 ### Why not keep `0.0.x` for the maintenance line
 

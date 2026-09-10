@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "age-plugin-pq"
-version = "0.0.2"
+version = "0.1.0-rc.1"
 dependencies = [
  "age-core",
  "age-plugin",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-hpke"
-version = "0.0.7"
+version = "0.1.0-rc.1"
 dependencies = [
  "aead",
  "byteorder",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-keys"
-version = "0.0.6"
+version = "0.1.0-rc.1"
 dependencies = [
  "age",
  "age-core",

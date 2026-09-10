@@ -10,6 +10,66 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.0-rc.1] - 2026-09-10
+
+**Release candidate for the frozen MSRV-1.70 line.** All three crates move to a
+single workspace version and are distributed by the git tag `v0.1.0-rc.1`.
+
+> **Numbering note — read before comparing this to `[0.1.0]` below.**
+> The `[0.1.0] - 2026-03-25` entry further down is *not* an earlier release of
+> this version. It recorded the creation of the monorepo itself, under a
+> repository-scaffolding scheme that was never a crate version: the crates were
+> on `0.0.x` throughout that period and until this entry. From here the root
+> changelog and all three crates share one number. So `0.1.0-rc.1` **follows** the
+> March `0.1.0` in time, even though SemVer orders it lower. The scaffolding
+> entry is left as written rather than renumbered, because rewriting a changelog
+> to tidy a discontinuity hides that the discontinuity happened.
+
+### Changed
+
+- **Unified versioning (DECIDE-13).** `age-pq-hpke` (was 0.0.7), `age-pq-keys`
+  (was 0.0.6) and `age-plugin-pq` (was 0.0.2) now inherit
+  `version.workspace = true`. They are one release rather than three:
+  `age-pq-keys` layers on `age-pq-hpke`, `age-plugin-pq` exposes `age-pq-keys`,
+  distribution is a single git tag over the whole workspace, and a consumer
+  pinning `tag = "v0.1.0-rc.1"` gets all three at once. Three separate numbers would
+  give that one tag three answers to "which version is this?".
+
+- **Why not stay on `0.0.x`.** Cargo treats every `0.0.z` as mutually
+  incompatible: `^0.0.8` resolves to exactly `>=0.0.8, <0.0.9`. There is no
+  patch channel, so a security fix shipped as `0.0.9` reaches nobody pinned to
+  `0.0.8` without an explicit dependency edit. `^0.1` picks up `0.1.1`
+  automatically. `0.1.0` does not claim stability — under SemVer `0.x` still
+  means anything may break at a minor bump — it claims only that compatible and
+  incompatible changes are now distinguishable, which is the minimum a
+  maintenance line needs.
+
+- The workspace `license` and `edition` fields no longer carry
+  "adjust to your actual license" / "or whatever your crates already use"
+  placeholder comments. Both were verified rather than assumed: every member
+  inherits `edition.workspace = true`, and the dual MIT / Apache-2.0 claim is
+  backed by the license files now present in the root and in all three crates.
+
+### Added
+
+- `LICENSE-MIT` and `LICENSE-APACHE` at the repository root, and the same pair
+  in `age-plugin-pq`. Both were missing: the workspace declared
+  `license = "MIT OR Apache-2.0"` and an `include` list containing `/LICENSE*`,
+  so `age-plugin-pq` carried a licence declaration with no licence text, and the
+  repository root showed no licence at all. Copied verbatim from `age-pq-keys`.
+
+### Notes on this being an `-rc`
+
+A pre-release tag, not the freeze itself. It exists so the MSRV-1.70 line can be
+exercised as a release — pinned by tag, built from a clean clone — before the
+final `v0.1.0` makes the number permanent. `release/0.1` is still branched
+lazily from whichever tag turns out to be final; nothing is maintained until a
+patch is actually needed.
+
 ### Added
 
 - **Differential oracle against the Go `age` CLI** (issue #15).
