@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.0-rc.1] - 2026-09-10
+
+**Release candidate for the frozen MSRV-1.70 line.** This crate now inherits
+`version.workspace = true`, so its number jumps from the `0.0.x` series to the
+unified workspace version shared by `age-pq-hpke`, `age-pq-keys` and
+`age-plugin-pq`. The three are released together under the single git tag
+`v0.1.0-rc.1`; see the root `CHANGELOG.md` for why they share one number and why
+`0.0.x` was not kept.
+
+Everything listed under this heading was developed on the `0.0.x` series; the
+renumbering is the release event, not a change in the code.
+
 ### Changed
 
 - **bech32 encoding moved to secure-gate** (#11), removing a `bech32::Checksum`

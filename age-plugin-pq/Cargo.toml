@@ -1,6 +1,6 @@
 [package]
 name = "age-plugin-pq"
-version = "0.0.2"
+version.workspace = true
 description = "age plugin providing post-quantum hybrid ML-KEM-768 + X25519 recipients, usable with any age implementation that supports the plugin protocol. Developed alongside the encrypted-file-vault project; not published to crates.io."
 repository.workspace = true
 keywords = ["age", "encryption", "post-quantum", "mlkem", "x25519"]

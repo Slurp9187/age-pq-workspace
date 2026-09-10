@@ -1,6 +1,6 @@
 [package]
 name = "age-pq-keys"
-version = "0.0.6"
+version.workspace = true
 repository.workspace = true
 description = "age recipient and identity types for post-quantum hybrid encryption: keypair generation, the bech32 key formats, and the mlkem768x25519 stanza. Developed for the encrypted-file-vault project; not published to crates.io."
 

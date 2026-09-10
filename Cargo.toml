@@ -8,9 +8,20 @@ resolver = "2"   # MSRV 1.70 → resolver 2 is required. LAST 1.70 RELEASE: move
 # `publish = false` makes that a hard error rather than a convention: `cargo
 # publish` and `cargo package --list` refuse instead of half-succeeding.
 publish = false
+
+# One version for all three crates. They are one release: `age-pq-keys` layers
+# on `age-pq-hpke` and `age-plugin-pq` exposes `age-pq-keys`, distribution is a
+# single git tag over the whole workspace, and a consumer pinning
+# `tag = "v0.1.0-rc.1"` gets all three at once. Per-crate numbers would give
+# that tag three answers to "which version is this?".
+version = "0.1.0-rc.1"
+
 rust-version = "1.70"
-edition = "2021"          # or whatever your crates already use
-license = "MIT OR Apache-2.0"   # adjust to your actual license
+edition = "2021"
+# Confirmed against the LICENSE-MIT / LICENSE-APACHE files in the repository
+# root and in each crate, not assumed: dual MIT / Apache-2.0, at the user's
+# option, which is the Rust ecosystem norm.
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/Slurp9187/age-pq-workspace"
 homepage = "https://github.com/Slurp9187/age-pq-workspace"
 authors = ["Slurp9187"]
