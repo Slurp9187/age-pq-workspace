@@ -965,8 +965,8 @@ fn elide_long_tokens(s: &str) -> String {
 /// Nothing else in the repository would notice if that changed. A future age
 /// that hardened `ParseHybridRecipient` into rejecting the curve point would
 /// leave our `from_bytes` accepting a recipient age calls malformed, and every
-/// prose statement of the contract (this crate's `from_bytes` doc,
-/// `age-pq-hpke`'s `validate_encapsulation_key_mlkem_half`, the design note and
+/// prose statement of the contract (this crate's `from_bytes` doc, the staging
+/// note on `age-pq-hpke`'s `EncapsulationKey::try_from`, the design note and
 /// three CHANGELOGs) would become false together, silently.
 ///
 /// **This test asserts on age's stderr text, which the other four deliberately

@@ -1,8 +1,8 @@
 //! Unit tests for mlkem768x25519.
 
 use age_pq_hpke::kem::mlkem768x25519::{
-    generate_keypair, validate_encapsulation_key_mlkem_half, Ciphertext, DecapsulationKey,
-    EncapsulationKey, MLKEM768X25519_CIPHERTEXT_SIZE, MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
+    generate_keypair, Ciphertext, DecapsulationKey, EncapsulationKey,
+    MLKEM768X25519_CIPHERTEXT_SIZE, MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
 };
 
 use age_pq_hpke::{ConstantTimeEq, Error};
@@ -224,7 +224,6 @@ fn valid_encapsulation_key_passes_the_ml_kem_check() {
     let bytes = pk.to_bytes();
 
     assert!(EncapsulationKey::try_from(&bytes).is_ok());
-    assert!(validate_encapsulation_key_mlkem_half(&bytes).is_ok());
 }
 
 /// The rejection is attributable to the **ML-KEM** half specifically: the
@@ -251,10 +250,6 @@ fn one_bad_ml_kem_coefficient_is_rejected_with_a_valid_x25519_half() {
 
     assert!(matches!(
         EncapsulationKey::try_from(&bytes).unwrap_err(),
-        Error::InvalidMlKemEncapsulationKey
-    ));
-    assert!(matches!(
-        validate_encapsulation_key_mlkem_half(&bytes).unwrap_err(),
         Error::InvalidMlKemEncapsulationKey
     ));
 }
@@ -284,7 +279,12 @@ fn all_ff_ml_kem_half_is_rejected_with_a_valid_x25519_half() {
 fn all_zero_key_is_rejected_for_its_x25519_half_not_its_ml_kem_half() {
     let all_zero = [0u8; MLKEM768X25519_ENCAPSULATION_KEY_SIZE];
 
-    assert!(validate_encapsulation_key_mlkem_half(&all_zero).is_ok());
+    // Reaching the *curve* error is itself the proof that the ML-KEM half was
+    // accepted: `try_from` checks the ML-KEM half first and returns on failure,
+    // so `InvalidX25519PublicKey` is only reachable past a passing section 7.2
+    // check. Asserting the halves separately would need a partially-validating
+    // entry point in the public API, which is precisely what this crate does
+    // not offer -- see the staging note on `EncapsulationKey::try_from`.
     assert!(matches!(
         EncapsulationKey::try_from(&all_zero).unwrap_err(),
         Error::InvalidX25519PublicKey
@@ -314,9 +314,13 @@ fn a_key_malformed_in_both_halves_is_attributed_to_the_ml_kem_half() {
     bytes[MLKEM768X25519_ENCAPSULATION_KEY_SIZE - 32..].fill(0);
 
     // Each half really is invalid on its own, so the assertion below is about
-    // ordering and not about only one of them being broken.
+    // ordering and not about only one of them being broken. Both control cases
+    // go through `try_from`, since no half-only entry point exists.
+    let mut bad_mlkem_only = pk.to_bytes();
+    bad_mlkem_only[0] = 0xFF;
+    bad_mlkem_only[1] |= 0x0F;
     assert!(matches!(
-        validate_encapsulation_key_mlkem_half(&bytes).unwrap_err(),
+        EncapsulationKey::try_from(&bad_mlkem_only).unwrap_err(),
         Error::InvalidMlKemEncapsulationKey
     ));
     let mut zero_curve_only = pk.to_bytes();
@@ -332,11 +336,12 @@ fn a_key_malformed_in_both_halves_is_attributed_to_the_ml_kem_half() {
     ));
 }
 
-/// The parse-time helper checks length before contents, like `try_from`.
+/// Length is checked before contents, so a short key never reaches either
+/// half's validator and cannot be misattributed to one of them.
 #[test]
-fn validate_ml_kem_half_rejects_a_wrong_length_key() {
+fn try_from_rejects_a_wrong_length_key_before_checking_either_half() {
     assert!(matches!(
-        validate_encapsulation_key_mlkem_half(&[0u8; 1215]).unwrap_err(),
+        EncapsulationKey::try_from(&[0u8; 1215][..]).unwrap_err(),
         Error::InvalidEncapsulationKeyLength
     ));
 }

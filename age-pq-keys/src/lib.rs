@@ -65,10 +65,9 @@ mod aliases;
 use age::{secrecy, Identity as AgeIdentity, Recipient as AgeRecipient};
 use age_core::format::{FileKey, Stanza};
 use age_pq_hpke::hpke::{new_recipient, new_sender};
-use age_pq_hpke::kem::mlkem768x25519::{
-    validate_encapsulation_key_mlkem_half, MLKEM768X25519_ENCAPSULATION_KEY_SIZE,
-};
+use age_pq_hpke::kem::mlkem768x25519::{EncapsulationKey, MLKEM768X25519_ENCAPSULATION_KEY_SIZE};
 use age_pq_hpke::kem::{Kem, MlKem768X25519};
+use age_pq_hpke::Error as HpkeError;
 use age_pq_hpke::{aead::new_aead, kdf::new_kdf};
 use base64::prelude::{Engine as _, BASE64_STANDARD_NO_PAD};
 // `ExposeSecret` here is `age`'s (re-exported `secrecy`) trait, needed for `FileKey`.
@@ -234,19 +233,33 @@ impl HybridRecipient {
                 "hybrid recipient must be exactly 1216 bytes",
             )));
         }
-        validate_encapsulation_key_mlkem_half(&pub_key).map_err(|e| {
-            // Payload-free: `e` is a unit variant, so nothing of the key
-            // reaches the message. `e` can only be
-            // `InvalidMlKemEncapsulationKey` today — the length branch is
-            // excluded by the check above — but it is forwarded rather than
-            // spelled out so a variant added upstream cannot make this message
-            // a lie. The prefix names the recipient, not the error, so the two
-            // halves of the message do not restate each other.
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("invalid MLKEM768-X25519 recipient: {e}"),
-            ))
-        })?;
+        // Run the full check and *defer* one of its two failures, rather than
+        // asking `age-pq-hpke` for a "check only the ML-KEM half" entry point.
+        // Both express the same staging; this one leaves no partially-validating
+        // function in a public API for a later caller to mistake for a full
+        // check. The halves are checked in a fixed order, so reaching the curve
+        // error already proves the ML-KEM half passed.
+        match EncapsulationKey::try_from(pub_key.as_slice()) {
+            Ok(_) => {}
+            // Deferred on purpose, matching age: its curve half goes through
+            // Go's `crypto/ecdh`, whose X25519 `NewPublicKey` only checks
+            // length, so a low-order point surfaces from `ECDH()` at wrap time
+            // and not at parse. `wrap_file_key` reaches the same rejection at
+            // the same moment. D5 verifies this against the real CLI.
+            Err(HpkeError::InvalidX25519PublicKey) => {}
+            // Payload-free: every variant here is a unit variant, so nothing of
+            // the key reaches the message. Forwarded rather than spelled out so
+            // a variant added upstream cannot make this message a lie -- `Error`
+            // is `#[non_exhaustive]`, so that is a real possibility, not a
+            // hypothetical. The prefix names the recipient, not the error, so
+            // the two halves of the message do not restate each other.
+            Err(e) => {
+                return Err(age::EncryptError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid MLKEM768-X25519 recipient: {e}"),
+                )))
+            }
+        }
         Ok(Self { pub_key })
     }
 

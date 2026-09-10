@@ -32,11 +32,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - `Error::InvalidMlKemEncapsulationKey`, payload-free, additive under
   `#[non_exhaustive]`. Distinct from `InvalidEncapsulationKeyLength`: the key is
   the right size, its contents are not a valid ML-KEM encoding.
-- `kem::mlkem768x25519::validate_encapsulation_key_mlkem_half(&[u8])` — the
-  parse-time subset of `EncapsulationKey::try_from`'s checks (length plus the
-  §7.2 modulus check), matching what age validates in `ParseHybridRecipient`.
-  It deliberately omits the X25519 low-order rejection, because age accepts an
-  all-zero curve point at parse and fails at wrap.
+
+### Deliberately not added
+
+- **No partial-validation entry point.** An earlier draft of this change
+  exposed `validate_encapsulation_key_mlkem_half(&[u8])` — the parse-time
+  subset of `EncapsulationKey::try_from`'s checks — so that `age-pq-keys` could
+  reproduce age's staging, where a bad ML-KEM half is a parse error but a
+  low-order curve point is not refused until `ECDH` runs at wrap.
+
+  That staging is real and is still reproduced, but it no longer needs a public
+  function to express it. A caller runs the full `try_from` and *tolerates*
+  `Error::InvalidX25519PublicKey` at parse. Because the halves are checked in a
+  fixed order, reaching that error already proves the ML-KEM half passed, so the
+  two formulations are equivalent — and this one leaves no half-checking
+  function in the public API for a later caller to mistake for a full check.
+  `age-pq-keys::HybridRecipient::from_bytes` is the worked example.
 
 ### Changed (BREAKING)
 

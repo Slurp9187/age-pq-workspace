@@ -134,10 +134,18 @@ What it does buy:
   `from_wrapped_components` and `TryFrom<&[u8]>` cover both construction paths,
   and a private constructor whose warning has to be silenced is the small
   version of the defect this note is about.
-* `HybridRecipient::from_bytes` applies the ML-KEM half of the check via the new
-  `mlkem768x25519::validate_encapsulation_key_mlkem_half`, so age-pq-keys
-  rejects at **parse**, where age reports it, instead of deferring to
-  `wrap_file_key`.
+* `HybridRecipient::from_bytes` runs the full `EncapsulationKey::try_from` and
+  **tolerates** `Error::InvalidX25519PublicKey`, so age-pq-keys rejects a bad
+  ML-KEM half at **parse**, where age reports it, while a low-order curve point
+  still surfaces at `wrap_file_key`, where age reports *that*.
+
+  An earlier draft expressed the same staging with a public
+  `validate_encapsulation_key_mlkem_half(&[u8])`. That function is gone. The two
+  formulations are equivalent — the halves are checked in a fixed order, so
+  reaching the curve error already proves the ML-KEM half passed — but only one
+  of them leaves a half-checking function in a public API, where a later caller
+  can validate a half and believe they validated the key. Removing it was free
+  before the `v0.1.0` freeze and would have been a breaking change after.
 
 ### Why the X25519 half is *not* checked in `from_bytes`
 
@@ -156,10 +164,11 @@ at that same wrap-time moment, which is the right place for it. Moving it into
 `from_bytes` would diverge from age.
 
 **That measurement is now a test, not a note.** The staging is the whole reason
-the API splits its checks across two methods, and prose in five places (this
-file, `HybridRecipient::from_bytes`, `validate_encapsulation_key_mlkem_half`,
-and two CHANGELOGs) would all have become false together and silently if a
-future age moved the curve check earlier.
+`from_bytes` tolerates one specific error rather than treating every rejection
+alike, and prose in four places (this file, `HybridRecipient::from_bytes`, the
+staging note on `EncapsulationKey::try_from`, and two CHANGELOGs) would all have
+become false together and silently if a future age moved the curve check
+earlier.
 `differential_age_go.rs::go_stages_the_encapsulation_key_checks_where_we_do`
 (D5) runs the real CLI against both crafted recipients and requires
 `malformed recipient` for the bad ML-KEM half and `failed to wrap key` for the
