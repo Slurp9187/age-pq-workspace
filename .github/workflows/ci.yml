@@ -16,13 +16,20 @@ env:
 
 jobs:
   msrv:
-    name: MSRV (1.70) — workspace
+    name: MSRV (1.85) — workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70
-      # half 2.5+ requires rustc 1.81; pin it back to hold the 1.70 MSRV.
-      - run: cargo update -p half --precise 2.4.1
+      # Keep this in step with rust-toolchain.toml, which pins the same version
+      # and is what every bare `cargo` in this repo actually obeys.
+      - uses: dtolnay/rust-toolchain@1.85
+      # The `cargo update -p half --precise 2.4.1` step that used to sit here is
+      # gone with the 1.85 bump. It was holding half below 2.5 (which needs
+      # 1.81), and `half` has since left the dependency graph altogether — it
+      # arrived via secure-gate's 0.8 backport line. Left in place the step
+      # would not merely be redundant, it would FAIL: `cargo update -p` errors
+      # out on a package that is not in the graph, taking the job down before
+      # either oracle guard ran.
       - run: cargo check --workspace --all-targets
       # ---- differential-oracle anti-gutting guard, part 1 (issue #15) ------
       # A test target with zero #[test] fns prints "running 0 tests ... ok" and
@@ -187,8 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70
-      - run: cargo update -p half --precise 2.4.1
+      - uses: dtolnay/rust-toolchain@1.85
       # Run the vectors as their own job so a regression is legible at a glance
       # rather than buried in the workspace suite.
       - run: cargo test -p age-pq-keys --test testkit -- --nocapture
