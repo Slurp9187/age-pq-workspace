@@ -652,6 +652,16 @@ Two invariants, enforced by CI on `main`:
    `## [0.2.0-rc.1] - unreleased` while in flight; the ISO date goes in when the
    tag is cut, and not before.
 
+**One changelog, at the root.** The three crates share one version and ship as a
+single git tag, so per-crate changelogs were telling one release's story four
+times and giving invariant 1 four places to drift. Crate-specific changes get a
+`### age-pq-hpke` / `### age-pq-keys` / `### age-plugin-pq` heading inside the
+release section. The three crate `CHANGELOG.md` files are **frozen** — they keep
+their history through `0.1.0-rc.1` and carry a
+`<!-- changelog-protocol: frozen -->` marker that the checker skips (announcing
+each skip, and failing if *every* file is frozen). If the crates ever publish
+independently, versions and changelogs re-split together.
+
 There is **no standing empty `## [Unreleased]` section** — the
 versioned-but-undated section *is* the unreleased one, and keeping both leaves a
 reader unable to tell which describes the code they have. This is not
