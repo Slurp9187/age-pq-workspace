@@ -1,6 +1,6 @@
 # Plan: isolated conformance workspace
 
-**Status:** proposed · **Date:** 2026-09-08 · **Tracking:** issue #15
+**Status:** in progress · **Date:** 2026-09-08, updated 2026-09-09 · **Tracking:** issue #15
 
 Follows from [`../design/rage-pq-adoption.md`](../design/rage-pq-adoption.md):
 we keep our own runtime and use rage and age-go as conformance oracles. This
@@ -44,13 +44,26 @@ until issue #2 lands.
       get their own job.
 - [ ] **Scaffold `conformance/`** with the layout above; confirm it resolves
       without perturbing the main lockfile.
+- [x] **Differential oracle against the Go `age` CLI** — 64 deterministic
+      derivation cases plus 22 payload cases in each direction, replacing a
+      sample size of one. `age-pq-keys/tests/differential_age_go.rs`; needed no
+      `conformance/` workspace, no rage, and no MSRV bump, which is why it
+      landed ahead of the two items below. Design, and what it does *not* prove:
+      [`../design/age-go-differential-oracle.md`](../design/age-go-differential-oracle.md).
 - [ ] **In-process differential tests** against `age::pq` over random seeds and
-      plaintexts — the check that catches divergence the fixed vectors miss.
-- [ ] **End-to-end shell-out** to real `age` and `rage` binaries.
-- [ ] **Make binary-dependent tests fail rather than skip** when the binary is
-      absent in CI (issue #14). Today's interop tests `eprintln!("SKIPPED")` and
-      return, so they pass without testing anything — the same failure shape as
-      the workflow that never ran.
+      plaintexts — still wanted. The shell-out oracle above covers the same
+      *directions* but pays a process spawn per case and can only see public
+      inputs and outputs; an in-process oracle can compare intermediate values
+      and run orders of magnitude more cases. Needs `conformance/`, since
+      `age::pq` means rage.
+- [ ] **End-to-end shell-out** to real `age` and `rage` binaries. The `age` half
+      is done (above); **`rage` is not**, and that is the remaining gap — it is
+      a third implementation with its own bugs, not a restatement of age-go.
+- [x] **Make binary-dependent tests fail rather than skip** when the binary is
+      absent in CI (issue #14). `common::require_age_cli()` panics; the
+      `SKIPPED` `eprintln!` is gone. The oracle's two CI guard steps close the
+      remaining hole — a target with zero tests exits 0, so naming the file
+      catches deletion but not gutting.
 - [ ] **Refresh vectors verbatim from upstream** now that `cargo fetch` works,
       either by keeping the `flate2`-free deviation or adding `flate2`.
 - [ ] **Add `rust-hpke` as a second differential oracle** (post-1.85). Its

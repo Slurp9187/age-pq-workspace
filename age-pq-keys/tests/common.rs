@@ -93,10 +93,55 @@ pub fn plugin_free_path() -> Vec<std::path::PathBuf> {
     )
 }
 
-/// Builds an `age` command that cannot reach any age plugin.
+/// Resolves `program` to an absolute path using the **unfiltered** `PATH`.
+///
+/// Program resolution and plugin blocking are two different jobs, and conflating
+/// them is a real hazard rather than a theoretical one: the WinGet `age` package
+/// ships `age-plugin-batchpass.exe` in the *same directory* as `age.exe`, so
+/// [`plugin_free_path`] strips the only directory that holds age itself.
+///
+/// That is survivable on Windows purely by accident — when the child's `PATH`
+/// does not resolve the program, Rust falls back to the parent's. On Unix, Rust
+/// deliberately avoids `posix_spawnp` once the environment is overridden and
+/// resolves through the *child's* `PATH`, so the same layout would fail to spawn
+/// with `ENOENT`. Resolving to an absolute path first removes the whole class of
+/// problem, and leaves the filtered `PATH` doing only the job it exists for:
+/// what the child sees when *it* goes looking for `age-plugin-*`.
+///
+/// Returns `None` if nothing matched, in which case the caller falls back to the
+/// bare name and lets `Command` produce its own error.
 #[allow(dead_code)]
-pub fn age_command_without_plugins() -> Command {
-    let mut cmd = Command::new("age");
+fn resolve_on_unfiltered_path(program: &str) -> Option<std::path::PathBuf> {
+    // On Windows a bare name is not executable on its own; PATHEXT decides.
+    let mut candidates: Vec<String> = vec![program.to_owned()];
+    if cfg!(windows) {
+        let pathext = std::env::var("PATHEXT")
+            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned())
+            .to_ascii_lowercase();
+        for ext in pathext.split(';').filter(|e| !e.is_empty()) {
+            candidates.push(format!("{program}{ext}"));
+        }
+    }
+
+    let raw = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&raw) {
+        for name in &candidates {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Builds a command for `program`, resolved absolutely, whose child `PATH`
+/// cannot reach any age plugin.
+#[allow(dead_code)]
+fn command_without_plugins(program: &str) -> Command {
+    let resolved =
+        resolve_on_unfiltered_path(program).unwrap_or_else(|| std::path::PathBuf::from(program));
+    let mut cmd = Command::new(resolved);
     match std::env::join_paths(plugin_free_path()) {
         Ok(path) => {
             cmd.env("PATH", path);
@@ -106,6 +151,48 @@ pub fn age_command_without_plugins() -> Command {
         Err(e) => panic!("could not rebuild a plugin-free PATH: {e}"),
     }
     cmd
+}
+
+/// Builds an `age` command that cannot reach any age plugin.
+#[allow(dead_code)]
+pub fn age_command_without_plugins() -> Command {
+    command_without_plugins("age")
+}
+
+/// Builds an `age-keygen` command that cannot reach any age plugin.
+///
+/// `age-keygen` never spawns a plugin itself, so the filtered `PATH` is
+/// belt-and-braces here — but going through the same constructor as `age` means
+/// there is no second, unfiltered spawn path for someone to reach for later.
+#[allow(dead_code)]
+pub fn age_keygen_command_without_plugins() -> Command {
+    command_without_plugins("age-keygen")
+}
+
+/// Renders a child's stderr for a panic message with identity strings removed.
+///
+/// Not paranoia: `age-keygen -y` echoes the **entire** input identity in its
+/// error when it cannot parse it (`unknown identity type: "age-secret-key-pq-…"`,
+/// verified by exact-substring match against the full key). `age -d -i FILE`
+/// does not — it substitutes the filename — so the behaviour is asymmetric and
+/// cannot be reasoned about per call site reliably. Filter at the one place that
+/// turns bytes into a message instead.
+///
+/// Whitespace is collapsed as a side effect. That is fine for a diagnostic and
+/// is what makes the token filter simple enough to be obviously correct.
+#[allow(dead_code)]
+pub fn safe_stderr(raw: &[u8]) -> String {
+    String::from_utf8_lossy(raw)
+        .split_whitespace()
+        .map(|token| {
+            if token.to_ascii_uppercase().contains("AGE-SECRET-KEY") {
+                "[REDACTED-IDENTITY]"
+            } else {
+                token
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// True if `dir` holds anything named `age-plugin-*`.

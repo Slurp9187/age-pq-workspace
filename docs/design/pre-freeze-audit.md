@@ -79,10 +79,26 @@ Never runs — two `bech32` versions are in the graph (0.9.1 via `age`, 0.11.1 v
 secure-gate) and the spec is ambiguous. Needs `-i bech32@0.11.1`.
 
 **"Go echoes the whole secret key on stderr when it fails to parse an
-identity."** **Not reproduced.** On age v1.3.1 via `-i <file>` the error is
-`unknown identity type` with no key material. It may differ on v1.3.2 or via a
-different path, so test harnesses should still avoid persisting stderr that
-could contain key material — but the leak is not an established fact.
+identity."** ~~Not reproduced.~~ **Reproduced, and this entry was wrong — the
+answer depends on which binary you ask.** Measured on age v1.3.1 while
+implementing #15, by feeding a lowercased throwaway identity to each path and
+`grep -F`-ing the whole key against the captured stderr:
+
+| Path | rc | Echoes the identity? |
+|---|---|---|
+| `age-keygen -y` (identity on stdin) | 1 | **Yes** — `unknown identity type: "age-secret-key-pq-<the entire 77-char key>"`, 245 bytes of stderr, full-key substring match confirmed |
+| `age -d -i <file>` | 1 | No — the error names the *file* (`reading "lower.id": … unknown identity type`), 174 bytes, no substring match |
+
+So the original entry measured only the second row and generalised from it. The
+asymmetry is not a subtlety to reason about per call site: it is why
+`age-pq-keys/tests/common.rs::safe_stderr` filters at the single place that
+turns child stderr into a message, and why `age-keygen` stderr in the
+differential oracle is `Stdio::null()` rather than captured at all.
+
+The same habit is general, not PQ-specific: age echoes the offending token in
+`unknown recipient type: "AGE1PQ1…"` too. That one is harmless because
+recipients are public — but "age quotes what you fed it" is the rule, and
+whether that is safe depends entirely on what you fed it.
 
 **"The plugin's `full_encrypt_decrypt_cycle_through_the_age_cli` is
 plugin↔plugin evidence, not cross-implementation evidence."** False. age

@@ -75,10 +75,13 @@ fn test_create_and_verify_pq_encryption_with_cli() {
         .output()
         .expect("age CLI failed");
 
+    // Routed through `safe_stderr` rather than printed raw. `age -d -i FILE`
+    // happens not to echo the key (it names the file instead), but the filter
+    // is what makes that a property of the harness rather than of the callee.
     assert!(
         output.status.success(),
-        "age CLI decryption failed: {:?}",
-        String::from_utf8_lossy(&output.stderr)
+        "age CLI decryption failed: {}",
+        common::safe_stderr(&output.stderr)
     );
 
     // Verify decrypted file matches lorem.txt exactly byte-for-byte
