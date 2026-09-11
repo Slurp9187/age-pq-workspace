@@ -570,8 +570,13 @@ Two invariants:
 1. **The top section matches the workspace version.** `[workspace.package]
    version` and the newest heading in all four `CHANGELOG.md` files agree.
 2. **A version heading is dated iff that tag exists.**
-   `## [0.1.1] - unreleased` while in flight; the ISO date goes in when the tag
+   `## [X.Y.Z] - unreleased` while in flight; the ISO date goes in when the tag
    is cut, and not before.
+3. **A dated top section sits at its own tag's commit.** Once a tag is cut, the
+   next commit opens the next version. That is exactly why this branch is on
+   `0.1.0-rc.2`: it accumulated commits past `v0.1.0-rc.1`, so the line had to
+   move. Invariants 1 and 2 both pass on a post-release tree whose changelog no
+   longer describes it; this is the one that notices.
 
 `## [0.1.0-rc.1]` here is correctly dated: `v0.1.0-rc.1` exists, and this branch
 is the maintenance line cut from it.

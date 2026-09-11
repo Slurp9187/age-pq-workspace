@@ -107,6 +107,24 @@ def is_frozen(path: pathlib.Path) -> bool:
     return False
 
 
+def commits_since(tag: str) -> int | None:
+    """Commits reachable from HEAD but not from `tag`; None if undeterminable.
+
+    None matters: a shallow clone lacking the tag's history cannot answer, and
+    guessing either way is wrong. The caller reports it rather than passing.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-list", "--count", f"{tag}..HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return int(out.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        return None
+
+
 def top_heading(path: pathlib.Path) -> tuple[int, str, str] | None:
     """(line number, version, marker) of the newest version section."""
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -218,6 +236,26 @@ def main() -> int:
                 f"{marker} but tag {expected_tag} does not exist. A date is the "
                 f"release marker: use '- unreleased' until the tag is cut."
             )
+            failures += 1
+        elif dated and tag_exists and commits_since(expected_tag) != 0:
+            # Invariant 3. Invariants 1 and 2 both hold here -- the version
+            # matches the manifest and the date matches a real tag -- yet the
+            # changelog describes a release rather than this tree.
+            ahead = commits_since(expected_tag)
+            if ahead is None:
+                print(
+                    f"::error file={rel},line={line_no}::cannot tell whether HEAD "
+                    f"has moved past {expected_tag}. A shallow clone without that "
+                    f"tag's history cannot answer this; use fetch depth 0."
+                )
+            else:
+                print(
+                    f"::error file={rel},line={line_no}::[{version}] is released "
+                    f"({expected_tag}) but HEAD is {ahead} commit(s) past it, so "
+                    f"this changelog no longer describes the tree. Bump the "
+                    f"version and open '## [<next>] - unreleased' in the same "
+                    f"commit."
+                )
             failures += 1
         elif not dated and tag_exists:
             print(
