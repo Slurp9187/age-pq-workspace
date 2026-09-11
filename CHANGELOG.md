@@ -280,6 +280,14 @@ fixed below, under *age-pq-hpke* and *Docs*.
   section (a top-level directory `cargo test --workspace` does not reach needs
   naming somewhere a reader will look), and a `CLAUDE.md` section plus a row in
   its workspace-overview table.
+- **A written rule for what does *not* belong in `conformance/`**, in both its
+  README and CLAUDE.md. The directory is a quarantine for tests that must *link*
+  rage, not a category for conformance tests — and the name invites the opposite
+  reading, which it did on first contact. Moving a shell-out test there would
+  silently weaken it while keeping it green: `differential_age_go.rs` builds with
+  `age::Encryptor` and reads with `age::Decryptor`, which resolve to **rage's**
+  implementations inside that workspace, so it would stop testing the STREAM
+  implementation we ship and never say so.
 
   Falsifiability measured, not asserted: P1 pointed at case + 1, P2 with a
   corrupted file key, and P3 with a truncated recipient are each killed, and the

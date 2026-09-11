@@ -972,6 +972,15 @@ Consequences to keep in mind before citing a green run from it:
 - **Its `[lints.rust]` table is a hand-maintained copy** of the root one — see
   the build-rules section above.
 
+**Do not move other tests here.** This is a quarantine for tests that must
+*link* rage, not a category for conformance tests. A test that spawns a binary
+or reads vectors from disk has nothing to isolate and belongs where it is.
+Moving one here would silently weaken it while keeping it green:
+`differential_age_go.rs` builds with `age::Encryptor` and reads with
+`age::Decryptor`, which resolve to **rage's** implementations here — so it would
+stop testing the STREAM implementation we ship and never say so. Today exactly
+one file qualifies for this directory.
+
 Full record: [`docs/design/conformance-workspace-isolation.md`](docs/design/conformance-workspace-isolation.md).
 
 ## Toolchain pin

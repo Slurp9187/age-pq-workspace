@@ -46,6 +46,34 @@ Full measurements — including why rage's `hpke` fork is load-bearing rather th
 a development pin — are in
 [`docs/design/conformance-workspace-isolation.md`](../docs/design/conformance-workspace-isolation.md).
 
+## What does **not** belong here
+
+This directory is not "where conformance tests live". It is a quarantine for
+tests that need a dependency graph the shipped crates cannot have. The name
+invites the opposite reading, so the rule is written down:
+
+| Does the test… | Then |
+|---|---|
+| spawn a binary (`age`, `rage`) | **stays** in `age-pq-keys/tests/` — a subprocess shares no dependency graph, so there is nothing to isolate |
+| read vectors from disk (CCTV, KATs) | **stays** — nothing to isolate |
+| **link** rage as a library | belongs here, and pays for it by not testing the shipped build |
+
+Only the third row qualifies. Today that is exactly one file.
+
+**Moving a shell-out test here would silently weaken it**, which is worth
+spelling out because it would still pass. `differential_age_go.rs` builds
+ciphertext with `age::Encryptor` and reads it back with `age::Decryptor`. Under
+this workspace those resolve to **rage's** implementations, so the test would
+stop proving *"our stanza, inside the STREAM implementation we ship, is readable
+by Go age"* and start proving *"…inside rage's STREAM implementation…"* — while
+keeping its name, its case count, and its green tick. That is precisely the
+shape of defect this repository keeps having to dig out.
+
+The same applies to `differential_rage.rs` (the shell-out one),
+`age-pq-keys/tests/testkit.rs`, and both KAT targets in `age-pq-hpke`. They test
+the shipped build with the shipped lockfile, and that is the entire source of
+their value.
+
 ## Maintenance notes
 
 - **`Cargo.lock` is committed and is the pin on rage.** CI runs with `--locked`
