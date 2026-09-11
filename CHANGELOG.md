@@ -268,6 +268,19 @@ fixed below, under *age-pq-hpke* and *Docs*.
   Full record:
   [`docs/design/conformance-workspace-isolation.md`](docs/design/conformance-workspace-isolation.md).
 
+- **`conformance/` carries its own `[lints.rust]` table**, and CLAUDE.md's
+  fourth-crate warning now has a live instance with the *opposite* answer. An
+  excluded package cannot inherit `[workspace.lints]`, and `[lints] workspace =
+  true` there fails to resolve — so the table is a hand-maintained copy of the
+  root one, and nothing keeps the two in step. Verified load-bearing rather than
+  decorative by deleting the crate's `#![forbid(unsafe_code)]` attribute and
+  compiling an `unsafe` block: it still failed, with `requested on the command
+  line with -F unsafe-code`, which only the Cargo table produces.
+- Docs for the new directory: `conformance/README.md`, a root `README.md`
+  section (a top-level directory `cargo test --workspace` does not reach needs
+  naming somewhere a reader will look), and a `CLAUDE.md` section plus a row in
+  its workspace-overview table.
+
   Falsifiability measured, not asserted: P1 pointed at case + 1, P2 with a
   corrupted file key, and P3 with a truncated recipient are each killed, and the
   floor test additionally requires `DERIVATION_CASES > 64` — if this stops

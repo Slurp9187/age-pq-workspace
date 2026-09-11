@@ -38,6 +38,18 @@ edition = "2024"
 rust-version = "1.85"
 publish = false
 
+# NOT inherited — this package is `exclude`d from the root workspace, so
+# `[workspace.lints]` cannot reach it and `[lints] workspace = true` would fail
+# to resolve. CLAUDE.md warns that a fourth crate "needs that line or it is
+# silently unlinted"; for an excluded one the answer is a local copy instead.
+# Keep this in step with the root `[workspace.lints.rust]` table by hand — there
+# is no mechanism that will tell you it has drifted.
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+unused_lifetimes = "warn"
+
 [dependencies]
 
 [dev-dependencies]

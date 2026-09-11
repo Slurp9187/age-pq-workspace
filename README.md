@@ -162,6 +162,19 @@ that moves the WASI end of the graph with an all-target fetch, not a test run:
 cargo fetch --target wasm32-wasip2 --target x86_64-unknown-linux-gnu --target x86_64-pc-windows-msvc
 ```
 
+## `conformance/` — a workspace that is not a member
+
+`conformance/` holds in-process differential tests against rage and is
+deliberately **excluded** from this workspace, with its own `Cargo.lock`.
+`cargo test --workspace` does not reach it; CI runs it as a separate job.
+
+The exclusion is forced rather than stylistic: rage's `age` crate and the
+crates.io `age 0.12` these crates ship against cannot resolve in one dependency
+graph, because their `ml-kem` generations pin incompatible exact versions of the
+pre-release `kem` crate. See
+[`conformance/README.md`](conformance/README.md) and
+[`docs/design/conformance-workspace-isolation.md`](docs/design/conformance-workspace-isolation.md).
+
 ## Specification
 
 - X-Wing KEM: [draft-connolly-cfrg-xwing-kem-10](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
