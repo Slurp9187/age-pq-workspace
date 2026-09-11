@@ -1,5 +1,12 @@
 [workspace]
 members = ["age-pq-hpke", "age-pq-keys", "age-plugin-pq"]
+# `conformance/` is deliberately NOT a member. It links rage, whose `age`
+# crate cannot coexist with crates.io `age 0.12` in one graph (their `ml-kem`
+# generations pin incompatible exact versions of the pre-release `kem` crate),
+# and it carries `[patch.crates-io]` entries that would otherwise apply to the
+# shipped crates. `exclude` keeps `cargo test --workspace` from reaching it and
+# gives it its own lockfile. See conformance/Cargo.toml for the measurements.
+exclude = ["conformance"]
 resolver = "3"   # MSRV 1.85 → resolver 3 (MSRV-aware selection). Requires Cargo 1.84+.
 
 # Shared package metadata (inherited by every member)

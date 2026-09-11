@@ -37,6 +37,7 @@ not be, it now says so.
 | `age-pq-hpke` | Post-quantum hybrid HPKE primitives — X-Wing KEM (ML-KEM-768 + X25519), HPKE Base-mode key schedule (RFC 9180 + draft-ietf-hpke-pq), ChaCha20-Poly1305 AEAD. Library only. |
 | `age-pq-keys` | The key layer over `age-pq-hpke`: recipient **and** identity types, keypair generation, the bech32 key formats and their HRPs, and the `mlkem768x25519` stanza wire format (wrap/unwrap plus its validation). Implements `age::Recipient` / `age::Identity`. |
 | `age-plugin-pq` | `age-plugin-*` binary that exposes the recipient layer over the age plugin protocol (stdio, newline-delimited base64). |
+| `conformance/` | **Not a workspace member.** In-process differential tests against rage, with its own `Cargo.lock`. `cargo test --workspace` does not reach it — see the section below. |
 
 **All three crates use `secure-gate`, inherited from the workspace.** This was
 previously split (`secrecy` + `zeroize` in the two upper crates) and is now
@@ -95,6 +96,16 @@ appears once as an `x25519-dalek` feature, not as an API this workspace calls.
   without it — an earlier version of these tables existed with no member
   carrying `[lints]`, and governed nothing for its entire life. If you add a
   fourth crate, it needs that line or it is silently unlinted.
+
+  **A fourth package now exists, and it needs the opposite treatment.**
+  `conformance/` is `exclude`d from the workspace, so it cannot inherit
+  `[workspace.lints]` at all and `[lints] workspace = true` there would fail to
+  resolve. It carries its own `[lints.rust]` table, a hand-maintained copy of
+  the root one. Verified load-bearing rather than decorative by deleting the
+  crate's `#![forbid(unsafe_code)]` attribute and compiling an `unsafe` block:
+  it still failed, with `requested on the command line with -F unsafe-code`,
+  which only the Cargo table produces. **Nothing keeps the two tables in step** —
+  if you change `[workspace.lints.rust]`, change `conformance/Cargo.toml` too.
 
   The clippy cast lints (`cast_possible_truncation` and friends) are
   deliberately *not* in the table: they fire on the `usize as u16` RFC 9180
@@ -927,6 +938,50 @@ The `release/0.1` maintenance branch follows the same protocol but carries no CI
 check; its `0.1.0-rc.1` heading is correctly dated because `v0.1.0-rc.1` exists.
 
 ---
+
+## `conformance/` — the excluded package
+
+`conformance/` holds in-process differential tests against rage. It is **not** a
+workspace member and has its own `Cargo.lock`.
+
+**The exclusion is mandatory, not stylistic.** rage's `age` crate and the
+crates.io `age 0.12` this workspace ships against cannot resolve in one
+dependency graph — measured, not assumed:
+
+```text
+crates.io age 0.12.1 -> ml-kem ^0.2 -> ml-kem 0.2.3 -> kem =0.3.0-pre.0
+rage's    age 0.12.1 -> ml-kem ^0.3 -> ml-kem 0.3.0 -> kem ^0.3.0
+```
+
+`ml-kem 0.2.3` pins `kem` **exactly** at a pre-release (the same exact pin
+documented under the `age` 0.12 migration above), and a pre-release shares its
+version slot with its release, so the two are mutually exclusive under any
+arrangement of features or dev-dependency placement. `conformance/Cargo.toml`
+patches `age` itself to rage so exactly one `age` exists there.
+
+Consequences to keep in mind before citing a green run from it:
+
+- **`age-pq-keys` is compiled there against rage's `age`**, not the crates.io
+  one it ships against. Those tests are evidence the two implementations agree
+  *given a common `age` core* — not evidence about the shipped build. The
+  shell-out oracle and the CCTV vectors are what cover that.
+- **`cargo test --workspace` does not reach it.** Run it from `conformance/`;
+  CI has a separate job.
+- **Its `Cargo.lock` is committed and is the pin on rage.** CI uses `--locked`
+  so drift fails rather than silently testing a different rage.
+- **Its `[lints.rust]` table is a hand-maintained copy** of the root one — see
+  the build-rules section above.
+
+**Do not move other tests here.** This is a quarantine for tests that must
+*link* rage, not a category for conformance tests. A test that spawns a binary
+or reads vectors from disk has nothing to isolate and belongs where it is.
+Moving one here would silently weaken it while keeping it green:
+`differential_age_go.rs` builds with `age::Encryptor` and reads with
+`age::Decryptor`, which resolve to **rage's** implementations here — so it would
+stop testing the STREAM implementation we ship and never say so. Today exactly
+one file qualifies for this directory.
+
+Full record: [`docs/design/conformance-workspace-isolation.md`](docs/design/conformance-workspace-isolation.md).
 
 ## Toolchain pin
 

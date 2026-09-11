@@ -230,6 +230,70 @@ fixed below, under *age-pq-hpke* and *Docs*.
   Nothing breaks today — `testkit.rs::classify` already ends in a catch-all —
   but any future `match` on them written without one will fail to compile.
 
+### Workspace
+
+#### Added
+
+- **`conformance/`, an isolated workspace for in-process differentials against
+  rage** (issue #15). Excluded from the root workspace, with its own
+  `Cargo.lock`. Three differentials, all passing: **P1** derivation over **512**
+  cases (8× the shell-out oracle), **P2** each side unwrapping the other's
+  stanza and comparing the recovered **`FileKey`**, **P3** recipient strings
+  round-tripping through each parser (512).
+
+  **P2 is the differential a subprocess cannot make.** `rage -d` tells you the
+  plaintext survived; it cannot tell you the stanza carried the file key you put
+  in, because the file key never leaves either process.
+
+  Isolation turned out to be **mandatory, and for a harder reason than #15
+  assumed.** The issue said `[patch.crates-io]` is workspace-global — true, and
+  the milder problem. Measured: rage's `age` and crates.io `age 0.12` cannot
+  coexist in one graph *at all*. Resolution fails, because `ml-kem 0.2.3` (under
+  crates.io `age`) pins `kem` **exactly** at `0.3.0-pre.0` while `ml-kem 0.3.0`
+  (under rage's `age`) needs `kem 0.3.0`, and a pre-release shares its version
+  slot with its release. `conformance/` resolves it by patching `age` itself to
+  rage, so exactly one `age` crate exists there.
+
+  That bounds what it proves, and the bound is stated rather than glossed:
+  `age-pq-keys` is compiled there against **rage's** `age`, not the crates.io
+  one it ships against. These are evidence the two implementations agree given a
+  common `age` core; the shell-out oracle and the CCTV vectors remain the
+  evidence about the shipped build. Neither oracle subsumes the other.
+
+  Also measured, because it looked skippable: rage's `hpke` fork is
+  **load-bearing**. crates.io has `hpke 0.14.1`, but compiling it with rage's
+  exact feature set gives `error[E0425]: cannot find type XWingRejectNonContrib
+  in module hpke::kem` — the type rage's whole pq module is built on.
+
+  Full record:
+  [`docs/design/conformance-workspace-isolation.md`](docs/design/conformance-workspace-isolation.md).
+
+- **`conformance/` carries its own `[lints.rust]` table**, and CLAUDE.md's
+  fourth-crate warning now has a live instance with the *opposite* answer. An
+  excluded package cannot inherit `[workspace.lints]`, and `[lints] workspace =
+  true` there fails to resolve — so the table is a hand-maintained copy of the
+  root one, and nothing keeps the two in step. Verified load-bearing rather than
+  decorative by deleting the crate's `#![forbid(unsafe_code)]` attribute and
+  compiling an `unsafe` block: it still failed, with `requested on the command
+  line with -F unsafe-code`, which only the Cargo table produces.
+- Docs for the new directory: `conformance/README.md`, a root `README.md`
+  section (a top-level directory `cargo test --workspace` does not reach needs
+  naming somewhere a reader will look), and a `CLAUDE.md` section plus a row in
+  its workspace-overview table.
+- **A written rule for what does *not* belong in `conformance/`**, in both its
+  README and CLAUDE.md. The directory is a quarantine for tests that must *link*
+  rage, not a category for conformance tests — and the name invites the opposite
+  reading, which it did on first contact. Moving a shell-out test there would
+  silently weaken it while keeping it green: `differential_age_go.rs` builds with
+  `age::Encryptor` and reads with `age::Decryptor`, which resolve to **rage's**
+  implementations inside that workspace, so it would stop testing the STREAM
+  implementation we ship and never say so.
+
+  Falsifiability measured, not asserted: P1 pointed at case + 1, P2 with a
+  corrupted file key, and P3 with a truncated recipient are each killed, and the
+  floor test additionally requires `DERIVATION_CASES > 64` — if this stops
+  exceeding the shell-out oracle it is no longer earning its workspace.
+
 ### age-pq-keys
 
 #### Added
