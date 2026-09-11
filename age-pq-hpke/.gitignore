@@ -3,7 +3,14 @@ target*/
 /target*/
 /code_packages/
 /.zed/
-docs/
+
+# `docs/` is NOT a build directory here -- it holds the normative mirror
+# (`hpke-pq.md`) and the archived drafts it cites, all tracked. It was ignored
+# wholesale, and the tracked files survived only because the subtree merge that
+# added them predates the rule; any *new* file added there was silently
+# dropped, which is how a doc gets written and never lands. Only the local
+# research scratch is ignored now.
+docs/untracked/
 
 # Database and temporary files
 *.bak

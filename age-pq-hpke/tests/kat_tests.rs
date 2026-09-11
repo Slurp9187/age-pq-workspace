@@ -1,11 +1,21 @@
 //! Published known-answer tests (KATs) for KEM and KDF behavior.
 //!
 //! Sources:
-//! - RFC 9180 Appendix A test vectors
-//! - draft-ietf-hpke-pq-03 Appendix A test vectors
+//! - RFC 9180 Appendix A.1 (`hkdf_sha256_rfc9180_key_schedule_vectors_match`):
+//!   DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-128-GCM key-schedule values.
+//! - draft-connolly-cfrg-xwing-kem-10 Appendix C (`test_official_kat_vectors`,
+//!   `tests/data/test-vectors.json`): X-Wing (kem 0x647a) seed/pk/ct/ss
+//!   values. See that file's `source` block for provenance and the upstream
+//!   "TODO: replace" caveat carried on this appendix.
+//!
+//! draft-ietf-hpke-pq-05 Appendix A.5 and A.12 (the suite this workspace
+//! actually ships end-to-end, including the SHAKE256 one-stage key schedule)
+//! are covered separately in `tests/hpke_pq_draft_vectors.rs`, which drives
+//! them through the crate's public API rather than reimplementing the key
+//! schedule by hand.
 
 use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
-use age_pq_hpke::{Error, HkdfSha256, Shake256Kdf, kdf::Kdf};
+use age_pq_hpke::{Error, HkdfSha256, kdf::Kdf};
 use serde::Deserialize;
 
 use std::fs;
@@ -28,6 +38,23 @@ fn hpke_suite_id(kem_id: u16, kdf_id: u16, aead_id: u16) -> [u8; 10] {
 }
 
 const TEST_VECTORS_PATH: &str = "tests/data/test-vectors.json";
+const EXPECTED_DOCUMENT: &str = "draft-connolly-cfrg-xwing-kem-10";
+
+/// Wraps the raw vector array with the provenance block recorded alongside
+/// it -- see `tests/data/test-vectors.json`'s own `source.note` for what was
+/// and was not verified about this corpus (in particular: byte-for-byte
+/// checked against the draft, not truncated, but not built from a published
+/// ML-KEM-768/X25519 KAT either).
+#[derive(Deserialize)]
+struct Corpus {
+    source: Source,
+    vectors: Vec<TestVector>,
+}
+
+#[derive(Deserialize)]
+struct Source {
+    document: String,
+}
 
 #[derive(Deserialize)]
 struct TestVector {
@@ -41,8 +68,12 @@ struct TestVector {
 #[test]
 fn test_official_kat_vectors() {
     let json = fs::read_to_string(TEST_VECTORS_PATH).expect("Failed to read test-vectors.json");
-    let vectors: Vec<TestVector> =
-        serde_json::from_str(&json).expect("Failed to parse test vectors");
+    let corpus: Corpus = serde_json::from_str(&json).expect("Failed to parse test vectors");
+    assert_eq!(
+        corpus.source.document, EXPECTED_DOCUMENT,
+        "vector corpus is not the draft revision this test was written against"
+    );
+    let vectors = corpus.vectors;
 
     for (i, vec) in vectors.iter().enumerate() {
         println!("Testing vector {}", i);
@@ -154,47 +185,15 @@ fn hkdf_sha256_rfc9180_key_schedule_vectors_match() -> Result<(), Error> {
     Ok(())
 }
 
-#[test]
-fn shake256_draft_hpke_pq_key_schedule_vector_matches() -> Result<(), Error> {
-    // draft-ietf-hpke-pq-03 Appendix A.5:
-    // QSF-X25519-MLKEM768, SHAKE256, AES-128-GCM
-    let kdf = Shake256Kdf;
-    let suite_id = hpke_suite_id(25722, 17, 1);
-    let info = hex_decode(
-        "3466363436353230366636653230363132303437373236353633363936313665
-         3230353537323665",
-    );
-    let shared_secret = hex_decode(
-        "47953ab0754bb180269445f55a488ca272b41ffe24507a6264f1d8d
-         1e2826098",
-    );
-    let expected_secret = hex_decode(
-        "44168255b16df6a4dd369364bad0215e
-         275ece3cb4f1208402598fa9
-         d3f07b6b8ce4d770ec483ec697ec0533510112c02b76f51d93fcd
-         4a4296ae52d0b28baf2ec03882395dea009aa03d303c71201f931
-         c03af325faa049e7de30cd",
-    );
-
-    let mut secrets = Vec::with_capacity(2 + 2 + shared_secret.len());
-    secrets.extend_from_slice(&0u16.to_be_bytes());
-    secrets.extend_from_slice(&(shared_secret.len() as u16).to_be_bytes());
-    secrets.extend_from_slice(&shared_secret);
-
-    let mut key_schedule_context = Vec::with_capacity(1 + 2 + 2 + info.len());
-    key_schedule_context.push(0);
-    key_schedule_context.extend_from_slice(&0u16.to_be_bytes());
-    key_schedule_context.extend_from_slice(&(info.len() as u16).to_be_bytes());
-    key_schedule_context.extend_from_slice(&info);
-
-    let secret = kdf.labeled_derive(
-        &suite_id,
-        &secrets,
-        "secret",
-        &key_schedule_context,
-        expected_secret.len() as u16,
-    )?;
-    assert_eq!(secret.as_slice(), expected_secret.as_slice());
-
-    Ok(())
-}
+// `shake256_draft_hpke_pq_key_schedule_vector_matches` (draft-ietf-hpke-pq-03
+// Appendix A.5, QSF-X25519-MLKEM768 / SHAKE256 / AES-128-GCM) lived here and
+// is retired: it hand-reconstructed `secrets` and `ks_context` inside the
+// test, duplicating `hpke.rs`'s one-stage-KDF branch rather than exercising
+// it, and its suite's AEAD (AES-128-GCM, aead_id 1) isn't instantiable in
+// this crate (`new_aead(1)` -> `UnsupportedAead`) -- it could never drive a
+// real seal/open. `tests/hpke_pq_draft_vectors.rs`'s
+// `draft05_appendix_a12_shake256_chacha20poly1305` supersedes it: same
+// SHAKE256 one-stage key schedule, draft-ietf-hpke-pq-05 Appendix A.12, run
+// end-to-end through the crate's public `Context` API with AEAD outputs
+// (which cannot match on a wrong `key`/`base_nonce`) checked instead of a
+// hand-copied intermediate `secret`.

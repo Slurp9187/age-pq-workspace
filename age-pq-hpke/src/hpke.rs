@@ -85,7 +85,7 @@ fn new_context(
     let export: ExportFn;
 
     let (aead_impl, base_nonce) = if kdf.one_stage() {
-        // --- One-stage SHAKE path (draft-ietf-hpke-pq-03) ----------------
+        // --- One-stage SHAKE path (draft-ietf-hpke-pq section 5) ---------
 
         // Serialize `secrets = len(psk) || len(ss) || ss`.
         let mut secrets = OneStageSecrets::new(Vec::new());

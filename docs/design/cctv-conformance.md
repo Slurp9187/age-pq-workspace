@@ -36,12 +36,24 @@ The harness runs each vector through `age::Decryptor` with our `HybridIdentity`
 — the same path official age and rage exercise — and compares the outcome
 against the vector's `expect` field (`success` / `no match` / `header failure`).
 
+**Full chain of custody:** C2SP/CCTV `e9274a7b` → rage `26fe921` (2026-07-14) →
+this repo `85fe5c0` (2026-09-08), taken from rage `origin/pq @ 5d33e3e`. See
+[`normative-provenance.md`](normative-provenance.md) for the corpus table
+alongside the other three in this workspace.
+
 **Local deviation:** upstream stores `armor_hybrid` and
 `hybrid_multiple_recipients` with their age file bytes zlib-compressed
 (`compressed: zlib`). Both are stored decompressed here, with that header line
 dropped, so the harness needs no `flate2` dependency (`cargo fetch` is currently
 broken workspace-wide — see issue #14 notes). The age file bytes under test are
-unchanged. **Re-apply this when refreshing vectors from upstream.**
+unchanged. Sizes, upstream-compressed vs. here-decompressed:
+
+| Vector | Compressed (upstream) | Decompressed (here) |
+|---|---|---|
+| `armor_hybrid` | 1951 B | 2554 B |
+| `hybrid_multiple_recipients` | 2739 B | 3441 B |
+
+**Re-apply this when refreshing vectors from upstream.**
 
 ## Baseline: 12 passed, 7 failed
 

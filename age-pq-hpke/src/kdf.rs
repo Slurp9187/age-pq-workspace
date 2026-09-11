@@ -10,8 +10,11 @@
 //!   HKDF-SHA512.
 //! * **One-stage (SHAKE)** -- a single `labeled_derive` call that absorbs
 //!   all inputs into a SHAKE XOF and squeezes the output, as specified in
-//!   [`draft-ietf-hpke-pq-03`](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03).
-//!   Registered variants: SHAKE128, SHAKE256.
+//!   [`draft-ietf-hpke-pq` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05#section-5).
+//!   Registered variants: SHAKE128, SHAKE256. Section 5 is unchanged from `-03`
+//!   through `-05` (only a reference swap, kangarootwelve to RFC 9861) and kept
+//!   its section number, and `-05` Appendix A.12 is run as a KAT against this
+//!   path in `tests/hpke_pq_draft_vectors.rs`.
 
 use crate::Error;
 use crate::aliases::{KdfBytes, LabeledIkm, LabeledInfo, Salt};
@@ -27,7 +30,7 @@ use std::result::Result;
 pub(crate) const HPKE_VERSION_LABEL: &[u8; 7] = b"HPKE-v1";
 
 // ---------------------------------------------------------------------------
-// Algorithm identifiers (RFC 9180 Table 3 + draft-ietf-hpke-pq-03)
+// Algorithm identifiers (RFC 9180 Table 3 + draft-ietf-hpke-pq)
 // ---------------------------------------------------------------------------
 
 /// HKDF-SHA256 (`KDF_ID = 0x0001`).
@@ -238,7 +241,7 @@ impl_hkdf_kdf!(HkdfSha512, Sha512, KDF_HKDF_SHA512_ID, 64);
 
 /// SHAKE128 one-stage KDF (`Nh = 32`).
 ///
-/// Draft reference: [`draft-ietf-hpke-pq-03` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03#section-5).
+/// Draft reference: [`draft-ietf-hpke-pq` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05#section-5).
 ///
 /// Absorbs `input_key || "HPKE-v1" || suite_id || I2OSP(len(label), 2) || label || I2OSP(L, 2) || context`
 /// and squeezes `L` bytes.
@@ -305,7 +308,7 @@ impl Kdf for Shake128Kdf {
 
 /// SHAKE256 one-stage KDF (`Nh = 64`).
 ///
-/// Draft reference: [`draft-ietf-hpke-pq-03` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-03#section-5).
+/// Draft reference: [`draft-ietf-hpke-pq` section 5](https://datatracker.ietf.org/doc/html/draft-ietf-hpke-pq-05#section-5).
 ///
 /// Same absorption order as [`Shake128Kdf`] but uses SHAKE256 and a larger
 /// output hash length.

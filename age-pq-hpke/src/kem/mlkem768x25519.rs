@@ -38,7 +38,8 @@ const MLKEM768_PK_SIZE: usize = ml_kem::MLKEM768_PK_SIZE;
 /// ML-KEM-768 ciphertext size, re-exported from the primitive helper.
 pub const MLKEM768_CT_SIZE: usize = ml_kem::MLKEM768_CT_SIZE;
 
-/// KEM suite ID prefix per RFC 9180 section 5.3 (`"KEM" || KEM_ID`).
+/// KEM suite ID prefix per RFC 9180 section 4.1 (`"KEM" || KEM_ID`); cited by
+/// draft-ietf-hpke-pq-05 section 3 as "Section 4.4 of [HPKE]".
 const KEM_SUITE_PREFIX: &[u8; 3] = b"KEM";
 /// Label for the `DeriveKeyPair` operation per RFC 9180 section 7.1.3.
 const KEM_DERIVE_KEY_PAIR_LABEL: &[u8; 13] = b"DeriveKeyPair";
