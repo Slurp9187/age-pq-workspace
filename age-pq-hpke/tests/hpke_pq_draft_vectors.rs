@@ -193,6 +193,37 @@ fn run_vector(v: &Vector) -> Result<(), Error> {
 
     // --- 5. Seal / open each message --------------------------------------
     //
+    // Count floors first, and they are load-bearing: both loops below are
+    // `for` over a JSON array, so an emptied `encryptions` or `exports` makes
+    // this function do its setup, iterate zero times and return `Ok(())`. That
+    // was measured on the corpus as shipped -- both arrays cleared, `2 passed`
+    // -- which is the same vacuous pass as the CCTV floor guard in
+    // `age-pq-keys/tests/testkit.rs` and the `checked == 0` guard in the
+    // changelog checker. The mutation sweep that "proved" this file falsifiable
+    // flipped bytes *inside* entries and never probed entry removal, so it
+    // could not have caught it.
+    //
+    // Exact counts, not `!is_empty()`: shrinking 10 encryptions to 1 would
+    // otherwise pass while dropping nine tenths of the sequence-number and
+    // nonce coverage. Both -05 appendices print the same shape, so a corpus
+    // that disagrees is a deliberate edit to this constant, not a silent one.
+    const DRAFT_ENCRYPTIONS: usize = 10;
+    const DRAFT_EXPORTS: usize = 5;
+    assert_eq!(
+        v.encryptions.len(),
+        DRAFT_ENCRYPTIONS,
+        "{at} ({}): draft-ietf-hpke-pq-05 prints {DRAFT_ENCRYPTIONS} encryptions; the corpus has {}",
+        v.title,
+        v.encryptions.len()
+    );
+    assert_eq!(
+        v.exports.len(),
+        DRAFT_EXPORTS,
+        "{at} ({}): draft-ietf-hpke-pq-05 prints {DRAFT_EXPORTS} exports; the corpus has {}",
+        v.title,
+        v.exports.len()
+    );
+
     // `seal` and `open` advance their own counters, so the vector's sequence
     // numbers must be the contiguous run 0..n for these calls to be testing
     // the nonces the draft printed.

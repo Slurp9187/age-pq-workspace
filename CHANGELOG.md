@@ -232,6 +232,29 @@ fixed below, under *age-pq-hpke* and *Docs*.
 
 ### age-pq-hpke
 
+#### Fixed
+
+- **Both vector KATs passed with an empty corpus.** `test_official_kat_vectors`
+  and the two `hpke_pq_draft_vectors` tests each drive a `for` loop over a JSON
+  array, so emptying that array made them parse the file, iterate zero times and
+  report `ok`. Measured, not reasoned about: with `encryptions` and `exports`
+  cleared, the draft-05 suite reported `2 passed` in 0.00s; with `vectors`
+  cleared, so did the X-Wing suite. Exact count floors added to both — 3 X-Wing
+  vectors, 10 encryptions and 5 exports per draft-05 appendix — so shortening a
+  corpus is now a deliberate edit of a number.
+
+  Floors rather than `!is_empty()` deliberately: shrinking 10 encryptions to 1
+  would otherwise pass while dropping nine tenths of the sequence-number and
+  nonce coverage. Same reasoning as the `VECTORS.len() == 19` guard in
+  `age-pq-keys/tests/testkit.rs`.
+
+  Worth recording *why it was missed*, since the miss is the more useful part:
+  the mutation sweep that pronounced the draft-05 KAT falsifiable flipped bytes
+  **inside** entries and never removed an entry, so it could not have found
+  this. 22/22 kills was a true statement about the wrong mutation class. The
+  sweep is now 30/30 with the eight structural removals included, and the
+  X-Wing floor kills both `emptied` and `3 -> 2`.
+
 #### Added
 
 - **`tests/hpke_pq_draft_vectors.rs` and `tests/data/hpke-pq-draft05-vectors.json`
