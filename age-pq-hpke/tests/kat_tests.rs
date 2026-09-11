@@ -75,6 +75,19 @@ fn test_official_kat_vectors() {
     );
     let vectors = corpus.vectors;
 
+    // Count floor. The loop below is a `for` over a JSON array, so an emptied
+    // `vectors` makes this test parse the file, iterate zero times and report
+    // "ok" -- measured on the corpus as shipped, not reasoned about. Same
+    // vacuous pass as the CCTV floor in `age-pq-keys/tests/testkit.rs` and the
+    // `checked == 0` guard in the changelog checker; shortening the corpus now
+    // has to be a deliberate edit of this number.
+    assert_eq!(
+        vectors.len(),
+        3,
+        "draft-connolly-cfrg-xwing-kem-10 Appendix C is 3 vectors; the corpus has {}",
+        vectors.len()
+    );
+
     for (i, vec) in vectors.iter().enumerate() {
         println!("Testing vector {}", i);
 
