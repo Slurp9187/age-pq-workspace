@@ -203,6 +203,21 @@ fixed below, under *age-pq-hpke* and *Docs*.
 - `age-pq-hpke/src/lib.rs`'s `## Normative provenance` module doc no longer
   says the 03 → 05 delta "has not been enumerated" — it links the enumeration
   above instead.
+- **`age-pq-hpke/docs/README.md` (new)**, and the rule it states: a draft dump
+  belongs in that directory only if the mirror cites that exact revision. Two
+  that did not — `draft-ietf-lamps-pq-composite-kem-11.txt` (a X.509/CMS
+  certificate format, 349 KB) and `draft-ietf-tls-ecdhe-mlkem-03.txt` (TLS 1.3
+  key agreement) — are **removed**. No constant, label or wire-format decision
+  in this crate derives from either, and nothing outside a frozen changelog
+  line referenced them.
+- **`age-pq-hpke/.gitignore` ignored `docs/` wholesale** — the directory holding
+  the normative mirror. The tracked files survived only because the subtree
+  merge that added them predates the rule, so any *new* file written there was
+  silently dropped; the README above was, on its first `git add`. Narrowed to
+  `docs/untracked/`, which is local research scratch. That scratch is
+  disposable because the durable half is committed: each vector corpus records
+  the `url` and `sha256` of the draft it was transcribed from, and both hashes
+  were re-verified against the local copies.
 
 ### Notes
 
