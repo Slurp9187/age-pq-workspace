@@ -1,8 +1,18 @@
 //! Published known-answer tests (KATs) for KEM and KDF behavior.
 //!
 //! Sources:
-//! - RFC 9180 Appendix A test vectors
-//! - draft-ietf-hpke-pq-03 Appendix A test vectors
+//! - RFC 9180 Appendix A.1 (`hkdf_sha256_rfc9180_key_schedule_vectors_match`):
+//!   DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-128-GCM key-schedule values.
+//! - draft-connolly-cfrg-xwing-kem-10 Appendix C (`test_official_kat_vectors`,
+//!   `tests/data/test-vectors.json`): X-Wing (kem 0x647a) seed/pk/ct/ss
+//!   values. See that file's `source` block for provenance and the upstream
+//!   "TODO: replace" caveat carried on this appendix.
+//!
+//! draft-ietf-hpke-pq-05 Appendix A.5 and A.12 (the suite this workspace
+//! actually ships end-to-end, including the SHAKE256 one-stage key schedule)
+//! are covered separately in `tests/hpke_pq_draft_vectors.rs`, which drives
+//! them through the crate's public API rather than reimplementing the key
+//! schedule by hand.
 
 use age_pq_hpke::kem::mlkem768x25519::{DecapsulationKey, EncapsulationKey};
 use age_pq_hpke::{Error, HkdfSha256, Shake256Kdf, kdf::Kdf};
@@ -28,6 +38,23 @@ fn hpke_suite_id(kem_id: u16, kdf_id: u16, aead_id: u16) -> [u8; 10] {
 }
 
 const TEST_VECTORS_PATH: &str = "tests/data/test-vectors.json";
+const EXPECTED_DOCUMENT: &str = "draft-connolly-cfrg-xwing-kem-10";
+
+/// Wraps the raw vector array with the provenance block recorded alongside
+/// it -- see `tests/data/test-vectors.json`'s own `source.note` for what was
+/// and was not verified about this corpus (in particular: byte-for-byte
+/// checked against the draft, not truncated, but not built from a published
+/// ML-KEM-768/X25519 KAT either).
+#[derive(Deserialize)]
+struct Corpus {
+    source: Source,
+    vectors: Vec<TestVector>,
+}
+
+#[derive(Deserialize)]
+struct Source {
+    document: String,
+}
 
 #[derive(Deserialize)]
 struct TestVector {
@@ -41,8 +68,12 @@ struct TestVector {
 #[test]
 fn test_official_kat_vectors() {
     let json = fs::read_to_string(TEST_VECTORS_PATH).expect("Failed to read test-vectors.json");
-    let vectors: Vec<TestVector> =
-        serde_json::from_str(&json).expect("Failed to parse test vectors");
+    let corpus: Corpus = serde_json::from_str(&json).expect("Failed to parse test vectors");
+    assert_eq!(
+        corpus.source.document, EXPECTED_DOCUMENT,
+        "vector corpus is not the draft revision this test was written against"
+    );
+    let vectors = corpus.vectors;
 
     for (i, vec) in vectors.iter().enumerate() {
         println!("Testing vector {}", i);
