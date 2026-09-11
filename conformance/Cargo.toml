@@ -1,0 +1,68 @@
+# The isolated conformance workspace (issue #15).
+#
+# NOT a member of the root workspace — see `exclude` in the root `Cargo.toml`.
+# It carries its own `Cargo.lock`, and that separation is load-bearing rather
+# than tidy. Two measured reasons, in increasing order of severity:
+#
+# 1. `[patch.crates-io]` is workspace-global. The patches below replace `hpke`
+#    and `x-wing` for everything resolved here, and the shipped crates must
+#    never be built against a fork.
+#
+# 2. **rage and crates.io `age` cannot coexist in one dependency graph at all.**
+#    This is the harder reason, and it is not what issue #15 originally said.
+#    Measured by adding rage as a dev-dependency of `age-pq-keys` in the main
+#    workspace — resolution does not merely perturb the lockfile, it fails:
+#
+#      crates.io age 0.12.1 -> ml-kem ^0.2 -> ml-kem 0.2.3 -> kem =0.3.0-pre.0
+#      rage's    age 0.12.1 -> ml-kem ^0.3 -> ml-kem 0.3.0 -> kem ^0.3.0
+#
+#      error: failed to select a version for `kem`.
+#        all possible versions conflict with previously selected packages.
+#        previously selected package `kem v0.3.0-pre.0`
+#
+#    `ml-kem 0.2.3` pins `kem` **exactly** at the pre-release `0.3.0-pre.0`
+#    (documented in CLAUDE.md), and a pre-release shares a version slot with its
+#    release, so `kem 0.3.0` and `kem 0.3.0-pre.0` are mutually exclusive. No
+#    feature flag or dev-dependency placement avoids it.
+#
+# The way out is the `age` patch below: inside this workspace there is exactly
+# ONE `age` crate — rage's — so `age-pq-keys`'s `age ^0.12` requirement and
+# rage's own are satisfied by the same package, and only one `ml-kem` is pulled.
+# That is also precisely what an in-process differential wants: our recipient
+# and rage's, driven through the same `age` trait objects, in one process.
+
+[package]
+name = "conformance"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+age-pq-hpke = { path = "../age-pq-hpke" }
+age-pq-keys = { path = "../age-pq-keys" }
+age = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982ba7e30fe1c72db506fe" }
+age-core = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982ba7e30fe1c72db506fe" }
+secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "main", features = ["rand", "ct-eq", "encoding-bech32", "std"] }
+sha2 = "0.10"
+
+# rage's own patch table, reproduced verbatim. rage declares `hpke = "0.14"` but
+# its pq module is built on `hpke::kem::XWingRejectNonContrib`, which the
+# published `hpke 0.14.1` does **not** contain — measured, by compiling a probe
+# crate against crates.io `hpke 0.14.1` with rage's exact feature set:
+#
+#   error[E0425]: cannot find type `XWingRejectNonContrib` in module `hpke::kem`
+#
+# So these are load-bearing, not development pins, and dropping them makes rage
+# fail to compile rather than merely resolve differently. Cargo ignores
+# `[patch]` in dependencies — it is honoured only in the top-level manifest —
+# so they have to be restated here.
+[patch.crates-io]
+hpke = { git = "https://github.com/str4d/rust-hpke.git", rev = "1268205e6bf8080e8139da466fe834a23e954260" }
+x-wing = { git = "https://github.com/str4d/RustCrypto-KEMs.git", rev = "f5dd74e238bfebc0b36754923ccc6157d75641e6" }
+# The load-bearing one, per note 2 above: it collapses the two `age` crates into
+# one so `kem` has a single answer.
+age = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982ba7e30fe1c72db506fe" }
+age-core = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982ba7e30fe1c72db506fe" }

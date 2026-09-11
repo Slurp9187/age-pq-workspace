@@ -310,7 +310,7 @@ jobs:
             exit 1
           fi
 
-  conformance:
+  cctv:
     name: C2SP CCTV hybrid vectors
     runs-on: ubuntu-latest
     steps:
@@ -319,3 +319,75 @@ jobs:
       # Run the vectors as their own job so a regression is legible at a glance
       # rather than buried in the workspace suite.
       - run: cargo test -p age-pq-keys --test testkit -- --nocapture
+
+  conformance:
+    name: In-process differentials vs rage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt, clippy
+      # `conformance/` is excluded from the root workspace and has its own
+      # lockfile, so it needs its own cache and its own cargo invocations. The
+      # key is the lockfile: it pins rage, the two str4d forks, and everything
+      # under them, so a cache hit is a build of exactly the same graph.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            conformance/target
+          key: conformance-${{ runner.os }}-${{ hashFiles('conformance/Cargo.lock') }}
+          restore-keys: conformance-${{ runner.os }}-
+      # `--locked` is the point of committing conformance/Cargo.lock: this job
+      # must fail if resolution drifts rather than silently testing a different
+      # rage. The lockfile is the pin.
+      - name: Verify the lockfile still resolves exactly
+        working-directory: conformance
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: fmt
+        working-directory: conformance
+        run: cargo fmt -- --check
+      - name: clippy
+        working-directory: conformance
+        run: cargo clippy --locked --all-targets -- -D warnings
+      # No --include-ignored: nothing here is #[ignore]d. rage is a *library*
+      # dependency in this workspace, so there is no binary to be absent and no
+      # reason to gate on one — the tests either compile against rage or the job
+      # fails to build, which is a louder failure than a skip.
+      - name: In-process differentials
+        working-directory: conformance
+        run: cargo test --locked -- --nocapture --test-threads=1
+      # ---- anti-gutting guard --------------------------------------------
+      # Same reasoning as the two shell-out oracles: the step above stays green
+      # if every body is voided. A banner is printed from inside a test body, so
+      # its presence is evidence the body ran.
+      - name: Guard — in-process differentials actually executed
+        working-directory: conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          MIN_PASSED=4
+          out="$(cargo test --locked -- --nocapture --test-threads=1 --color never 2>&1)"
+          printf '%s\n' "$out"
+          result="$(printf '%s\n' "$out" | sed -n '/^test result: /p' | sed -n '2p')"
+          passed="$(printf '%s\n' "$result" | sed -n 's/^test result: [A-Za-z]*\. \([0-9][0-9]*\) passed.*/\1/p')"
+          if [ -z "$passed" ]; then
+            echo "::error::could not parse the libtest result line"
+            printf 'line was: %s\n' "$result"
+            exit 1
+          fi
+          echo "in-process: $passed passed (floor: $MIN_PASSED)"
+          if [ "$passed" -lt "$MIN_PASSED" ]; then
+            echo "::error::only $passed test(s) ran; floor is $MIN_PASSED"
+            exit 1
+          fi
+          for p in P1 P2 P3; do
+            if ! printf '%s\n' "$out" | grep -Fq "$p: "; then
+              echo "::error::no $p banner; that body ran nothing against rage"
+              exit 1
+            fi
+          done
+          echo "in-process: all three differential banners present"

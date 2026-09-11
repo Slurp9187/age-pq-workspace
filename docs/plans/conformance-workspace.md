@@ -55,20 +55,25 @@ behind the expensive one.
       See [`../design/cctv-conformance.md`](../design/cctv-conformance.md).
 - [x] **CI actually runs.** Workflow moved to the repository root; CCTV vectors
       get their own job.
-- [ ] **Scaffold `conformance/`** with the layout above; confirm it resolves
-      without perturbing the main lockfile.
+- [x] **Scaffold `conformance/`** with the layout above; confirm it resolves
+      without perturbing the main lockfile. **Done** — and the main lockfile is
+      byte-identical to `HEAD` after a full resolve there, checked rather than
+      asserted. The isolation turned out to be *mandatory* rather than
+      preferential, for a reason this plan did not know:
+      [`../design/conformance-workspace-isolation.md`](../design/conformance-workspace-isolation.md).
 - [x] **Differential oracle against the Go `age` CLI** — 64 deterministic
       derivation cases plus 22 payload cases in each direction, replacing a
       sample size of one. `age-pq-keys/tests/differential_age_go.rs`; needed no
       `conformance/` workspace, no rage, and no MSRV bump, which is why it
       landed ahead of the two items below. Design, and what it does *not* prove:
       [`../design/age-go-differential-oracle.md`](../design/age-go-differential-oracle.md).
-- [ ] **In-process differential tests** against `age::pq` over random seeds and
-      plaintexts — still wanted. The shell-out oracle above covers the same
-      *directions* but pays a process spawn per case and can only see public
-      inputs and outputs; an in-process oracle can compare intermediate values
-      and run orders of magnitude more cases. Needs `conformance/`, since
-      `age::pq` means rage.
+- [x] **In-process differential tests** against `age::pq`. **Done** —
+      `conformance/tests/in_process_rage.rs`: P1 derivation over 512 cases, P2
+      comparing the recovered `FileKey` across both directions, P3 recipient
+      round-trips. Cases are derived with the *same* domain bytes as the two
+      shell-out oracles, so case 41 is the same key in all three and a
+      disagreement found here is reproducible there by index. The intermediate
+      value the plan wanted is the file key: a subprocess cannot see it.
 - [x] **End-to-end shell-out** to real `age` and `rage` binaries. Both halves
       are done. rage landed as `age-pq-keys/tests/differential_rage.rs`: five
       differentials over the **same** matrix as the age-go oracle (R1 derivation
