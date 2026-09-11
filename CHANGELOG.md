@@ -230,6 +230,57 @@ fixed below, under *age-pq-hpke* and *Docs*.
   Nothing breaks today — `testkit.rs::classify` already ends in a catch-all —
   but any future `match` on them written without one will fail to compile.
 
+### age-pq-keys
+
+#### Added
+
+- **A second differential oracle: rage** (`tests/differential_rage.rs`, issue
+  #15). Five differentials over the **same case matrix** the Go `age` CLI oracle
+  uses — R1 derivation (64 cases), R2 our decoder against fresh rage keypairs
+  (8), R3 we encrypt → `rage -d` (22), R4 `rage -e` → we decrypt (22), R5 rage's
+  **armored** output → we decrypt (11). 127 cases, both directions, all passing
+  against rage `5d33e3e` (`pq` branch).
+
+  Until now every cross-implementation claim here rested on one implementation.
+  An ambiguity that age-go and this crate resolved the same way was invisible to
+  a differential between them, and both would stay green forever. rage is a
+  separate codebase with a different bech32 stack and **RustCrypto `ml-kem`**
+  where we use libcrux, so a key-dependent bug now has to survive all three.
+
+  **R5 closes a loop the testkit left open.** `tests/data/testkit/armor_hybrid`
+  reached this repository via rage and was decompressed in transit (1951 → 2554
+  bytes), so the in-tree armored vector is a modified copy; nothing checked our
+  armored path against rage's live output.
+
+  **A version check cannot gate this**, and that is the guard worth knowing
+  about: released rage 0.12.1 and the `pq` branch answer `--version`
+  identically, and only the branch implements `mlkem768x25519` (the release
+  carries `mlkem768p256tag`). A version-only gate would let a released rage turn
+  all five differentials into no-ops that still report `ok`. So
+  `require_rage_pq_support` makes the binary *produce* a keypair and asserts the
+  `age1pq` HRP — verified by pointing the harness at `rage-keygen --pq=false`
+  and watching it fail with that message.
+
+- **One behavioural difference found, and it is not a format bug.**
+  `rage -d -o OUT` does not create `OUT` when the plaintext is zero bytes — it
+  creates the file lazily on first write. Measured: to stdout rage correctly
+  produces 0 bytes, and `age -d -o` creates an empty file. R3 therefore treats a
+  missing output file as empty **only when the expected plaintext is empty**; a
+  non-empty plaintext with no output file stays a failure. Recorded in
+  [`docs/design/rage-differential-oracle.md`](docs/design/rage-differential-oracle.md).
+
+#### Changed
+
+- **The oracle case matrix moved into `tests/common.rs`** and is now shared by
+  both oracles rather than duplicated. Two copies would be two places for the
+  matrices to drift, at which point "rage agrees with us" and "age-go agrees
+  with us" stop being comparable statements — most of the value of a second
+  oracle. The domain-separator byte strings deliberately still read
+  `differential-age-go`: they are inputs to every derived case, so renaming them
+  would move the whole matrix and invalidate `GENERATOR_DIGEST`. That the
+  extraction changed no derived value is a checked fact, not an assurance —
+  `oracle_case_generation_is_pinned` passes unchanged across it.
+
 ### age-pq-hpke
 
 #### Fixed

@@ -39,6 +39,14 @@ until issue #2 lands.~~ — **superseded 2026-09-10.** Issue #2 landed in
 actionable now. Whether `conformance/` stays a separate workspace at all is now
 a question about `[patch.crates-io]` isolation and build time, not about MSRV.
 
+**Narrowed by the rage oracle landing.** The isolation argument above is
+unchanged *for linking rage as a library*, which is what the remaining
+in-process item needs. It never applied to running a rage **binary**: a
+subprocess shares no dependency graph, so the shell-out differential needed no
+`conformance/` at all. Worth stating because "rage requires isolation" was
+carried as though it applied to every use of rage, and it delayed the cheap half
+behind the expensive one.
+
 ## Work items
 
 - [x] **CCTV hybrid vectors in-tree.** 19 vectors + harness; 19/19 pass. Landed
@@ -61,9 +69,17 @@ a question about `[patch.crates-io]` isolation and build time, not about MSRV.
       inputs and outputs; an in-process oracle can compare intermediate values
       and run orders of magnitude more cases. Needs `conformance/`, since
       `age::pq` means rage.
-- [ ] **End-to-end shell-out** to real `age` and `rage` binaries. The `age` half
-      is done (above); **`rage` is not**, and that is the remaining gap — it is
-      a third implementation with its own bugs, not a restatement of age-go.
+- [x] **End-to-end shell-out** to real `age` and `rage` binaries. Both halves
+      are done. rage landed as `age-pq-keys/tests/differential_rage.rs`: five
+      differentials over the **same** matrix as the age-go oracle (R1 derivation
+      64 cases, R2 decoder 8, R3/R4 payload 22 each way, R5 armored 11 — 127
+      cases), all passing against rage `5d33e3e`. It needed no `conformance/`
+      workspace: shelling out to a rage *binary* carries none of the
+      `[patch.crates-io]` contamination that linking rage as a library does,
+      which is why it landed ahead of the scaffold, exactly as the age-go half
+      did. Design, the one behavioural difference it found, and why a version
+      check cannot gate it:
+      [`../design/rage-differential-oracle.md`](../design/rage-differential-oracle.md).
 - [x] **Make binary-dependent tests fail rather than skip** when the binary is
       absent in CI (issue #14). `common::require_age_cli()` panics; the
       `SKIPPED` `eprintln!` is gone. The oracle's two CI guard steps close the
