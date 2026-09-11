@@ -8,7 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0-rc.2] - unreleased
+## [0.2.0-rc.2] - 2026-09-11
 
 **The `age` 0.12 migration (issue #29).** `age` 0.11 -> 0.12, `age-core` 0.11 ->
 0.12, `age-plugin` 0.6 -> 0.7. The MSRV 1.70 floor was what had blocked this;
@@ -21,6 +21,23 @@ back with the opposite of its premise: the in-tree mirror is *not* stale. What
 it did surface is that the suite this workspace ships had no published-vector
 anchor at all, and that three of four test corpora were mislabelled. Both are
 fixed below, under *age-pq-hpke* and *Docs*.
+
+**The conformance story, completed (issue #15).** This release is tagged on the
+condition that it be complete rather than merely green. It now rests on three
+independent oracles plus published vectors, not on one implementation:
+
+| Evidence | Where |
+|---|---|
+| Go `age` CLI, 5 differentials both directions | `age-pq-keys/tests/differential_age_go.rs` |
+| rage binary, 5 differentials incl. armored, 127 cases | `age-pq-keys/tests/differential_rage.rs` |
+| rage linked in-process, 512 derivation cases, `FileKey` compared | `conformance/tests/in_process_rage.rs` |
+| `draft-ietf-hpke-pq-05` A.5 + A.12 known-answer vectors | `age-pq-hpke/tests/hpke_pq_draft_vectors.rs` |
+| C2SP CCTV hybrid suite, 19/19 | `age-pq-keys/tests/testkit.rs` |
+
+The distinction the three oracles are arranged around: agreement between
+implementations is not proof of correctness — where all three agree and the
+draft disagrees, the draft wins. That is why the published-vector anchor landed
+first and is not optional.
 
 ### Workspace
 
