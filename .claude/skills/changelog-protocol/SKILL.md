@@ -27,6 +27,29 @@ the changelog is headed with that exact string.
 One separator, two possible values. The date **is** the release marker; it is
 not decoration and not the date the work happened.
 
+**3. A dated top section must sit at its own tag's commit.**
+
+Invariants 1 and 2 can both hold while the changelog is silently wrong. After a
+release, the manifest still matches the heading and the heading still matches a
+real tag — but commits keep landing, and the newest section now describes a
+release rather than the tree in front of you.
+
+So: once a tag is cut, the next commit to that branch opens the next version.
+Bump the manifest and add `## [<next>] - unreleased` in the same commit.
+
+```
+::error::[1.2.0] is released (v1.2.0) but HEAD is 3 commit(s) past it, so this
+changelog no longer describes the tree.
+```
+
+This is the marginal invariant of the three, and worth holding loosely. It
+charges a real tax — a README typo fix after a tag still has to open a version
+section — to prevent something milder than a false release claim: a changelog
+that is merely behind. Adopt it where releases are frequent and the section
+would be opened anyway; drop it if it fires three times without catching
+anything you cared about. A rule that only ever produces false positives trains
+people to ignore the rules that matter.
+
 ## Consequences worth stating
 
 **No standing empty `## [Unreleased]` section.** Under this protocol the
@@ -193,7 +216,7 @@ self-exclusion bug above, rather than a person noticing.
 
 ## Enforcing it
 
-`scripts/check_changelog.py` checks both invariants and is meant to run in CI.
+`scripts/check_changelog.py` checks all three invariants and is meant to run in CI.
 It reads the version from the manifest, reads the top section of each changelog,
 and compares against the tags actually present.
 

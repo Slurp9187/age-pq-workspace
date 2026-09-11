@@ -892,6 +892,11 @@ Two invariants, enforced by CI on `main`:
    `## [X.Y.Z] - unreleased` while in flight; the ISO date goes in when the tag
    is cut, and not before. (Written with a placeholder deliberately: a concrete
    version here goes stale at the next release, and did.)
+3. **A dated top section sits at its own tag's commit.** Once a tag is cut, the
+   next commit opens the next version — bump the manifest and add
+   `## [<next>] - unreleased` in the same commit, or the check fails. Invariants
+   1 and 2 both pass on a post-release tree whose changelog no longer describes
+   it; this is the one that notices.
 
 **One changelog, at the root.** The three crates share one version and ship as a
 single git tag, so per-crate changelogs were telling one release's story four
