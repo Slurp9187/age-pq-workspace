@@ -130,34 +130,17 @@
 
 use age::Encryptor;
 use age_pq_keys::{HybridIdentity, HybridRecipient};
-use secure_gate::{
-    Case, ConstantTimeEq, Dynamic, EncodedSecret, RevealSecret, ToBech32, fixed_newtype,
-};
+use secure_gate::{Case, ConstantTimeEq, Dynamic, RevealSecret, ToBech32};
 use sha2::{Digest, Sha256};
-use std::fmt::Write as _;
 use std::fs;
 use std::io::{Read, Write};
 use std::process::Stdio;
 
 mod common;
 
-fixed_newtype!(
-    OracleSeed32,
-    32,
-    "Per-case oracle seed, derived from the case index. This is a private key."
-);
-
-/// Re-declared rather than imported: `age_pq_keys`'s copy is private, and that
-/// is the point. If the crate's HRP ever changed, the oracle would keep emitting
-/// this one, `HybridIdentity::parse` would reject it, and the change would fail
-/// loudly here instead of silently redefining what the tests compare.
-///
-/// Lowercase, with `Case::Upper` — the encoder uppercases the whole string, HRP
-/// included. Passing an already-uppercase HRP is a different (and wrong) thing.
-const IDENTITY_HRP: &str = "age-secret-key-pq-";
-
-const SEED_DOMAIN: &[u8] = b"age-pq-workspace/differential-age-go/v1/seed";
-const PLAINTEXT_DOMAIN: &[u8] = b"age-pq-workspace/differential-age-go/v1/plaintext";
+use common::{
+    PLAINTEXT_LENGTHS, hex_encode, identity_for_case, plaintext_for_case, public_handle, report,
+};
 
 /// Cases in the derivation matrix (D1). Cheap: one batched `age-keygen -y`
 /// converts all of them in a single process.
@@ -188,16 +171,6 @@ const ORACLE_GO_KEYGEN_CASES: usize = 8;
 /// list, and the test still counts as one that ran.
 const ORACLE_MIN_GO_KEYGEN_CASES: usize = 4;
 
-/// Plaintext sizes, cycled by case index.
-///
-/// 65_536 is age's STREAM chunk size (`age-0.12.1/src/primitives/stream.rs:22`,
-/// `CHUNK_SIZE = 64 * 1024`); 131_072 is exactly two chunks. Those two are the
-/// interesting ones: an exact multiple forces the encryptor to flag a *full*
-/// chunk as last rather than emit an empty one, and the reader rejects an empty
-/// final chunk outright (`stream.rs:446`, `err-stream-last-chunk-empty`). The
-/// small sizes bracket the AEAD block boundary.
-const PLAINTEXT_LENGTHS: &[usize] = &[0, 1, 15, 16, 17, 64, 1024, 65_535, 65_536, 65_537, 131_072];
-
 /// SHA-256 over `(index ‖ recipient)` for every derivation case, then over the
 /// SHA-256 of every payload case. Public keys and public plaintexts only, so
 /// committing it leaks nothing.
@@ -210,122 +183,23 @@ const PLAINTEXT_LENGTHS: &[usize] = &[0, 1, 15, 16, 17, 64, 1024, 65_535, 65_536
 /// oracle is now testing something other than what was reviewed.
 const GENERATOR_DIGEST: &str = "0575ca97cb012afbb1b3a7d0ef00e496eb416aeef49681abe1f0f182d2b8b801";
 
-/// How many individual failures a panic message lists before summarising.
-const MAX_REPORTED_FAILURES: usize = 10;
-
 // ---------------------------------------------------------------------------
-// Deterministic case generation
+// Crate-side helper
 // ---------------------------------------------------------------------------
-
-fn seed_for_case(case: usize) -> OracleSeed32 {
-    let mut h = Sha256::new();
-    h.update(SEED_DOMAIN);
-    h.update((case as u32).to_be_bytes());
-    let digest = h.finalize();
-    // `new_with` writes straight into the wrapper's storage; `new` would move a
-    // value that briefly existed on this frame.
-    OracleSeed32::new_with(|out| out.copy_from_slice(&digest))
-}
-
-/// The case's identity in age's native uppercase form.
-///
-/// `EncodedSecret` zeroizes on drop and cannot be `Display`ed, so this value
-/// cannot reach a panic message by accident.
-///
-/// Encoded here rather than through [`HybridIdentity::to_string`] so the oracle
-/// keeps its own, independent notion of the format — see [`IDENTITY_HRP`]. That
-/// independence is only worth anything if the two are also *checked* against
-/// each other, which is what
-/// [`identities_are_uppercase_and_match_the_crate_encoder`] does, over every
-/// case D1/D3/D4 use and with no binary present. Without that check, flipping
-/// the crate's encoder to `Case::Lower` would leave every test in this file
-/// green except D2.
-fn identity_for_case(case: usize) -> EncodedSecret {
-    seed_for_case(case)
-        .try_to_bech32(IDENTITY_HRP, Case::Upper)
-        .expect("a 32-byte seed always encodes")
-}
-
-/// Public, deterministic plaintext for a case: SHA-256 counter mode, truncated.
-///
-/// Deliberately not `usize::div_ceil` anywhere — that is 1.73+ and this
-/// workspace is pinned to 1.70.
-fn plaintext_for_case(case: usize) -> Vec<u8> {
-    let len = PLAINTEXT_LENGTHS[case % PLAINTEXT_LENGTHS.len()];
-    let mut out = Vec::with_capacity(len);
-    let mut block: u32 = 0;
-    while out.len() < len {
-        let mut h = Sha256::new();
-        h.update(PLAINTEXT_DOMAIN);
-        h.update((case as u32).to_be_bytes());
-        h.update(block.to_be_bytes());
-        let digest = h.finalize();
-        let take = std::cmp::min(digest.len(), len - out.len());
-        out.extend_from_slice(&digest[..take]);
-        block += 1;
-    }
-    out
-}
 
 /// The public recipient our implementation derives for a case.
+///
+/// The rest of the case matrix lives in [`common`] and is shared with the rage
+/// oracle, deliberately: two oracles running the same inputs is what makes
+/// "age-go agrees" and "rage agrees" comparable statements. This one helper
+/// stays here because it is the only piece that calls the crate under test
+/// rather than deriving an input.
 fn our_recipient_for_case(case: usize) -> HybridRecipient {
     let identity = identity_for_case(case);
     HybridIdentity::parse(&identity)
         .unwrap_or_else(|_| panic!("case {case}: our own identity encoding must re-parse"))
         .to_public()
         .unwrap_or_else(|_| panic!("case {case}: deriving the recipient must succeed"))
-}
-
-/// `encoding-hex` is not enabled on secure-gate in this workspace, so hex is
-/// hand-rolled — the same shape `tests/testkit.rs` uses, and only ever applied
-/// to public digests.
-fn hex_encode(b: &[u8]) -> String {
-    let mut s = String::with_capacity(b.len() * 2);
-    for x in b {
-        let _ = write!(s, "{x:02x}");
-    }
-    s
-}
-
-/// A short, stable handle for a **public** string.
-///
-/// D2's cases come from Go's CSPRNG, so a failure cannot be re-run by index and
-/// needs *some* correlator across its several messages. The recipient itself is
-/// public and would do the job, but it is 1959 characters: eight failing cases
-/// once emitted ~16 KB of bech32 into a single panic message and buried the part
-/// a reader needs. A truncated digest plus the length is enough to correlate and
-/// short enough to read.
-fn public_handle(s: &str) -> String {
-    let digest = hex_encode(&Sha256::digest(s.as_bytes()));
-    format!("sha256:{}… ({} chars)", &digest[..12], s.len())
-}
-
-/// Turns per-case failures into one panic, capped so a systemic break cannot
-/// bury the log. Named so the message says which differential failed.
-fn report(differential: &str, total: usize, failures: Vec<String>) {
-    if failures.is_empty() {
-        return;
-    }
-    let mut msg = format!(
-        "{differential}: {} of {total} case(s) failed against the Go age CLI\n",
-        failures.len()
-    );
-    for line in failures.iter().take(MAX_REPORTED_FAILURES) {
-        msg.push_str("  - ");
-        msg.push_str(line);
-        msg.push('\n');
-    }
-    if failures.len() > MAX_REPORTED_FAILURES {
-        let _ = writeln!(
-            msg,
-            "  … and {} more",
-            failures.len() - MAX_REPORTED_FAILURES
-        );
-    }
-    msg.push_str(
-        "re-run a single case by index; the inputs are derived, so nothing secret needs printing",
-    );
-    panic!("{msg}");
 }
 
 // ---------------------------------------------------------------------------
@@ -577,7 +451,7 @@ fn go_derives_the_same_recipient_from_our_identities() {
         }
     }
 
-    report("D1 derivation", ORACLE_CASES, failures);
+    report("D1 derivation", "the Go age CLI", ORACLE_CASES, failures);
 }
 
 // ---------------------------------------------------------------------------
@@ -730,7 +604,12 @@ fn we_reparse_freshly_generated_go_keypairs() {
         }
     }
 
-    report("D2 decoder", ORACLE_GO_KEYGEN_CASES, failures);
+    report(
+        "D2 decoder",
+        "the Go age CLI",
+        ORACLE_GO_KEYGEN_CASES,
+        failures,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -836,7 +715,12 @@ fn go_decrypts_what_we_encrypt() {
         }
     }
 
-    report("D3 our encrypt → Go decrypt", ORACLE_STREAM_CASES, failures);
+    report(
+        "D3 our encrypt → Go decrypt",
+        "the Go age CLI",
+        ORACLE_STREAM_CASES,
+        failures,
+    );
 }
 
 /// D4: we decrypt what the Go CLI encrypts, across the same boundary.
@@ -920,7 +804,12 @@ fn we_decrypt_what_go_encrypts() {
         }
     }
 
-    report("D4 Go encrypt → our decrypt", ORACLE_STREAM_CASES, failures);
+    report(
+        "D4 Go encrypt → our decrypt",
+        "the Go age CLI",
+        ORACLE_STREAM_CASES,
+        failures,
+    );
 }
 
 /// Encodes raw 1216-byte recipient bytes the way the crate does, bypassing
@@ -1088,5 +977,5 @@ fn go_stages_the_encapsulation_key_checks_where_we_do() {
         "we must reject a low-order curve point at wrap, as age does"
     );
 
-    report("D5 parse-vs-wrap staging", 2, failures);
+    report("D5 parse-vs-wrap staging", "the Go age CLI", 2, failures);
 }

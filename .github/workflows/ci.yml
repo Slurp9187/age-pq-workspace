@@ -13,6 +13,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # str4d/rage @ pq, "Default to `pq` identities" (2026-08-20). The second
+  # differential oracle; see the rage steps in the msrv job for why this is a
+  # commit rather than a branch name.
+  RAGE_PIN: 5d33e3e51975e4e96a982ba7e30fe1c72db506fe
 
 jobs:
   msrv:
@@ -134,7 +138,92 @@ jobs:
       # here; it pins the version and verifies a sha256.
       - name: Install age CLI
         run: sudo ./scripts/install-age.sh
+      # ---- the second oracle: rage (issue #15) ----------------------------
+      # `tests/differential_rage.rs` needs a rage that implements
+      # mlkem768x25519, which lives only on str4d/rage's `pq` branch — there is
+      # no tagged release to install, so it is built from source here.
+      #
+      # **Pinned to a commit, not to the branch.** `pq` is in flight; tracking
+      # the tip would mean a green run today and a red one tomorrow for reasons
+      # outside this repository, and "our oracle moved" is indistinguishable
+      # from "we regressed" in that log. Bumping this SHA is a deliberate,
+      # reviewable act. The tree is cached on it, so only the first run after a
+      # bump pays the build.
+      #
+      # This is NOT optional scaffolding: the test step below runs the whole
+      # suite with --include-ignored, and the rage differentials fail loudly if
+      # the binaries are absent. That is the same contract age has here, and it
+      # is deliberate — a second oracle that silently stops running is worth
+      # less than no second oracle, because it still reads as coverage.
+      - name: Cache the rage oracle build
+        id: rage-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/rage-oracle
+          key: rage-oracle-${{ env.RAGE_PIN }}-${{ runner.os }}
+      - name: Build rage (pq branch) as the second oracle
+        if: steps.rage-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          rm -rf ~/rage-src
+          git clone --filter=blob:none --no-checkout https://github.com/str4d/rage.git ~/rage-src
+          git -C ~/rage-src fetch --depth 1 origin "$RAGE_PIN"
+          git -C ~/rage-src checkout --detach "$RAGE_PIN"
+          cargo build --manifest-path ~/rage-src/Cargo.toml --release --bin rage --bin rage-keygen
+          mkdir -p ~/rage-oracle
+          cp ~/rage-src/target/release/rage ~/rage-src/target/release/rage-keygen ~/rage-oracle/
+      - name: Point the oracle at the rage build
+        run: |
+          set -euo pipefail
+          echo "RAGE_BIN=$HOME/rage-oracle/rage" >> "$GITHUB_ENV"
+          echo "RAGE_KEYGEN_BIN=$HOME/rage-oracle/rage-keygen" >> "$GITHUB_ENV"
+          # Proves the cached-or-fresh binary is pq-capable before the suite
+          # runs, so a cache poisoned with a non-pq build fails here — naming
+          # the cause — rather than inside a differential.
+          "$HOME/rage-oracle/rage-keygen" --version
+          "$HOME/rage-oracle/rage-keygen" | grep -q '^# public key: age1pq' \
+            || { echo "::error::the cached rage does not produce age1pq recipients"; exit 1; }
       - run: cargo test --workspace --all-features -- --include-ignored
+      # ---- rage-oracle anti-gutting guard (issue #15) ----------------------
+      # The same reasoning as the age-go guards, applied to the second oracle:
+      # the suite step above would stay green if every rage body were voided,
+      # and an all-#[ignore]d file reports `ok` too. A banner is printed only
+      # after `require_rage_cli` spawned the binary AND `require_rage_pq_support`
+      # proved it speaks mlkem768x25519, so its presence is positive evidence
+      # that real work ran against a real rage.
+      - name: Oracle guard — rage differentials actually executed
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=differential_rage
+          MIN_PASSED=6
+          if ! out="$(cargo test --workspace --all-features --test "$TARGET" \
+                        -- --include-ignored --nocapture --test-threads=1 \
+                           --color never 2>&1)"; then
+            printf '%s\n' "$out"
+            echo "::error::'$TARGET' failed"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+          result="$(printf '%s\n' "$out" | sed -n '/^test result: /p' | tail -n 1)"
+          passed="$(printf '%s\n' "$result" | sed -n 's/^test result: [A-Za-z]*\. \([0-9][0-9]*\) passed.*/\1/p')"
+          if [ -z "$passed" ]; then
+            echo "::error::could not parse the libtest result line for '$TARGET'"
+            printf 'line was: %s\n' "$result"
+            exit 1
+          fi
+          echo "$TARGET: $passed passed (floor: $MIN_PASSED)"
+          if [ "$passed" -lt "$MIN_PASSED" ]; then
+            echo "::error::only $passed test(s) ran in '$TARGET'; floor is $MIN_PASSED"
+            exit 1
+          fi
+          for r in R1 R2 R3 R4 R5; do
+            if ! printf '%s\n' "$out" | grep -Fq "$r: "; then
+              echo "::error::'$TARGET' printed no $r banner; that body ran nothing against rage"
+              exit 1
+            fi
+          done
+          echo "$TARGET: all five rage differential banners present"
       # ---- differential-oracle anti-gutting guard, part 2 (issue #15) ------
       # Part 1 counts DECLARED tests and is blind to two cheap ways of gutting
       # this file. Both were measured against a real mutation, not reasoned
