@@ -16,6 +16,12 @@ all three declare `rust-version = "1.74"`, well under the 1.85 line opened in
 `0.2.0-rc.1`. Dependencies only — **the wire format does not change**, gated as
 always by the 19 C2SP CCTV vectors and the five `age`-CLI differentials (D1-D5).
 
+**The normative-source refresh (issue #25).** Ran as an investigation and came
+back with the opposite of its premise: the in-tree mirror is *not* stale. What
+it did surface is that the suite this workspace ships had no published-vector
+anchor at all, and that three of four test corpora were mislabelled. Both are
+fixed below, under *age-pq-hpke* and *Docs*.
+
 ### Workspace
 
 #### Changed
@@ -167,6 +173,37 @@ always by the 19 C2SP CCTV vectors and the five `age`-CLI differentials (D1-D5).
   `libcrux-secrets` and never compiles here — the same lockfile-only artifact
   class as the retired wasip2 pins. Expected; not a thing to fix.
 
+#### Docs
+
+- **`docs/design/normative-provenance.md` (new).** Durable record of where the
+  four normative/test corpora came from (the `hpke-pq.md` mirror, the X-Wing
+  Appendix C vectors, and the C2SP/CCTV testkit), the `draft-ietf-hpke-pq`
+  03 → 05 delta (§4 Hybrid KEMs is byte-identical; Appendix A renames
+  `QSF-X25519-MLKEM768` to `MLKEM768-X25519`), and why refreshing the in-tree
+  mirror is a no-op — it is byte-identical to current upstream
+  (`FiloSottile/hpke @ 8aa8a04`), which has not moved its own pin either.
+- **Corrected `docs/plans/normative-source-refresh.md`'s "At most one of those
+  is right."** That sentence was itself the error: the mirror, `hpke-pq-05`,
+  and `conformance-workspace.md` cite CONCRETE-**02**/**03**/**04**
+  respectively, and all three are correct about the revision current when each
+  was last checked — `concrete-hybrid-kems` is an independently-versioned
+  external draft, not a value with one live truth. `-04` is in fact the
+  currently active revision. No citation was changed to "fix" this.
+- Recorded a repo-wide research hazard: `git log --diff-filter=A` does not
+  surface files introduced by a merge commit (several files here, including
+  the `hpke-pq.md` mirror, arrived via the subtree merge at `04516c2`), and
+  that `age-hpke-pq-go`'s README links the current `hpkewg/hpke-pq` while its
+  actual remote (`.git/config`) is a stale fork still assigning
+  `QsfX25519MlKem768 = 0x0051` — read the remote, not the README.
+- `docs/design/cctv-conformance.md` now names the testkit's full chain of
+  custody (C2SP/CCTV `e9274a7b` → rage `26fe921` → this repo `85fe5c0`) and
+  both decompressed-vector sizes (`armor_hybrid` 1951→2554 B,
+  `hybrid_multiple_recipients` 2739→3441 B), which it previously described
+  without naming.
+- `age-pq-hpke/src/lib.rs`'s `## Normative provenance` module doc no longer
+  says the 03 → 05 delta "has not been enumerated" — it links the enumeration
+  above instead.
+
 ### Notes
 
 - `age` 0.12's `tagpq::Recipient` returns the same `"postquantum"` label we do,
@@ -177,6 +214,92 @@ always by the 19 C2SP CCTV vectors and the five `age`-CLI differentials (D1-D5).
 - `age::EncryptError` and `age::DecryptError` are now `#[non_exhaustive]`.
   Nothing breaks today — `testkit.rs::classify` already ends in a catch-all —
   but any future `match` on them written without one will fail to compile.
+
+### age-pq-hpke
+
+#### Added
+
+- **`tests/hpke_pq_draft_vectors.rs` and `tests/data/hpke-pq-draft05-vectors.json`
+  (new) — the first published-vector anchor for the suite we actually ship.**
+  `draft-ietf-hpke-pq-05` **Appendix A.5** (`kem 25722 / kdf 1 / aead 3` —
+  MLKEM768-X25519, HKDF-SHA256, ChaCha20Poly1305, byte-for-byte age's suite) and
+  **Appendix A.12** (`kdf 17`, the SHAKE256 one-stage variant of the same KEM).
+
+  Until now `0x647a` / HKDF-SHA256 / ChaCha20Poly1305 was pinned only by
+  agreement with the Go `age` CLI and by X-Wing's own appendix — a differential
+  and a KEM-level check. Neither is a normative anchor for the *composed* suite:
+  if age and this crate drifted the same way, both stay green. These vectors
+  come from the draft instead of from another implementation.
+
+  Shape decisions, so they are not undone by accident:
+
+  - **Driven end-to-end through the public API** (`new_sender_with_testing_randomness`
+    / `new_recipient`), not by reimplementing the key schedule in the test. The
+    retired `-03` test is what that mistake looks like (see *Removed*).
+  - **`key`, `base_nonce` and `exporter_secret` are asserted indirectly.** The
+    draft prints all three; they are private to `Context`, and no public
+    accessor was added to reach them. ChaCha20-Poly1305 is deterministic, so a
+    wrong `key` or `base_nonce` cannot produce a matching tag for any of the ten
+    sealed messages, and a wrong `exporter_secret` cannot produce a matching
+    exported value. Exposing live key material on the crate's public surface to
+    satisfy a test is the worse trade.
+  - **Vectors are selected by numeric `kem_id`/`kdf_id`/`aead_id`, never by
+    appendix title** — appendix numbering and suite names both moved between
+    `-03` and `-05`, and `appendix` is therefore recorded per vector rather than
+    once for the file. No "current draft" field: that is the shape of the
+    deleted `XWING_DRAFT_VERSION`, and it rots the same way.
+  - **The JSON carries only values the driver reads**, so no byte in it is
+    unverified data a corruption could sit in unnoticed.
+
+  Mutation-checked rather than assumed: **22 single-byte flips, 22 kills, no
+  survivors** — every one of `info`, `ikmE`, `ikmR`, `pkRm`, `skRm`, `enc`,
+  `shared_secret`, the first and last `ct`, an `aad`, and an `exported_value`, in
+  both vectors. Before the vectors were committed,
+  `DeriveKeyPair(ikmR) == skRm` and the key-schedule outputs were re-derived from
+  the extracted bytes, so a transcription slip would have failed where it looked
+  like one rather than as a conformance mystery.
+
+#### Removed
+
+- **`kat_tests.rs::shake256_draft_hpke_pq_key_schedule_vector_matches`**
+  (`draft-ietf-hpke-pq-03` Appendix A.5) — superseded by
+  `draft05_appendix_a12_shake256_chacha20poly1305`, which covers the same
+  SHAKE256 one-stage key schedule. It is retired rather than updated because it
+  was the wrong shape twice over: it hand-rebuilt `secrets` and `ks_context`
+  inside the test, duplicating `hpke.rs`'s one-stage-KDF branch instead of
+  exercising it — so it would have stayed green with that branch broken — and
+  its suite's AEAD (AES-128-GCM, `aead_id 1`) is not instantiable in this crate
+  (`new_aead(1)` -> `UnsupportedAead`), so it could never have driven a real
+  seal/open. The replacement checks AEAD outputs, which cannot match on a wrong
+  `key` or `base_nonce`, instead of a hand-copied intermediate `secret`.
+
+#### Changed
+
+- **`tests/data/test-vectors.json` now carries a `source` envelope**
+  (`document` / `url` / `retrieved` / `sha256` / `note`), and
+  `test_official_kat_vectors` asserts `source.document`, so swapping the corpus
+  for a different document fails instead of silently changing what is proven.
+  The file was labelled `draft-ietf-hpke-pq-03` Appendix A.5 in `kat_tests.rs`'s
+  module header; it is in fact **`draft-connolly-cfrg-xwing-kem-10` Appendix
+  C**, whose upstream title carries `# TODO: replace with test vectors that
+  re-use ML-KEM, X25519 values`. The header now says so, and names the RFC 9180
+  A.1 vectors sitting in the same file, which it also did not.
+
+  **A claim this repo carried about that file was false and is retracted here:**
+  it was described as truncated to the first 20 bytes of each field. It is not.
+  Every field of all three vectors was re-compared byte-for-byte against the
+  draft-10 text — `seed` 32 B, `eseed` 64 B, `pk` the full **1216** B, `ct` the
+  full **1120** B, `ss` 32 B, all exact. The "truncation" was a *display*
+  truncation in an inspection script (`str(v)[:40]`) read back as a property of
+  the data.
+
+- `kem/mlkem768x25519.rs`: the KEM `suite_id` prefix cited **RFC 9180 §5.3**,
+  which is the exporter. Corrected to **§4.1** (`draft-ietf-hpke-pq-05` §3 cites
+  the same text as "Section 4.4 of [HPKE]"). Comment only.
+
+- `Cargo.toml`'s `description` said `draft-ietf-hpke-pq-03`. That string ships in
+  package metadata and would have to be re-cut on every draft revision, so it now
+  names the draft without a revision; the revision lives where it is checkable.
 
 ---
 
