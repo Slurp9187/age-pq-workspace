@@ -64,7 +64,7 @@ age -d -i key.txt -o secret.txt secret.age
 | | |
 |---|---|
 | Stanza tag | `mlkem768x25519` |
-| KEM | MLKEM768-X25519, id `0x647a` (`draft-ietf-hpke-pq-03`) |
+| KEM | MLKEM768-X25519, id `0x647a` (`draft-ietf-hpke-pq`) |
 | KDF / AEAD | HKDF-SHA256 / ChaCha20-Poly1305 |
 | Recipient HRP | `age1pq` |
 | Identity HRPs | `AGE-PLUGIN-PQ-` (plugin), `AGE-SECRET-KEY-PQ-` (native) |

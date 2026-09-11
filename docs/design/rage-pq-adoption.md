@@ -34,11 +34,12 @@ This was the decisive question, and it is settled empirically, not by reading
 drafts.
 
 **A premise correction worth recording, because it cost a round of analysis.**
-CFRG X-Wing (`draft-connolly-cfrg-xwing-kem`) and `draft-ietf-hpke-pq-03`'s
-MLKEM768-X25519 are *the same construction by design*, sharing KEM id `0x647a`.
-They are not two lineages that happen to use the same primitives. Anyone
-revisiting this should not re-derive the "maybe they diverge" hypothesis — it is
-false.
+CFRG X-Wing (`draft-connolly-cfrg-xwing-kem`) and the `draft-ietf-hpke-pq`
+line's MLKEM768-X25519 (named `QSF-X25519-MLKEM768` in `-03`, renamed in `-05`'s
+Appendix A restructuring) are *the same construction by design*, sharing KEM id
+`0x647a` across both names. They are not two lineages that happen to use the
+same primitives. Anyone revisiting this should not re-derive the "maybe they
+diverge" hypothesis — it is false.
 
 | Parameter | Value | Verified |
 |---|---|---|

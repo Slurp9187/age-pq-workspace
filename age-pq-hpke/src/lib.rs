@@ -17,13 +17,20 @@
 //! in code is what can be checked.
 //!
 //! * The in-tree normative mirror is this crate's `docs/hpke-pq.md`, pinned to
-//!   `draft-ietf-hpke-pq-03` / `draft-irtf-cfrg-hybrid-kems-07`.
+//!   `draft-ietf-hpke-pq-03` / `draft-irtf-cfrg-hybrid-kems-07`. The mirror is
+//!   byte-identical to current upstream (`FiloSottile/hpke @ 8aa8a04`), which
+//!   still cites the same revisions — so the pin is current, not stale.
 //! * The invariants that would break interop — HPKE KEM id `0x647a`,
 //!   `Nenc`/`Npk` = 1120/1216, the combiner's input order, and `XWingLabel` —
 //!   were checked directly against `draft-connolly-cfrg-xwing-kem-10` and
-//!   `draft-ietf-hpke-pq-05` and are unchanged. The rest of the 03 → 05 delta
-//!   has **not** been enumerated.
-//! * The refresh, and the drift that motivated it, are tracked in
+//!   `draft-ietf-hpke-pq-05` and are unchanged.
+//! * The `draft-ietf-hpke-pq` 03 → 05 delta has since been enumerated: the
+//!   Hybrid KEMs construction (§4) is byte-identical, and the only change
+//!   touching this workspace's citations is Appendix A renaming
+//!   `QSF-X25519-MLKEM768` to `MLKEM768-X25519`.
+//! * Full provenance — corpus origins, the 03 → 05 delta table, and a
+//!   research trap worth not repeating — is in
+//!   `docs/design/normative-provenance.md`. The refresh work is tracked in
 //!   `docs/plans/normative-source-refresh.md` (issue #25).
 //!
 //! What actually verifies conformance is the corpus, not a version string: the

@@ -6,9 +6,10 @@ Post-quantum hybrid encryption crates for [age](https://age-encryption.org) /
 **Provenance.** These crates were written for the **encrypted-file-vault**
 project and are **not published to crates.io** (`publish = false` is set
 workspace-wide and enforced). They implement public specifications — RFC 9180,
-`draft-ietf-hpke-pq-03`, and the [C2SP age format](https://c2sp.org/age) — and
-contain nothing vault-specific, so they are usable independently. Consume them
-as a git dependency pinned to a tag or exact revision.
+the `draft-ietf-hpke-pq` line, and the [C2SP age format](https://c2sp.org/age)
+— and contain nothing vault-specific, so they are usable independently.
+Consume them as a git dependency pinned to a tag or exact revision. See
+*Specification* below for which revision was checked where.
 
 `age-plugin-pq` is the piece most likely to be useful on its own: it works with
 **any** age implementation that supports the plugin protocol, including the Go
@@ -166,14 +167,19 @@ cargo fetch --target wasm32-wasip2 --target x86_64-unknown-linux-gnu --target x8
 - X-Wing KEM: [draft-connolly-cfrg-xwing-kem-10](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
 - HPKE-PQ: [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/draft-ietf-hpke-pq/)
 - Reference: [filippo.io/hpke-pq](https://filippo.io/hpke-pq), mirrored in
-  `age-pq-hpke/docs/hpke-pq.md` — the mirror is still pinned to `-03`/`hybrid-kems-07`.
+  `age-pq-hpke/docs/hpke-pq.md` — the mirror cites `-03`/`hybrid-kems-07`, which
+  is what upstream still cites; it is byte-identical to current upstream.
 
 The two revisions above are the ones checked directly, and only on the
 invariants that would break interop (KEM id, `Nenc`/`Npk`, combiner input order,
-`XWingLabel`). The rest of the 03 → 05 delta has not been enumerated; the
-refresh is tracked in
-[`docs/plans/normative-source-refresh.md`](docs/plans/normative-source-refresh.md)
-(issue #25).
+`XWingLabel`). The full 03 → 05 delta, and where every test corpus came from,
+are in [`docs/design/normative-provenance.md`](docs/design/normative-provenance.md);
+the work is tracked by issue #25 in
+[`docs/plans/normative-source-refresh.md`](docs/plans/normative-source-refresh.md).
+The interop-critical sections are byte-identical or unchanged in substance, and
+the affected invariants above are confirmed unchanged. The shipped suite is also
+anchored to published vectors directly — `draft-ietf-hpke-pq-05` Appendices A.5
+and A.12, in `age-pq-hpke/tests/hpke_pq_draft_vectors.rs`.
 
 ## Security
 

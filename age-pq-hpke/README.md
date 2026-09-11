@@ -4,8 +4,9 @@ Rust implementation of the X-Wing hybrid post-quantum KEM (ML-KEM-768 + X25519) 
 
 > **Provenance** — written for the **encrypted-file-vault** project and **not
 > published to crates.io**. It implements public specifications (RFC 9180,
-> `draft-ietf-hpke-pq-03`) and contains nothing vault-specific, so it stands on
-> its own; use it as a git dependency pinned to a tag or exact revision.
+> the `draft-ietf-hpke-pq` line) and contains nothing vault-specific, so it
+> stands on its own; use it as a git dependency pinned to a tag or exact
+> revision. See *Specification* below for which revision was checked where.
 
 ## Features
 
@@ -101,8 +102,10 @@ let pt = recipient.open(b"", &ct).unwrap();
 
 Implements X-Wing per [draft-connolly-cfrg-xwing-kem-10](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/)
 and [draft-ietf-hpke-pq-05](https://datatracker.ietf.org/doc/draft-ietf-hpke-pq/),
-checked on the interop-critical invariants only — see the *Normative provenance*
-section of the crate docs, and `docs/plans/normative-source-refresh.md` (#25).
+with Appendices A.5 and A.12 of the latter run as known-answer tests
+(`tests/hpke_pq_draft_vectors.rs`). For what else was and was not checked, and
+where each test corpus came from, see the *Normative provenance* section of the
+crate docs and `docs/design/normative-provenance.md` (tracked by #25).
 
 Closely follows the reference implementation details at [filippo.io/hpke-pq](https://filippo.io/hpke-pq).
 
