@@ -486,8 +486,12 @@ fn convert_native_identities() -> io::Result<()> {
         // exactly: a non-UTF-8 byte anywhere fails the whole call. Per-line
         // validation would buy nothing, because a line that is not a valid
         // identity is already fatal below.
-        let input = std::str::from_utf8(bytes)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "stream did not contain valid UTF-8"))?;
+        let input = std::str::from_utf8(bytes).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "stream did not contain valid UTF-8",
+            )
+        })?;
 
         for line in input.lines() {
             let line = line.trim();
