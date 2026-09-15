@@ -58,17 +58,28 @@ The crates share one version and ship under one tag: `age-pq-keys` and
 whatever a single tag points at. Mixing tags between them is not a supported
 combination.
 
-**Use a tag that exists, and `git tag -l` is the authority** — not this
-paragraph, which is a snapshot and goes stale the moment a tag is cut. At the
-time of writing the current tag is `v0.2.0-rc.3` on the `0.2` line (MSRV 1.85,
-edition 2024), and that is what the example above pins.
+**Use a tag that exists, and ask the remote — not this paragraph**, which is a
+snapshot and goes stale the moment a tag is cut:
+
+```sh
+git ls-remote --tags https://github.com/Slurp9187/age-pq-workspace | grep -v '\^{}'
+```
+
+**Not `git tag -l`.** That lists the tags in *your* clone, its output is
+indistinguishable from the published set, and nothing about it says so. An
+earlier version of this paragraph named it as the authority, which is how a
+claim about eight non-existent "published" tags reached a downstream
+consumer's security planning. The remote is the only thing that knows what you
+can fetch.
+
+At the time of writing the current tag is `v0.2.0-rc.3` on the `0.2` line
+(MSRV 1.85, edition 2024), and that is what the example above pins.
 
 **Two lines exist; pick deliberately.** `0.2` is the maintained one. `0.1` is
 frozen at `v0.1.0-rc.1` and exists solely to hold MSRV 1.70 — it receives no
 fixes, so pin it only if 1.70 is a hard floor for you, and expect to migrate.
-Tags on the `0.0.*` line and the two per-crate `age-hpke-pq-*` /
-`age-recipient-pq-*` tags predate the September 2026 validation fixes and
-should not be used for anything.
+Every tag published on this repository carries the September 2026 validation
+fixes, so any of them is safe in that respect.
 
 This is worth stating plainly because pinning is how consumers of this
 workspace have actually got into trouble: a pin by the pre-rename package names

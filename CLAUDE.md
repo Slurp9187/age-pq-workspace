@@ -56,6 +56,16 @@ what the objects contained rather than whether anyone could reach them. Careful
 verification of the adjacent question reads exactly like verification of the
 real one, and carries the confidence earned by the careful part.
 
+**The fix was already written down, in this repository, and that is the part
+worth sitting with.** `.claude/skills/changelog-protocol/SKILL.md` carries a
+snippet captioned *"tags you have locally that the remote does not"*, which
+`comm`s `git tag -l` against `git ls-remote --tags origin` — exactly the
+comparison that settles this. It had been read during the same session. It is
+filed under *pushing* tags, so it never surfaced while reasoning about
+*consuming* them. Knowledge indexed under the wrong problem is not available
+when you need it, which is an argument for putting the check where the mistake
+happens rather than where the topic lives.
+
 **An audit grep is a lower bound, never a count.** A sweep for secrets copied
 out of a `with_secret` borrow used a pattern requiring `*` adjacent to the
 closure parameter. It reported one site. The real number was seven — the six it
