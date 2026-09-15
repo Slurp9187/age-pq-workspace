@@ -21,7 +21,7 @@ publish = false
 # single git tag over the whole workspace, and a consumer pinning
 # `tag = "v0.2.0-rc.1"` gets all three at once. Per-crate numbers would give
 # that tag three answers to "which version is this?".
-version = "0.2.0-rc.2"
+version = "0.2.0-rc.3"
 
 rust-version = "1.85"
 edition = "2024"
@@ -91,15 +91,37 @@ unused_qualifications = "warn"
 unused_lifetimes = "warn"
 
 [workspace.dependencies]
-# Mainline `main` (0.9.0-rc.9): edition 2024, rust-version 1.85. The
-# `release/0.8` backport line existed solely to hold MSRV 1.70 and is retired
-# with this release.
+# 0.9.0-rc.12: edition 2024, rust-version 1.85. The `release/0.8` backport line
+# existed solely to hold MSRV 1.70 and is retired.
 #
-# Git source: the 0.9.0-rc.* line is not on crates.io. That is fine here —
-# these crates are experimental and distributed by git tag, never published to
-# crates.io (see `publish = false` above), so a git dependency costs nothing.
-# Cargo.lock pins the exact rev regardless of the branch.
-secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "main", features = ["rand", "ct-eq"] }
+# REGISTRY, EXACT-PINNED, and both halves are deliberate.
+#
+# Was `{ git = "...", branch = "main" }`, which is wrong for a public repo
+# cutting tags. A branch pin puts the whole guarantee in `Cargo.lock`: the lock
+# holds a rev until someone runs `cargo update`, and then it silently takes
+# whatever landed upstream. Worse for a *tagged release* — the rev a tag's
+# lockfile names has no version identity, need never correspond to any published
+# secure-gate, and stops existing entirely if that branch is ever rebased or
+# force-pushed. Anyone building from our tag would be resolving an in-flight
+# commit. This workspace has already watched a consumer get burned by a pin that
+# silently stopped tracking upstream (see the rename note in CLAUDE.md); a
+# registry version is an immutable, published, auditable fact instead.
+#
+# `=` rather than a range: the 0.9.0-rc line is pre-release and still moving, so
+# a range would let a `cargo update` walk onto an rc nobody here has run the
+# CCTV vectors or D1-D5 against. Bumping is a deliberate edit of this line.
+#
+# Pre-release requirement syntax, which is a trap on this line: a caret matches
+# a pre-release only when the requirement itself carries one. `"0.9.0-rc"` would
+# track the line and `"=0.9.0-rc.12"` pins it — plain `"0.9"` resolves to
+# NOTHING, because there is no stable 0.9.x.
+#
+# Equivalence to what was tested, measured rather than assumed: the only `src/`
+# difference between published v0.9.0-rc.12 and secure-gate's `main` at
+# 43a7b4f5 (which this workspace's full suite ran against) is `#[cfg(doc)]
+# extern crate std;`, an intra-doc-link fix that is inert outside rustdoc.
+# Everything else on main past the tag is docs, tests and the version bump.
+secure-gate = { version = "=0.9.0-rc.12", features = ["rand", "ct-eq"] }
 
 # Was `=4.4.18`: genuine MSRV-1.70 scaffolding (clap 4.5.0 moved to 1.74).
 # The floor is 1.85 now and clap 4.6 declares exactly 1.85, so the cap is spent.

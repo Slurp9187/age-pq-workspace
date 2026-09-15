@@ -48,6 +48,17 @@ dynamic_newtype!(
 dynamic_newtype!(
     pub(crate) SecretText,
     String,
-    "Multi-line buffer holding one or more private keys: the keygen output file and \
-     the stdin buffer read by `convert_native_identities`."
+    "Multi-line buffer holding one or more private keys: the keygen output file. \
+     Constructed from a value that is already complete, so it never grows in place."
+);
+
+dynamic_newtype!(
+    pub(crate) SecretBytes,
+    Vec<u8>,
+    "Raw stdin buffer read by `convert_native_identities`, holding one or more \
+     private keys before UTF-8 validation. This is a `Vec<u8>` rather than a \
+     `String` specifically so it can be filled through secure-gate's `io::Write` \
+     impl: that impl grows by hand and zeroizes each abandoned allocation, while \
+     `String::read_to_string` grows through `Vec`'s own realloc, which frees the \
+     old buffer still holding plaintext key material."
 );

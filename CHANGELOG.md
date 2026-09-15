@@ -8,6 +8,98 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.3] - unreleased
+
+### Changed
+
+- **`secure-gate` moves from a git branch to an exact registry pin:
+  `{ git, branch = "main" }` at `0.9.0-rc.9` -> `version = "=0.9.0-rc.12"` from
+  crates.io.** No call-site changes. rc.12's breaking change —
+  `Dynamic::new_with` takes a sized, pre-zeroed slot and the `Dynamic<String>`
+  one is removed — reaches nothing here, because every `new_with` call site in
+  this workspace is on a `Fixed` newtype.
+
+  **The source change matters more than the version change, because this
+  repository is public and cuts tags.** A branch pin puts the entire guarantee
+  in `Cargo.lock`, and the rev a tag's lockfile names has no version identity,
+  need never correspond to a published secure-gate, and stops existing if that
+  branch is rebased. Anyone building from our tag would be resolving an
+  in-flight commit. A registry version is immutable, published and checksummed.
+  `=` rather than a range because the 0.9.0-rc line is pre-release and still
+  moving: a range would let `cargo update` walk onto an rc nobody has run the
+  CCTV vectors or D1-D5 against.
+
+  Equivalence to what was tested, measured rather than assumed: the only `src/`
+  difference between published `v0.9.0-rc.12` and secure-gate `main` at
+  `43a7b4f5` — which this workspace's full suite ran against — is
+  `#[cfg(doc)] extern crate std;`, inert outside rustdoc. Everything else on
+  main past the tag is docs, tests and the version bump. Also re-verified at the
+  pinned version: the `io::Write` growth path for `Dynamic<Vec<u8>>` that the
+  plugin's stdin fix depends on is byte-identical to the rc.9 one it was
+  originally audited against.
+
+- **`conformance/` picked up the same pin.** It is not a workspace member, so it
+  inherits nothing and had silently stayed on `{ git, branch = "main" }` at
+  `0.9.0-rc.9` while the root moved — the same hand-maintained-duplicate hazard
+  as its `[lints.rust]` table. Both manifests now carry `=0.9.0-rc.12` and both
+  lockfiles resolve the same checksum.
+
+### Fixed (docs)
+
+- `age-pq-hpke::Error`'s `MlKemValidation` doc comment cited `[MLKEM]`, which
+  rustdoc parsed as an intra-doc link and could not resolve. Escaped, so
+  `cargo doc` is warning-clean. Pre-existing; CI runs clippy with `-D warnings`
+  but no `cargo doc`, so nothing was catching it.
+
+### Fixed
+
+**Secret buffers no longer grow inside `with_secret_mut`.** A `Vec` or `String`
+that reallocates frees its old buffer unwiped, and a secure-gate wrapper
+zeroizes only the allocation it ends up owning — so growth *inside* a wrapper
+reads as protected and is not. Two sites had it. Full record:
+[`docs/design/secret-buffer-growth.md`](docs/design/secret-buffer-growth.md);
+residual gap tracked in #43.
+
+### age-plugin-pq
+
+- `convert_native_identities` read stdin with `read_to_string` into a
+  `Dynamic<String>` of capacity 0. That path carries `AGE-SECRET-KEY-PQ-`
+  private keys, and the residue **scaled with the number of keys piped**: every
+  growth left an unwiped copy of everything read so far on the heap. It now
+  fills a `Dynamic<Vec<u8>>` through `io::copy`, which routes growth through
+  secure-gate's `io::Write` impl — that impl grows by hand and zeroizes each
+  buffer it abandons — and validates UTF-8 on the way out. Behaviour is
+  unchanged: whole-buffer validation, `InvalidData` on non-UTF-8, malformed
+  lines still fatal.
+
+  Not zero-residue, and not claimed as such: `io::copy`'s transfer buffer and
+  `Stdin`'s process-lifetime `BufReader` both still see plaintext, and neither
+  is reachable under `#![forbid(unsafe_code)]`. What is removed is the
+  unbounded chain that scales with input size. Upstream tracks the remaining
+  gap as secure-gate issue #133; it is not closable in code on stable Rust.
+
+### age-pq-hpke
+
+- `hpke.rs`'s one-stage `OneStageSecrets` buffer was built at capacity 0 and
+  grown by `extend_from_slice` with the HPKE shared secret. It is now sized
+  exactly (`2 * size_of::<u16>() + shared_secret.len()`) before the fill, the
+  same shape `labeled_extract` in `kdf.rs` already used. No wire-format change
+  — verified by 19/19 CCTV vectors and D1-D5 against age v1.3.1.
+
+### Docs
+
+- CLAUDE.md's Tier-2 boundary inventory listed the plugin's stdin read as a
+  correct **Tier 1** "inside `with_secret_mut`". That reasoning was backwards:
+  being inside the closure is what let the caller reach `Vec`'s realloc. The
+  entry is corrected and the section now carries the general rule — fill a
+  growable wrapper through `Write`, or size it exactly before construction.
+- Recorded a fourth exit from wrapper protection, invisible to a grep for
+  either `expose_secret` or `into_inner`:
+  `with_secret_mut(core::mem::take)`, used deliberately at four sites in
+  `kdf.rs`, which leaves the wrapper holding an empty `Vec`.
+
+---
+
 ## [0.2.0-rc.2] - 2026-09-11
 
 **The `age` 0.12 migration (issue #29).** `age` 0.11 -> 0.12, `age-core` 0.11 ->

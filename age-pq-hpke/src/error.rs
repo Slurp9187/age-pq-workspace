@@ -59,7 +59,7 @@ pub enum Error {
     /// canonical encoding of the polynomial it decodes to. Both normative
     /// lineages make it a MUST on the encapsulation side:
     /// draft-connolly-cfrg-xwing-kem-10 section 5.1 ("ML-KEM-768.Encaps(pk_M)
-    /// MUST perform the encapsulation key check of [MLKEM] section 7.2 and
+    /// MUST perform the encapsulation key check of \[MLKEM\] section 7.2 and
     /// raise an error if it fails") and draft-ietf-hpke-pq-05 section 3 ("an
     /// ML-KEM encapsulation key check failure causes an HPKE EncapError").
     /// Which revisions are pinned, and why they had drifted, is recorded in

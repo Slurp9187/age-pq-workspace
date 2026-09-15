@@ -49,15 +49,41 @@ unified — the secure-gate sections below bind every crate in full.
 | `age-pq-keys` | `secure-gate = { workspace = true }` |
 | `age-plugin-pq` | `secure-gate = { workspace = true }` |
 
-The workspace pin is a git dependency, not a registry version:
+The workspace pin is an **exact registry version**, not a git dependency:
 
 ```toml
-secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "main", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.12", features = ["rand", "ct-eq"] }
 ```
 
-`main` is the line now: `0.9.0-rc.9`, edition 2024, `rust-version = 1.85`. The
-`release/0.8` backport existed solely to hold MSRV 1.70 and is **retired** — do
-not send fixes there, and read `main`'s changelog when planning anything.
+`0.9.0-rc.12` is edition 2024, `rust-version = 1.85` — exactly this workspace's
+floor. The `release/0.8` backport existed solely to hold MSRV 1.70 and is
+**retired** — do not send fixes there, and read the changelog when planning
+anything.
+
+**It was `{ git = "...", branch = "main" }` until `0.2.0-rc.3`, and the change is
+load-bearing for a public repo that cuts tags.** A branch pin puts the whole
+guarantee in `Cargo.lock`: the lock holds a rev until someone runs `cargo
+update`, and then silently takes whatever landed upstream. For a *tagged
+release* it is worse — the rev a tag's lockfile names has no version identity,
+need never correspond to any published secure-gate, and stops existing if the
+branch is rebased or force-pushed, so anyone building from the tag resolves an
+in-flight commit. This workspace has already watched a downstream consumer be
+burned by a pin that silently stopped tracking upstream (the rename trap, below).
+A registry version is immutable, published and checksummed instead.
+
+`=` rather than a range is also deliberate: the 0.9.0-rc line is pre-release and
+still moving, and a range would let `cargo update` walk onto an rc that nobody
+has run the CCTV vectors or D1-D5 against. Bumping is a deliberate edit.
+
+**Pre-release requirement syntax is a trap on this line.** A caret matches a
+pre-release only when the requirement itself carries one: `"0.9.0-rc"` tracks
+the line, `"=0.9.0-rc.12"` pins it, and plain `"0.9"` resolves to **nothing**,
+because there is no stable `0.9.x`.
+
+**`conformance/` carries its own copy of this pin** and inherits nothing, being
+excluded from the workspace. It sat on `{ git, branch = "main" }` at
+`0.9.0-rc.9` while the root had moved on — the same hand-maintained-duplicate
+hazard as its `[lints.rust]` table. If you bump secure-gate here, bump it there.
 
 Note that the base workspace pin enables no encoding feature; `age-pq-keys` and
 `age-plugin-pq` add `features = ["encoding-bech32", "std"]` on top, which is
@@ -478,7 +504,7 @@ Tier-3 examples in this workspace:
 `Self::Inner: Sized + SentinelValue + Zeroize`, and the impl is
 `impl<T: Default, const N: usize> SentinelValue for [T; N]` — the `Default`
 bound sits on the *element* type, so every array length qualifies (verified
-unchanged in `0.9.0-rc.9`). `into_inner` replaces the wrapper's contents with an inert sentinel,
+unchanged in `0.9.0-rc.13`). `into_inner` replaces the wrapper's contents with an inert sentinel,
 zeroizes that storage, and hands the caller the plain value.
 
 | Wrapper shape | Tier-3 (`into_inner`) | Tier-1 (`with_secret`) |
@@ -696,8 +722,51 @@ wrong — that mismatch has been found twice.
 |------|------|------|--------|
 | `libcrux_ml_kem::*::encapsulate(&pk, [u8; 32])` | `kem/ml_kem/*.rs` | **3** | Randomness taken by value — consume via `into_inner` |
 | `libcrux_ml_kem::*::generate_key_pair([u8; 64])` | `kem/ml_kem/*.rs` | **3** | `d \|\| z` seed taken by value — consume via `into_inner` |
-| `libcrux_ml_kem::*Ciphertext::from([u8; N])` | `kem/ml_kem/*.rs` | 1 | Built inside a `with_secret` closure, then passed to `decapsulate`; no reference escapes |
+| `libcrux_ml_kem::*Ciphertext::from([u8; N])` | `kem/ml_kem/*.rs` | 1 | Built inside a `with_secret` closure. **No reference escapes — but a copy does**, see below; the bytes are public, so that is acceptable here |
 | `libcrux_ml_kem::*PublicKey::from([u8; N])` | `kem/ml_kem/*.rs` | 1 | Same shape, for the public key |
+
+**"No reference escapes" is not the same as "nothing escapes."** `with_secret`
+lends `&T`; it governs access, not what the body does once it can see the bytes.
+Where `T: Copy` — every `Fixed<[u8; N]>` here — dereferencing the parameter
+materialises an owned array that nothing zeroizes:
+
+```rust
+let escaped = key.with_secret(|p| *p);                 // owned [u8; N], unwiped
+let escaped = key.with_secret(|&p| p);                 // same, no `*` to grep for
+let owned   = pk.with_secret(|b| PublicKey::from(*b)); // the `*` is buried in the call
+let v       = plaintext.with_secret(|b| b.to_vec());   // no operator at all
+```
+
+The wrapper still wipes its own copy. It never knew about yours, and **no lint
+catches any of these** — `clippy::all`, `pedantic`, `nursery` and `restriction`
+were all pointed at this and produced only cosmetic diagnostics.
+
+These greps find the first two forms and **miss the last two**, which is why an
+audit here is a read, not a grep:
+
+```sh
+grep -rnE 'with_secret(_mut)?\(\|[a-z_]+\|[^)]*\*'   # any `*`, not just adjacent
+grep -rnE 'with_secret(_mut)?\(\|&'
+```
+
+A narrower first pattern (`\|[a-z_]+\| ?\*`, requiring the `*` right after the
+parameter) reported **one** hit here when the real count was **seven** — it
+missed every `from(*bytes)`. A grep quoted without its blind spot turns "I
+should audit this" into "I ran the check".
+
+Current inventory, all deliberate: six `from(*bytes)` sites in `kem/ml_kem/*.rs`
+copy 768–1568 byte ML-KEM **public** keys and ciphertexts; `mlkem768x25519.rs`'s
+`pub fn bytes()` copies the 32-byte seed out by the wire-boundary rule;
+`hpke.rs`'s `open` returns `bytes.to_vec()` by the same rule; and
+`age-pq-keys/src/lib.rs`'s `<[u8; 16]>::try_from` materialises the age **file
+key** because `age::FileKey::new` takes `Box<[u8; 16]>` and offers no
+closure-shaped alternative. The last is a genuine secret in an unavoidable
+boundary — do not "fix" it without a replacement upstream API.
+
+**`Dynamic` is immune only to the first two forms.** `Dynamic<Vec<u8>>` and
+`Dynamic<String>` reject `*v` with `error[E0507]`, since their inner types are
+not `Copy` — but `.to_vec()` and `.clone()` copy out of them perfectly well.
+`hpke.rs:353` is exactly that.
 | `libcrux_ml_kem::*::validate_public_key(&pk)` | `kem/ml_kem/*.rs` | 1 | FIPS 203 §7.2 check, inside the same closure |
 | `x25519_dalek::StaticSecret::from([u8; 32])` | `kem/x25519.rs` | **3** | Scalar by value — `StaticSecret` is itself `ZeroizeOnDrop` |
 | `x25519_dalek::SharedSecret::as_bytes()` | `kem/x25519.rs` | 2 | Returns `&[u8; 32]`; copied into the wrapper via `new_with` |
@@ -728,7 +797,7 @@ goes through secure-gate's `try_to_bech32*` / `try_from_bech32*`.
 
 | Call | Tier | Reason |
 |------|------|--------|
-| `io::stdin().read_to_string(buf)` | 1 | Inside `with_secret_mut` — the plugin protocol's stdin read |
+| `io::copy(&mut io::stdin(), &mut SecretBytes)` | 1 | The plugin protocol's stdin read. Fills through secure-gate's `io::Write` impl, which grows by hand and zeroizes each abandoned allocation |
 | `age_plugin::*` callbacks | 2 | Trait signatures defined upstream |
 | `fs::write` for identity files | — | Paths and their contents are handled as public at this boundary |
 
@@ -816,9 +885,51 @@ Two preconditions worth knowing before reaching for either:
   enable it, so `Plaintext` gets these impls only via feature unification from
   the two upper crates. A change in what those crates enable could remove them
   from under `age-pq-hpke` without any edit to `age-pq-hpke` itself.
-- **Neither is used anywhere in this workspace today.** This section documents
-  an available capability, not an established pattern — so it is also
-  unexercised by any test.
+- **`as_reader` is not used anywhere in this workspace today**, so it is
+  unexercised by any test. The `Write` path *is* used — see below.
+
+**Fill a growable wrapper through `Write`, never by growing it yourself.**
+This is the rule, and it is the one the plugin's stdin read got wrong for
+several releases while this file vouched for it as a correct Tier-1 site:
+
+```rust
+// WRONG — grows the String through `Vec`'s own realloc, which frees each
+// outgrown buffer UNWIPED. The wrapper zeroizes only the allocation it ends
+// up owning, so N reallocs leave N plaintext copies on the heap.
+let mut input = SecretText::new(String::new());
+input.with_secret_mut(|buf| io::stdin().read_to_string(buf))?;
+
+// CORRECT — secure-gate's `io::Write` impl grows by hand: it allocates,
+// copies, zeroizes the old buffer including spare capacity, then drops it.
+let mut input = SecretBytes::new(Vec::new());
+io::copy(&mut io::stdin(), &mut input)?;
+```
+
+`with_secret_mut` is a **third door to the same hazard** as an unsized
+constructor, and it does not look like one — being inside the closure reads as
+protected. Anything that can reallocate (`extend_from_slice`, `push`,
+`read_to_string`, `write!`) is unsafe there unless capacity is exact and
+reserved before the wrapper is constructed, as `labeled_extract` in
+`age-pq-hpke/src/kdf.rs` does and as `hpke.rs`'s `OneStageSecrets` now does.
+`Dynamic<String>` has no `Write` impl, so a growable secret **string** has no
+safe fill path — use `Dynamic<Vec<u8>>` and validate UTF-8 on the way out.
+
+Upstream tracks the residual gap as secure-gate issue #133; it cannot be closed
+in code, because stable Rust offers no hook between "logically dead" and
+"returned to the allocator" and `#![forbid(unsafe_code)]` rules out the
+alternatives. **The `Write` path is not zero-residue either** — `io::copy`'s
+transfer buffer and `Stdin`'s process-lifetime `BufReader` both still see
+plaintext and neither is reachable from here. What it removes is the
+*unbounded* chain that scales with input size. Full record:
+[`docs/design/secret-buffer-growth.md`](docs/design/secret-buffer-growth.md).
+
+**A fourth exit from protection, which no grep for the other two will find:**
+`with_secret_mut(core::mem::take)` moves the value out of the wrapper and
+returns it bare, leaving the wrapper holding an empty `Vec` that zeroizes
+nothing. `age-pq-hpke/src/kdf.rs` uses it deliberately at four sites — the
+internal `Kdf` trait returns `Vec<u8>` by design and every caller re-wraps
+immediately — but audit it alongside `expose_secret` and `into_inner`, not
+separately from them.
 
 ### Error message hygiene
 
