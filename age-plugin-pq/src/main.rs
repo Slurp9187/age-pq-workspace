@@ -19,12 +19,14 @@ use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce, aead::Aead};
 use clap::{CommandFactory, Parser};
 use rand::rngs::SysRng;
 use std::collections::{HashMap, HashSet};
-use std::io::{self, Read};
+use std::io;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 mod aliases;
 
-use crate::aliases::{FileKeyBytes, IdentityEncoding, SecretText, Seed32, SharedSecret32};
-use secure_gate::{Case, RevealSecret, RevealSecretMut, SecretLen, ToBech32, bech32_code_length};
+use crate::aliases::{
+    FileKeyBytes, IdentityEncoding, SecretBytes, SecretText, Seed32, SharedSecret32,
+};
+use secure_gate::{Case, RevealSecret, SecretLen, ToBech32, bech32_code_length};
 
 mod hpke_pq;
 use hpke_pq::derive_key_and_nonce;
@@ -462,11 +464,35 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
 fn convert_native_identities() -> io::Result<()> {
     // `input` holds the entire stdin buffer — potentially multiple native PQ
     // private keys in bech32 form. Wrap so the heap buffer zeroizes on drop.
-    let mut input = SecretText::new(String::new());
-    input.with_secret_mut(|buf| io::stdin().read_to_string(buf))?;
+    // Filled through secure-gate's `io::Write` impl, not `read_to_string`.
+    // `read_to_string` grows the `String` through `Vec`'s own realloc, which
+    // frees each outgrown buffer *unwiped* — so piping N keys strewed an
+    // intermediate copy of everything read so far across the heap for every
+    // growth, and the wrapper zeroized only the final allocation. The `Write`
+    // impl grows by hand and zeroizes each buffer it abandons.
+    //
+    // This does not reach zero residue and is not meant to read as if it does:
+    // `io::copy`'s own transfer buffer and `Stdin`'s process-lifetime
+    // `BufReader` both still see plaintext, and neither is reachable from here
+    // under `#![forbid(unsafe_code)]`. What it removes is the *unbounded* chain
+    // that scales with the number of keys piped, which is the part that made
+    // this a defect rather than a fixed-size residue. See docs/design.
+    let mut input = SecretBytes::new(Vec::new());
+    io::copy(&mut io::stdin(), &mut input)?;
 
     // One borrow for the whole loop rather than re-opening the wrapper per line.
-    input.with_secret(|input| -> io::Result<()> {
+    input.with_secret(|bytes| -> io::Result<()> {
+        // Whole-buffer validation, matching `read_to_string`'s semantics
+        // exactly: a non-UTF-8 byte anywhere fails the whole call. Per-line
+        // validation would buy nothing, because a line that is not a valid
+        // identity is already fatal below.
+        let input = std::str::from_utf8(bytes).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "stream did not contain valid UTF-8",
+            )
+        })?;
+
         for line in input.lines() {
             let line = line.trim();
             if line.is_empty() {

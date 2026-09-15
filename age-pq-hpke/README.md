@@ -23,7 +23,7 @@ Experimental project: not currently published on crates.io. Use a pinned GitHub 
 
 ```toml
 [dependencies]
-age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0-rc.1" } # the workspace repo; pin a release tag
+age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.3" } # the workspace repo; pin a release tag
 ```
 
 ## Usage

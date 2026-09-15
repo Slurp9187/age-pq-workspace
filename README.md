@@ -49,8 +49,8 @@ workspace and pin a single tag or revision:
 
 ```toml
 [dependencies]
-age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0-rc.1" }
-age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.1.0-rc.1" }
+age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.3" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.3" }
 ```
 
 The crates share one version and ship under one tag: `age-pq-keys` and
@@ -58,12 +58,26 @@ The crates share one version and ship under one tag: `age-pq-keys` and
 whatever a single tag points at. Mixing tags between them is not a supported
 combination.
 
-**Use a tag that exists.** `git tag -l` is the authority; today that is
-`v0.1.0-rc.1`, the frozen MSRV-1.70 line. The `0.2` line (MSRV 1.85, this
-branch) is untagged until its own release candidate ships — pin a revision if
-you need it before then. No `release/0.*` branch is published yet either; see
-[`docs/plans/msrv-1.85-cohort-bump.md`](docs/plans/msrv-1.85-cohort-bump.md)
-(DECIDE-13) for how the `0.1` / `0.2` lines split and when a branch appears.
+**Use a tag that exists, and `git tag -l` is the authority** — not this
+paragraph, which is a snapshot and goes stale the moment a tag is cut. At the
+time of writing the current tag is `v0.2.0-rc.3` on the `0.2` line (MSRV 1.85,
+edition 2024), and that is what the example above pins.
+
+**Two lines exist; pick deliberately.** `0.2` is the maintained one. `0.1` is
+frozen at `v0.1.0-rc.1` and exists solely to hold MSRV 1.70 — it receives no
+fixes, so pin it only if 1.70 is a hard floor for you, and expect to migrate.
+Tags on the `0.0.*` line and the two per-crate `age-hpke-pq-*` /
+`age-recipient-pq-*` tags predate the September 2026 validation fixes and
+should not be used for anything.
+
+This is worth stating plainly because pinning is how consumers of this
+workspace have actually got into trouble: a pin by the pre-rename package names
+kept resolving long after those packages stopped existing, and withheld two
+MUST-level validation fixes without ever erroring. If you pin by tag or rev,
+check periodically how far behind you are — nothing will tell you.
+
+See [`docs/plans/msrv-1.85-cohort-bump.md`](docs/plans/msrv-1.85-cohort-bump.md)
+(DECIDE-13) for how the `0.1` / `0.2` lines split.
 
 ## Requirements
 

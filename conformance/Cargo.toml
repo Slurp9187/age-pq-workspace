@@ -57,7 +57,13 @@ age-pq-hpke = { path = "../age-pq-hpke" }
 age-pq-keys = { path = "../age-pq-keys" }
 age = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982ba7e30fe1c72db506fe" }
 age-core = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982ba7e30fe1c72db506fe" }
-secure-gate = { git = "https://github.com/Slurp9187/secure-gate", branch = "main", features = ["rand", "ct-eq", "encoding-bech32", "std"] }
+# Registry, exact-pinned, matching the root workspace. This package is NOT a
+# workspace member, so it inherits nothing — the pin has to be repeated here and
+# **nothing keeps the two in step**, the same hazard as the hand-copied
+# `[lints.rust]` table above. If you bump secure-gate in the root manifest,
+# bump it here too. It was left on `{ git, branch = "main" }` at 0.9.0-rc.9
+# when the root moved, which is exactly how that drift starts.
+secure-gate = { version = "=0.9.0-rc.12", features = ["rand", "ct-eq", "encoding-bech32", "std"] }
 sha2 = "0.10"
 
 # rage's own patch table, reproduced verbatim. rage declares `hpke = "0.14"` but

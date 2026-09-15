@@ -88,7 +88,17 @@ fn new_context(
         // --- One-stage SHAKE path (draft-ietf-hpke-pq section 5) ---------
 
         // Serialize `secrets = len(psk) || len(ss) || ss`.
-        let mut secrets = OneStageSecrets::new(Vec::new());
+        //
+        // Capacity is the exact serialized length — two u16 length prefixes plus
+        // the shared secret — so the `extend_from_slice` calls below never
+        // reallocate. That matters beyond the allocation count: growing a `Vec`
+        // through `with_secret_mut` reallocates by `Vec`'s own path, which frees
+        // the old buffer *unwiped* while it still holds the shared secret. The
+        // wrapper only zeroizes the allocation it ends up owning. Same reason
+        // `labeled_extract` in kdf.rs sizes its buffer up front.
+        let mut secrets = OneStageSecrets::new(Vec::with_capacity(
+            2 * size_of::<u16>() + shared_secret.len(),
+        ));
         let mut buf = [0u8; 2];
         secrets.with_secret_mut(|secrets_bytes| {
             BigEndian::write_u16(&mut buf, 0); // empty psk length

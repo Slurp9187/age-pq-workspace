@@ -9,6 +9,10 @@ name: CI
 on:
   push:
     branches: [main]
+    # Tag builds are the only ref where the changelog's release claim is both
+    # public and checkable, so they are the only place `--mode release` runs.
+    # Without this trigger that invariant is never enforced anywhere.
+    tags: ["v*"]
   pull_request:
 
 env:
@@ -36,9 +40,25 @@ jobs:
       # A section reading `## [1.2.0] - 2026-09-10` when v1.2.0 was never
       # tagged claims a release that did not happen, and reads that way
       # forever. That exact state existed on this branch before the check did.
+      #
+      # RUN IN THE MODE THE REF CAN ANSWER. The second invariant used to run
+      # everywhere, including on pull requests -- where the tag *cannot* exist,
+      # because it is cut from a merge commit that does not exist while the PR
+      # is open. That made the ordinary release flow (date the changelog in the
+      # release PR, merge, tag the merge commit) produce a failing check with
+      # no way to make it pass, so the choice was merge-red or split the date
+      # into a separate post-merge commit. The check was wrong, not the flow.
+      #
+      # `pending` on branches, PRs and main: the top section names the manifest
+      # version and its marker is well formed. `release` on tag builds: that
+      # plus the date must match a real tag with the tree sitting at it, which
+      # is the one moment the claim is both public and checkable.
       # Protocol and rationale: .claude/skills/changelog-protocol/SKILL.md
       - name: Changelog protocol
-        run: python .claude/skills/changelog-protocol/scripts/check_changelog.py
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then MODE=release; else MODE=pending; fi
+          echo "ref=$GITHUB_REF -> --mode $MODE"
+          python .claude/skills/changelog-protocol/scripts/check_changelog.py --mode "$MODE"
       # Keep this in step with rust-toolchain.toml, which pins the same version
       # and is what every bare `cargo` in this repo actually obeys.
       - uses: dtolnay/rust-toolchain@1.85
