@@ -51,6 +51,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cargo doc` is warning-clean. Pre-existing; CI runs clippy with `-D warnings`
   but no `cargo doc`, so nothing was catching it.
 
+- **Every README told consumers to pin `v0.1.0-rc.1`** — the frozen MSRV-1.70
+  line — in `README.md`, `age-pq-hpke/README.md` and `age-pq-keys/README.md`.
+  The root README additionally asserted that "the `0.2` line … is untagged
+  until its own release candidate ships", which had been false since
+  `v0.2.0-rc.1`. So the published install instructions routed every new
+  consumer onto an unmaintained line for two releases.
+
+  All three now pin `v0.2.0-rc.3`, and the surrounding prose says which line is
+  maintained, which is frozen and why, and that the `0.0.*` and pre-rename
+  per-crate tags predate the September 2026 validation fixes. It also warns
+  that a tag or rev pin goes stale silently — the failure mode a downstream
+  consumer of these crates actually hit, where a pin by the pre-rename package
+  names kept resolving while withholding two MUST-level validation fixes and
+  never erroring.
+
 ### Fixed
 
 **Secret buffers no longer grow inside `with_secret_mut`.** A `Vec` or `String`
