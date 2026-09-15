@@ -125,6 +125,40 @@ def commits_since(tag: str) -> int | None:
         return None
 
 
+DOC_TAG_PIN = re.compile(r'tag\s*=\s*"(?P<tag>[^"]+)"')
+
+
+def doc_tag_pins(root: pathlib.Path) -> list[tuple[pathlib.Path, int, str]]:
+    """Every `tag = "..."` a reader is told to pin, in tracked markdown.
+
+    These are install instructions, so they are claims about what a consumer
+    should depend on -- and they rot silently, because nothing compiles a
+    README. In this project they sat two releases stale, naming a tag from a
+    frozen maintenance line, while the manifest moved on twice.
+
+    Scope is **README.md only**, and deliberately so. Scanning all markdown
+    produced two false positives here, both worth knowing about: a plan
+    document discussing what a consumer pinning `tag = "v0.1.0"` would get
+    (prose about a pin, not a pin), and an upgrade guide containing
+    `tag = "mlkem768x25519"` -- an age *stanza* tag, sharing nothing with git
+    but the word. A check that flags prose gets switched off.
+    """
+    found: list[tuple[pathlib.Path, int, str]] = []
+    for path in sorted(root.rglob("README.md")):
+        parts = set(path.parts)
+        if "target" in parts or ".git" in parts:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            match = DOC_TAG_PIN.search(line)
+            if match:
+                found.append((path, number, match.group("tag")))
+    return found
+
+
 def top_heading(path: pathlib.Path) -> tuple[int, str, str] | None:
     """(line number, version, marker) of the newest version section."""
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -296,6 +330,44 @@ def main() -> int:
             failures += 1
         else:
             print(f"  ok  {rel}:{line_no}  [{version}] - {marker}")
+
+    # ---- documented tag pins -------------------------------------------
+    # A README that says `tag = "vX.Y.Z"` is an instruction to consumers, and
+    # the only thing that ever checked it was someone remembering. Two rules,
+    # split the same way as the date:
+    #
+    #   pending -- the tag named must EXIST. Bumping a README to the version
+    #              being opened points readers at a tag nobody can fetch.
+    #   release -- the tag named must be THE ONE BEING CUT. This is what makes
+    #              the README bump part of the release rather than a chore
+    #              after it; you cannot tag while the docs still sell the
+    #              previous version.
+    #
+    # Tags on other lines are legitimate (a frozen MSRV branch, say), so
+    # release mode only requires that *some* pin names the release. A pin that
+    # names a real tag on another line is left alone.
+    pins = doc_tag_pins(root)
+    if pins:
+        names_release = any(tag == expected_tag for _, _, tag in pins)
+        for path, number, tag in pins:
+            rel = path.relative_to(root)
+            if tag not in tags:
+                print(
+                    f"::error file={rel},line={number}::pins tag {tag}, which "
+                    f"does not exist. Readers cannot fetch it. Documented pins "
+                    f"name released tags only."
+                )
+                failures += 1
+        if args.mode == "release" and not names_release:
+            listed = ", ".join(sorted({t for _, _, t in pins}))
+            print(
+                f"::error::releasing {expected_tag} but no documented tag pin "
+                f"names it (found: {listed}). Bump the install instructions in "
+                f"the same commit that dates the changelog."
+            )
+            failures += 1
+        elif not any(tag not in tags for _, _, tag in pins):
+            print(f"  ok  {len(pins)} documented tag pin(s), all resolvable")
 
     if failures:
         print(f"::error::{failures} changelog protocol violation(s)")
