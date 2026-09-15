@@ -8,7 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0-rc.3] - unreleased
+## [0.2.0-rc.3] - 2026-09-15
 
 ### Changed
 
@@ -50,6 +50,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rustdoc parsed as an intra-doc link and could not resolve. Escaped, so
   `cargo doc` is warning-clean. Pre-existing; CI runs clippy with `-D warnings`
   but no `cargo doc`, so nothing was catching it.
+
+- **The changelog protocol's second invariant was enforced on refs that cannot
+  satisfy it.** A tag is cut from a merge commit, so on a pull request the
+  answer to "does `vX.Y.Z` exist?" is necessarily *no*. Dating the release PR —
+  the ordinary way to cut a release — therefore produced an error that could
+  never clear, because clearing it required the tag that required the merge.
+
+  The two escapes were merging with a red check, or splitting the date into a
+  separate post-merge commit. The second was in use here (`a0547eb`, for
+  `0.2.0-rc.2`) and had been mistaken for the protocol rather than recognised as
+  a workaround for a broken check.
+
+  `check_changelog.py` now takes `--mode`. `pending` (default, used on branches,
+  PRs and `main`) checks that the top section names the manifest version, that
+  its marker is well formed, and invariant 3. `release` adds the strict
+  requirement that a dated section match a real tag with the tree sitting at it,
+  and runs only on tag builds — the one moment the release claim is both public
+  and checkable. CI gained a `tags: ["v*"]` trigger, without which the strict
+  mode would never run anywhere.
+
+  Nothing is weakened: a dated section with no tag is *pending* on a branch and
+  still an error on a tag. Verified by running both modes against both states
+  rather than by argument.
 
 - **Every README told consumers to pin `v0.1.0-rc.1`** — the frozen MSRV-1.70
   line — in `README.md`, `age-pq-hpke/README.md` and `age-pq-keys/README.md`.

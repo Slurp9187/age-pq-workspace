@@ -147,6 +147,19 @@ def main() -> int:
         default="v",
         help="tag prefix; use --tag-prefix '' for bare tags (default: v)",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("pending", "release"),
+        default="pending",
+        help=(
+            "pending (default): the tree is in flight -- a branch, a pull "
+            "request, or main between releases. Checks that the top section "
+            "names the manifest version and carries a well-formed marker. "
+            "release: the tree is being published -- run this on a tag build. "
+            "Additionally requires the date to match a real tag and the tree "
+            "to sit at it."
+        ),
+    )
     args = parser.parse_args()
 
     root = pathlib.Path(args.root).resolve()
@@ -230,13 +243,30 @@ def main() -> int:
                 f"neither an ISO date nor 'unreleased'."
             )
             failures += 1
-        elif dated and not tag_exists:
+        elif dated and not tag_exists and args.mode == "release":
             print(
                 f"::error file={rel},line={line_no}::[{version}] is dated "
                 f"{marker} but tag {expected_tag} does not exist. A date is the "
                 f"release marker: use '- unreleased' until the tag is cut."
             )
             failures += 1
+        elif dated and not tag_exists:
+            # Pending mode. The tag cannot exist yet on a branch or a pull
+            # request -- it is cut from the merge commit, which does not exist
+            # while the PR is open. Erroring here made the released state
+            # unreachable through a PR: date it and the check fails and can
+            # never pass; leave it undated and the date has to land in a
+            # separate post-merge commit. Both are ceremony, and the second
+            # trained a habit of merging red.
+            #
+            # Nothing is lost. The claim this invariant guards against -- a
+            # section that reads as released forever when no tag was cut --
+            # only misleads once it is published, and `--mode release` on the
+            # tag build is where that is both checkable and true.
+            print(
+                f"  ok  {rel}:{line_no}  [{version}] - {marker}  "
+                f"(pending: {expected_tag} not cut yet)"
+            )
         elif dated and tag_exists and commits_since(expected_tag) != 0:
             # Invariant 3. Invariants 1 and 2 both hold here -- the version
             # matches the manifest and the date matches a real tag -- yet the

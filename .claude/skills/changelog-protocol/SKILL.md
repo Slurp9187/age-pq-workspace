@@ -17,7 +17,8 @@ forever, and nothing complains.
 Whatever the package manifest says the current version is, the newest section in
 the changelog is headed with that exact string.
 
-**2. A version heading carries a date if and only if that tag exists.**
+**2. A version heading carries a date if and only if that tag exists —
+checked where that question can be answered.**
 
 ```
 ## [1.2.0] - unreleased      while the work is in flight
@@ -26,6 +27,39 @@ the changelog is headed with that exact string.
 
 One separator, two possible values. The date **is** the release marker; it is
 not decoration and not the date the work happened.
+
+**The "where" is not a detail — getting it wrong makes the ordinary release
+flow impossible.** A tag is cut from a merge commit, which does not exist while
+the pull request is open. So on a PR branch the answer to "does this tag
+exist?" is necessarily *no*, and enforcing the invariant there fails a
+changelog that is perfectly correct and will be true minutes later.
+
+That is not hypothetical: this checker did exactly that. Dating the release PR
+produced an error that could never clear, because clearing it required a tag
+that required the merge. The only escapes were merging with a red check, or
+splitting the date into a separate post-merge commit — ceremony invented to
+satisfy a check, then mistaken for the protocol. **The check was wrong, not the
+workflow.**
+
+So the script takes `--mode`:
+
+| Mode | Where | Enforces |
+|---|---|---|
+| `pending` (default) | branches, pull requests, `main` | Invariant 1, marker well-formed, invariant 3 |
+| `release` | tag builds only | the above **plus** dated ⇒ tag exists, tree at the tag |
+
+A dated section with no tag is *pending* on a branch and *wrong* on a tag. Same
+text, different claim, because a release claim only misleads once it is
+published. Run `release` on the tag build — the one moment it is both true and
+checkable.
+
+The ordinary flow then works with no ceremony at all:
+
+```
+date the changelog in the release PR   ->  pending: ok
+merge to main                          ->  pending: ok
+tag the merge commit, push both        ->  release: ok
+```
 
 **3. A dated top section must sit at its own tag's commit.**
 
@@ -90,9 +124,14 @@ measurement. If it is just "when I did this", drop it.
 2. **Accumulate.** Entries go under that heading, grouped by type
    (`### Added` / `### Changed` / `### Fixed` / `### Removed`). No dates unless
    the date is evidence.
-3. **Cut.** Replace `- unreleased` with the ISO date, commit, tag from that
-   commit. The tag name is the version with the project's usual prefix
-   (commonly `v`).
+3. **Cut.** Replace `- unreleased` with the ISO date. Through a pull request,
+   that edit belongs **in the release PR**, alongside the work it describes —
+   merge it, then tag the merge commit. The tag name is the version with the
+   project's usual prefix (commonly `v`).
+
+   Do **not** split the date into a separate post-merge commit to keep a check
+   quiet. That habit exists only where invariant 2 is being enforced on refs
+   that cannot satisfy it; fix the check's mode instead.
 4. **Repeat.** The next bump opens a new section. Never leave a standing empty
    one.
 
@@ -166,17 +205,24 @@ success, which is the worst shape a failure can take.
 
 ### If CI validates anything tag-dependent
 
-This protocol creates such a case: between dating a heading and creating the
-tag, the tree fails its own check —
+This protocol used to create such a case, and the fix was to stop creating it
+rather than to route around it. Between dating a heading and creating the tag,
+the tree failed its own check —
 
 ```
 ::error::[X.Y.Z] is dated 2026-09-10 but tag vX.Y.Z does not exist
 ```
 
-— so the tag must be visible to the workflow when it runs. `--follow-tags`
-sends both refs in one push and should satisfy that, but if you want certainty
-rather than reasoning, push the tag first and the branch second. That removes
-the timing question instead of arguing about it.
+— which is unavoidable on a pull request, since the tag is cut from a merge
+commit that does not exist yet. `--mode pending` is the answer: that window is
+now a normal state, not a failure, and only the tag build asks the strict
+question. See invariant 2.
+
+The advice this section used to give — push the tag first, or rely on
+`--follow-tags` to send both refs together — was a workaround for the defect
+and is no longer needed to keep CI green. `git push --follow-tags` is still the
+right way to push a release, because it sends the branch and the annotated tag
+in one operation. Just don't reach for it believing a red window depends on it.
 
 ## One changelog or many?
 
@@ -221,9 +267,14 @@ It reads the version from the manifest, reads the top section of each changelog,
 and compares against the tags actually present.
 
 ```sh
-python .claude/skills/changelog-protocol/scripts/check_changelog.py
+python .claude/skills/changelog-protocol/scripts/check_changelog.py                 # pending (default)
+python .claude/skills/changelog-protocol/scripts/check_changelog.py --mode release  # tag builds
 python .claude/skills/changelog-protocol/scripts/check_changelog.py --changelog CHANGELOG.md docs/CHANGELOG.md
 ```
+
+**Pick the mode from the ref, not from habit.** `--mode release` on anything
+that is not a tag build will reject a correctly-dated release PR, because the
+tag it demands cannot exist until that PR merges. See invariant 2.
 
 It deliberately checks **only the newest section** in each file. Historical
 sections are frozen, and old projects accumulate legitimate oddities — a
@@ -236,10 +287,20 @@ that is the one being edited at release time.
 default, and without tags every dated section looks untagged:
 
 ```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0        # or: fetch-tags: true
-- run: python .claude/skills/changelog-protocol/scripts/check_changelog.py
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]          # without this, `release` mode never runs anywhere
+  pull_request:
+
+steps:
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0      # or: fetch-tags: true
+  - name: Changelog protocol
+    run: |
+      if [[ "$GITHUB_REF" == refs/tags/* ]]; then MODE=release; else MODE=pending; fi
+      python .claude/skills/changelog-protocol/scripts/check_changelog.py --mode "$MODE"
 ```
 
 ## Porting this to another project
