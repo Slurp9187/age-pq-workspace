@@ -8,6 +8,63 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.4] - unreleased
+
+### Docs
+
+- **CLAUDE.md gains *Verifying the question you were actually asked*.** The
+  file already catalogues unchecked claims; this records the harder neighbour —
+  a claim that *was* checked, carefully, against the wrong question. Three
+  instances, all from one session, all by people specifically hunting the thing
+  they missed.
+
+  The load-bearing one: `git tag -l` lists **local** refs, reads as
+  authoritative, and its output is indistinguishable from the published set.
+  Here the two disagreed by eight tags, and the local list produced "eight
+  published tags carry both defects" — which reached a downstream consumer's
+  remediation plan as a security claim before anyone ran
+  `git ls-remote --tags origin`. Three parties arrived at it independently, so
+  it is a property of the tool rather than one person's slip.
+
+  What made it survive is that the *contents* of those tags were then verified
+  rigorously and correctly. Careful verification of the adjacent question reads
+  exactly like verification of the real one, and inherits the confidence the
+  careful part earned.
+
+  Also recorded: an audit grep is a lower bound and never a count (a `with_secret`
+  copy-out sweep reported 1 site against a real 7, and a third form has no
+  operator to match on), and a relay can add falsehood in either direction —
+  strengthening a claim the source did not make, or withdrawing a true one —
+  both invisible to the source.
+
+  No code is affected. The tags in question were never published; every tag on
+  `origin` carries both September 2026 validation fixes.
+
+### Changed
+
+- **The changelog checker now verifies documented tag pins**, closing the gap
+  that let the READMEs sit two releases stale while pointing consumers at the
+  frozen MSRV-1.70 line. A `tag = "vX.Y.Z"` in a README is an instruction to
+  consumers, and nothing compiles a README.
+
+  Same split as the date: in `pending` every tag named must **exist** (so a
+  README cannot be bumped to a version that is only being opened), and in
+  `release` some pin must name **the tag being cut** (so the README bump
+  happens in the release rather than as a chore after it). Pins naming real
+  tags on other lines — a frozen maintenance branch — are left alone.
+
+  Scope is `README.md` only. Scanning all markdown immediately produced two
+  false positives: a plan document discussing what a consumer pinning
+  `tag = "v0.1.0"` would get, and an upgrade guide containing
+  `tag = "mlkem768x25519"` — an age **stanza** tag, sharing nothing with git
+  but the word.
+
+  Consequently the READMEs still pin `v0.2.0-rc.3` and are correct to: that is
+  the newest tag that exists. They move when rc.4 is cut, and the checker now
+  fails the release if they do not.
+
+---
+
 ## [0.2.0-rc.3] - 2026-09-15
 
 ### Changed

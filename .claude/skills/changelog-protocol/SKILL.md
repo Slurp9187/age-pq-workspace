@@ -124,10 +124,11 @@ measurement. If it is just "when I did this", drop it.
 2. **Accumulate.** Entries go under that heading, grouped by type
    (`### Added` / `### Changed` / `### Fixed` / `### Removed`). No dates unless
    the date is evidence.
-3. **Cut.** Replace `- unreleased` with the ISO date. Through a pull request,
-   that edit belongs **in the release PR**, alongside the work it describes —
-   merge it, then tag the merge commit. The tag name is the version with the
-   project's usual prefix (commonly `v`).
+3. **Cut.** Replace `- unreleased` with the ISO date, **and bump any
+   `tag = "vX.Y.Z"` in your READMEs to the version being released.** Through a
+   pull request, both edits belong **in the release PR**, alongside the work
+   they describe — merge it, then tag the merge commit. The tag name is the
+   version with the project's usual prefix (commonly `v`).
 
    Do **not** split the date into a separate post-merge commit to keep a check
    quiet. That habit exists only where invariant 2 is being enforced on refs
@@ -275,6 +276,33 @@ python .claude/skills/changelog-protocol/scripts/check_changelog.py --changelog 
 **Pick the mode from the ref, not from habit.** `--mode release` on anything
 that is not a tag build will reject a correctly-dated release PR, because the
 tag it demands cannot exist until that PR merges. See invariant 2.
+
+### Documented tag pins
+
+A README saying `age-foo = { git = "…", tag = "v1.2.0" }` is an instruction to
+consumers, and nothing compiles a README — so it rots in silence. In the
+project this came from it sat **two releases stale**, naming a tag from a
+frozen maintenance line, quietly routing every new consumer onto unmaintained
+code. Nothing noticed for months.
+
+So the checker reads every `README.md` and applies the same split as the date:
+
+- **`pending`** — each tag named must **exist**. Bumping a README to the
+  version you are opening points readers at a tag nobody can fetch.
+- **`release`** — some pin must name **the tag being cut**. This is what makes
+  the README bump part of the release rather than a chore after it: you cannot
+  tag while the docs still sell the previous version.
+
+Pins naming real tags on *other* lines are fine — a frozen MSRV branch is a
+legitimate thing to document — so `release` requires only that the release
+appear, not that every pin match.
+
+**Scope is `README.md` only, learned the hard way.** Scanning all markdown
+produced two false positives immediately: a plan document discussing what a
+consumer pinning `tag = "v0.1.0"` would get (prose *about* a pin), and an
+upgrade guide containing `tag = "mlkem768x25519"` — an age *stanza* tag,
+sharing nothing with git but the word. A check that flags prose gets switched
+off, and a switched-off check protects nothing.
 
 It deliberately checks **only the newest section** in each file. Historical
 sections are frozen, and old projects accumulate legitimate oddities — a

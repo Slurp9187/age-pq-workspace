@@ -28,6 +28,52 @@ A sweep in 2026-09 checked all 173 assertions in this file against the code and
 found 42 false or stale. What survives has been re-verified; where a claim could
 not be, it now says so.
 
+### Verifying the question you were actually asked
+
+The failures above are unchecked claims. This is the harder neighbour: a claim
+that *was* checked, carefully, against the wrong question. Three instances, all
+from one session, all by people specifically looking for the thing they missed.
+
+**`git tag -l` is not the published tag list.** It lists local refs, its output
+is indistinguishable from the published set, and nothing about it says so. What
+a consumer can reach is:
+
+```sh
+git ls-remote --tags origin | grep -v '\^{}'
+```
+
+The two disagreed here by eight tags. Acting on the local list produced
+"eight published tags carry both defects" — which reached a downstream
+consumer's remediation plan as a security claim before anyone ran the remote
+command. **Three parties reached it independently**, each having run `git tag -l`
+and treated the result as authoritative. It is a trap that catches whoever
+checks, not one person's slip.
+
+What made it durable is that the *contents* of those tags were then verified
+rigorously — `git grep -c was_contributory` returning zero at the tag,
+`validate_public_key` read and confirmed as a no-op. All true, and all about
+what the objects contained rather than whether anyone could reach them. Careful
+verification of the adjacent question reads exactly like verification of the
+real one, and carries the confidence earned by the careful part.
+
+**An audit grep is a lower bound, never a count.** A sweep for secrets copied
+out of a `with_secret` borrow used a pattern requiring `*` adjacent to the
+closure parameter. It reported one site. The real number was seven — the six it
+missed spell the deref inside a call, `from(*bytes)`. A third form
+(`.to_vec()`, `.map()`) has no operator to match at all. See the copy-out
+section under *Tier-2 boundary inventory*.
+
+**A relay can add falsehood in either direction.** A maintainer's "not
+zeroizing as *assumed*" was passed on as "the changelog *understates* it",
+adding a severity claim the source never made; the claim was then withdrawn
+entirely on a one-word refinement. The authoritative changelog entry was in a
+clone on disk throughout, unread. Both the strengthening and the withdrawal
+were invisible to the source, and the file settled it in one command.
+
+The rule these share: **name the question the claim rests on, then check that
+one.** When a claim is about what someone else can reach, reachability is the
+question — not contents, not provenance, not what a local tool prints.
+
 ---
 
 ## Workspace overview
