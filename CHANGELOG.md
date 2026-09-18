@@ -40,6 +40,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   No code is affected. The tags in question were never published; every tag on
   `origin` carries both September 2026 validation fixes.
 
+- **Recorded the MLKEM1024-P384 distribution gap** in
+  `docs/design/mlkem1024p384-distribution.md`. `hpke-import-vs-own.md` costs the
+  variant in detail but only ever asks how to *build* it; nothing asked how a
+  user would **obtain** it. For a variant whose rationale is that the plugin
+  protocol is the sanctioned extension point, that gap is load-bearing — a
+  plugin nobody can install extends nothing. Current state as of 2026-09-18:
+  `.github/workflows/` holds only `ci.yml`, there is no release workflow or
+  artifact, and `publish = false` is deliberate, so a stranger cannot install
+  one today.
+
+  It also corrects a framing that would have aged badly. MLKEM1024-P384 is not a
+  bespoke variant: it sits in `draft-ietf-hpke-pq` alongside `0x647a` as
+  `0x0051`, and `c2sp.org/age` already binds its `0x0050` sibling as
+  `mlkem768p256tag`. The supportable description is *a standardised KEM awaiting
+  an age stanza binding*. No code is affected, and `mlkem768x25519` is untouched
+  — a future variant arrives as a new stanza tag.
+
 ### Changed
 
 - **The changelog checker now verifies documented tag pins**, closing the gap
