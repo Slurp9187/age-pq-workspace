@@ -1,5 +1,5 @@
 ---
-name: changelog-protocol
+name: age-pq-changelog-protocol
 description: Keep CHANGELOG files honest by making the release date a verifiable claim. Use when writing or reviewing changelog entries, cutting a release, bumping a version, or setting up changelog CI. Also use when a changelog section's version or date looks out of step with the manifest or the git tags.
 ---
 
@@ -268,9 +268,9 @@ It reads the version from the manifest, reads the top section of each changelog,
 and compares against the tags actually present.
 
 ```sh
-python .claude/skills/changelog-protocol/scripts/check_changelog.py                 # pending (default)
-python .claude/skills/changelog-protocol/scripts/check_changelog.py --mode release  # tag builds
-python .claude/skills/changelog-protocol/scripts/check_changelog.py --changelog CHANGELOG.md docs/CHANGELOG.md
+python .claude/skills/age-pq-changelog-protocol/scripts/check_changelog.py                 # pending (default)
+python .claude/skills/age-pq-changelog-protocol/scripts/check_changelog.py --mode release  # tag builds
+python .claude/skills/age-pq-changelog-protocol/scripts/check_changelog.py --changelog CHANGELOG.md docs/CHANGELOG.md
 ```
 
 **Pick the mode from the ref, not from habit.** `--mode release` on anything
@@ -328,7 +328,7 @@ steps:
   - name: Changelog protocol
     run: |
       if [[ "$GITHUB_REF" == refs/tags/* ]]; then MODE=release; else MODE=pending; fi
-      python .claude/skills/changelog-protocol/scripts/check_changelog.py --mode "$MODE"
+      python .claude/skills/age-pq-changelog-protocol/scripts/check_changelog.py --mode "$MODE"
 ```
 
 ## Porting this to another project

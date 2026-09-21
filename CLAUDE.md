@@ -57,7 +57,7 @@ verification of the adjacent question reads exactly like verification of the
 real one, and carries the confidence earned by the careful part.
 
 **The fix was already written down, in this repository, and that is the part
-worth sitting with.** `.claude/skills/changelog-protocol/SKILL.md` carries a
+worth sitting with.** `.claude/skills/age-pq-changelog-protocol/SKILL.md` carries a
 snippet captioned *"tags you have locally that the remote does not"*, which
 `comm`s `git tag -l` against `git ls-remote --tags origin` — exactly the
 comparison that settles this. It had been read during the same session. It is
@@ -485,7 +485,7 @@ is in the global `secure-gate` skill and is not repeated per repo.
 ## Changelog protocol
 
 Full rules and the portable checker:
-[`.claude/skills/changelog-protocol/SKILL.md`](.claude/skills/changelog-protocol/SKILL.md).
+[`.claude/skills/age-pq-changelog-protocol/SKILL.md`](.claude/skills/age-pq-changelog-protocol/SKILL.md).
 Two invariants, enforced by CI on `main`:
 
 1. **The top section matches the workspace version.** `[workspace.package]

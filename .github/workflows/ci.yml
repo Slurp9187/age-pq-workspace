@@ -53,12 +53,12 @@ jobs:
       # version and its marker is well formed. `release` on tag builds: that
       # plus the date must match a real tag with the tree sitting at it, which
       # is the one moment the claim is both public and checkable.
-      # Protocol and rationale: .claude/skills/changelog-protocol/SKILL.md
+      # Protocol and rationale: .claude/skills/age-pq-changelog-protocol/SKILL.md
       - name: Changelog protocol
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then MODE=release; else MODE=pending; fi
           echo "ref=$GITHUB_REF -> --mode $MODE"
-          python .claude/skills/changelog-protocol/scripts/check_changelog.py --mode "$MODE"
+          python .claude/skills/age-pq-changelog-protocol/scripts/check_changelog.py --mode "$MODE"
       # Keep this in step with rust-toolchain.toml, which pins the same version
       # and is what every bare `cargo` in this repo actually obeys.
       - uses: dtolnay/rust-toolchain@1.85
