@@ -10,7 +10,7 @@ use super::combiner;
 use super::ml_kem;
 use super::x25519;
 use crate::aliases::{
-    MlKem768Ciphertext1088, MlKem768PublicKey1184, Seed32, X25519EncapsulationKey,
+    MlKem768Ciphertext1088, MlKem768PublicKey1184, Seed32, SharedSecret, X25519EncapsulationKey,
     X25519EphemeralShare, X25519Scalar,
 };
 use crate::error::{Error, Result as CrateResult};
@@ -21,8 +21,6 @@ use crate::kem::common::{
 use secure_gate::RevealSecret;
 
 use core::fmt;
-
-use libcrux_ml_kem::mlkem768::MlKem768KeyPair;
 
 use rand::rngs::SysRng;
 use rand::{TryCryptoRng, TryRng};
@@ -133,9 +131,15 @@ impl fmt::Debug for Ciphertext {
 
 /// Expands a wrapped 32-byte master seed into an ML-KEM-768 keypair and a
 /// wrapped X25519 scalar via [`expand_seed`].
-fn expand_key(seed: &Seed32) -> (MlKem768KeyPair, X25519Scalar) {
+///
+/// Runs on every decapsulation. The ML-KEM private key it produces (2400
+/// bytes) is held in a [`ml_kem::MlKem768Keys`], which wipes it on drop;
+/// libcrux's own type would not. It is deliberately not cached on
+/// `DecapsulationKey`: caching would trade a per-call re-derivation for the
+/// expanded key living as long as the identity does.
+fn expand_key(seed: &Seed32) -> (ml_kem::MlKem768Keys, X25519Scalar) {
     let (ml_seed, x_secret) = expand_seed(seed);
-    let kp = ml_kem::keypair_from_seed(ml_seed);
+    let kp = ml_kem::keypair_from_seed(&ml_seed);
     (kp, x_secret)
 }
 
@@ -150,12 +154,15 @@ impl EncapsulationKey {
     /// 1. ML-KEM-768 encapsulate with `ml_rand_bytes`.
     /// 2. X25519 ephemeral DH with `ephemeral_bytes`.
     /// 3. SHA3-256 combiner producing the final 32-byte shared secret.
+    ///
+    /// Returns the shared secret still wrapped; the public entry points either
+    /// write it into caller-owned storage (`encapsulate_into`) or copy it out.
     fn encapsulate_inner(
         &self,
         ml_rand: Seed32,
         ephemeral: X25519Scalar,
-    ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
-        let (ct_m_bytes, ss_m) = ml_kem::encapsulate_with_seed(&self.pk_m, ml_rand)?;
+    ) -> CrateResult<(Ciphertext, SharedSecret)> {
+        let (ct_m_bytes, ss_m) = ml_kem::encapsulate_with_seed(&self.pk_m, &ml_rand)?;
         let (ct_x, ss_x) = x25519::encapsulate_to_public_key(ephemeral, &self.pk_x)?;
 
         let ct_x_bytes = X25519EphemeralShare::from(ct_x.to_bytes());
@@ -182,10 +189,41 @@ impl EncapsulationKey {
     }
 
     /// Encapsulates with fresh randomness from the provided CSPRNG.
+    ///
+    /// The returned shared secret is a plain array that nothing wipes. Prefer
+    /// [`EncapsulationKey::encapsulate_into`], which writes it into storage the
+    /// caller owns (and can wipe) without an intermediate copy.
     pub fn encapsulate<R: TryRng + TryCryptoRng>(
         &self,
         rng: &mut R,
     ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
+        let (ct, ss) = self.encapsulate_secret(rng)?;
+        Ok((ct, ss.with_secret(|b| *b)))
+    }
+
+    /// Encapsulates with fresh randomness, writing the shared secret into
+    /// `out` and returning the ciphertext.
+    ///
+    /// The secret goes from this crate's zeroize-on-drop wrapper straight into
+    /// `out`, so no unwiped copy is left behind on this side. Point `out` at
+    /// storage that wipes itself (a `secure_gate::Fixed<[u8; 32]>` via
+    /// `with_secret_mut`, `zeroize::Zeroizing<[u8; 32]>`, …). On error `out`
+    /// is left untouched.
+    pub fn encapsulate_into<R: TryRng + TryCryptoRng>(
+        &self,
+        rng: &mut R,
+        out: &mut [u8; SHARED_SECRET_SIZE],
+    ) -> CrateResult<Ciphertext> {
+        let (ct, ss) = self.encapsulate_secret(rng)?;
+        ss.with_secret(|b| out.copy_from_slice(b));
+        Ok(ct)
+    }
+
+    /// Randomized encapsulation with the shared secret kept wrapped.
+    fn encapsulate_secret<R: TryRng + TryCryptoRng>(
+        &self,
+        rng: &mut R,
+    ) -> CrateResult<(Ciphertext, SharedSecret)> {
         let ml_rand = Seed32::from_rng(rng).map_err(|_| Error::RandomnessError)?;
         let ephemeral = X25519Scalar::from_rng(rng).map_err(|_| Error::RandomnessError)?;
         self.encapsulate_inner(ml_rand, ephemeral)
@@ -222,6 +260,15 @@ impl EncapsulationKey {
         &self,
         eseed: &[u8; 64],
     ) -> CrateResult<(Ciphertext, [u8; SHARED_SECRET_SIZE])> {
+        let (ct, ss) = self.encapsulate_derand_secret(eseed)?;
+        Ok((ct, ss.with_secret(|b| *b)))
+    }
+
+    /// Deterministic encapsulation with the shared secret kept wrapped.
+    fn encapsulate_derand_secret(
+        &self,
+        eseed: &[u8; 64],
+    ) -> CrateResult<(Ciphertext, SharedSecret)> {
         // Write each half directly into wrapper storage — no intermediate
         // [u8; 32] stack bindings.
         let ml_rand = Seed32::new_with(|out| out.copy_from_slice(&eseed[0..32]));
@@ -370,13 +417,38 @@ impl DecapsulationKey {
 
     /// Decapsulates a hybrid ciphertext and returns the shared secret.
     ///
-    /// Native `[u8; 32]` per the wire-boundary rule; wrap via
-    /// `SharedSecret::new(bytes)` if you want zeroize-on-drop.
+    /// The returned array is plain and nothing wipes it. Prefer
+    /// [`DecapsulationKey::decapsulate_into`], which writes the secret into
+    /// storage the caller owns (and can wipe) without an intermediate copy.
+    pub fn decapsulate(&self, ct: &Ciphertext) -> CrateResult<[u8; SHARED_SECRET_SIZE]> {
+        self.decapsulate_secret(ct).map(|ss| ss.with_secret(|b| *b))
+    }
+
+    /// Decapsulates a hybrid ciphertext, writing the shared secret into `out`.
+    ///
+    /// The secret goes from this crate's zeroize-on-drop wrapper straight into
+    /// `out`, so no unwiped copy is left behind on this side. Point `out` at
+    /// storage that wipes itself (a `secure_gate::Fixed<[u8; 32]>` via
+    /// `with_secret_mut`, `zeroize::Zeroizing<[u8; 32]>`, …). On error `out`
+    /// is left untouched.
+    pub fn decapsulate_into(
+        &self,
+        ct: &Ciphertext,
+        out: &mut [u8; SHARED_SECRET_SIZE],
+    ) -> CrateResult<()> {
+        let ss = self.decapsulate_secret(ct)?;
+        ss.with_secret(|b| out.copy_from_slice(b));
+        Ok(())
+    }
+
+    /// The single decapsulation implementation; the shared secret stays
+    /// wrapped.
     ///
     /// Re-derives the ML-KEM keypair and X25519 scalar from the stored seed,
     /// then feeds both component shared secrets plus the X25519 ciphertext and
-    /// public key into the SHA3-256 combiner.
-    pub fn decapsulate(&self, ct: &Ciphertext) -> CrateResult<[u8; SHARED_SECRET_SIZE]> {
+    /// public key into the SHA3-256 combiner. The expanded ML-KEM private key
+    /// is wiped when `kp` drops at the end of this function.
+    pub(crate) fn decapsulate_secret(&self, ct: &Ciphertext) -> CrateResult<SharedSecret> {
         let (kp, x_secret) = expand_key(&self.seed);
         let ss_m = ml_kem::decapsulate_with_keypair(&kp, &ct.ct_m);
         let (ss_x, pk_x) = x25519::decapsulate_from_private_seed(x_secret, &ct.ct_x)?;
@@ -548,16 +620,38 @@ impl PublicKey for XWingPublicKey {
         &self,
         testing_randomness: Option<&[u8]>,
     ) -> CrateResult<(Vec<u8>, [u8; SHARED_SECRET_SIZE])> {
+        let (ct, ss) = self.encap_secret(testing_randomness)?;
+        Ok((ct, ss.with_secret(|b| *b)))
+    }
+
+    fn encap_into(
+        &self,
+        testing_randomness: Option<&[u8]>,
+        out: &mut [u8; SHARED_SECRET_SIZE],
+    ) -> CrateResult<Vec<u8>> {
+        let (ct, ss) = self.encap_secret(testing_randomness)?;
+        ss.with_secret(|b| out.copy_from_slice(b));
+        Ok(ct)
+    }
+}
+
+impl XWingPublicKey {
+    /// Shared body of `encap` / `encap_into`; the shared secret stays wrapped.
+    fn encap_secret(
+        &self,
+        testing_randomness: Option<&[u8]>,
+    ) -> CrateResult<(Vec<u8>, SharedSecret)> {
         let (ct, ss) = if let Some(rand) = testing_randomness {
             if rand.len() >= 64 {
-                self.pk
-                    .encapsulate_derand(rand.try_into().map_err(|_| Error::ArraySizeError)?)?
+                self.pk.encapsulate_derand_secret(
+                    rand.try_into().map_err(|_| Error::ArraySizeError)?,
+                )?
             } else {
                 return Err(Error::InsufficientTestingRandomness);
             }
         } else {
             let mut rng = SysRng;
-            self.pk.encapsulate(&mut rng)?
+            self.pk.encapsulate_secret(&mut rng)?
         };
         let ct_bytes: [u8; MLKEM768X25519_CIPHERTEXT_SIZE] = ct.to_bytes();
         Ok((ct_bytes.to_vec(), ss))
@@ -575,7 +669,9 @@ impl PrivateKey for XWingPrivateKey {
     }
 
     fn bytes(&self) -> CrateResult<Vec<u8>> {
-        Ok(self.sk.bytes().to_vec())
+        // Straight from the wrapper into the returned Vec: going through
+        // `DecapsulationKey::bytes` would leave a plain [u8; 32] stack copy.
+        Ok(self.sk.seed.with_secret(|b| b.to_vec()))
     }
 
     fn public_key(&self) -> Box<dyn PublicKey> {
@@ -590,5 +686,69 @@ impl PrivateKey for XWingPrivateKey {
     fn decap(&self, enc: &[u8]) -> CrateResult<[u8; SHARED_SECRET_SIZE]> {
         let ct = Ciphertext::try_from(enc)?;
         self.sk.decapsulate(&ct)
+    }
+
+    fn decap_into(&self, enc: &[u8], out: &mut [u8; SHARED_SECRET_SIZE]) -> CrateResult<()> {
+        let ct = Ciphertext::try_from(enc)?;
+        self.sk.decapsulate_into(&ct, out)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wipe guards
+// ---------------------------------------------------------------------------
+
+/// Type-level guards: every internal value that holds a shared secret or the
+/// expanded ML-KEM private key must be a type that wipes itself on drop.
+///
+/// These fail to *compile* if a return type regresses to a plain array (or to
+/// libcrux's own `MlKemKeyPair`), which is the point — a runtime assertion could
+/// not see the difference. They live in the crate because the functions are
+/// `pub(crate)`.
+#[cfg(test)]
+mod wipe_guards {
+    use super::*;
+    use crate::kem::combiner::combine_shared_secrets;
+    use zeroize::ZeroizeOnDrop;
+
+    fn assert_zeroize_on_drop<T: ZeroizeOnDrop>(_: &T) {}
+
+    fn fixture() -> (DecapsulationKey, EncapsulationKey) {
+        let sk = DecapsulationKey::from_seed(&[1u8; MASTER_SEED_SIZE]);
+        let pk = sk.encapsulation_key().expect("derived key is valid");
+        (sk, pk)
+    }
+
+    #[test]
+    fn decapsulate_secret_returns_a_wiping_type() {
+        let (sk, pk) = fixture();
+        let (ct, _) = pk.encapsulate_derand(&[2u8; 64]).unwrap();
+        assert_zeroize_on_drop(&sk.decapsulate_secret(&ct).unwrap());
+    }
+
+    #[test]
+    fn encapsulation_keeps_the_shared_secret_in_a_wiping_type() {
+        let (_, pk) = fixture();
+        let (_, ss) = pk.encapsulate_derand_secret(&[2u8; 64]).unwrap();
+        assert_zeroize_on_drop(&ss);
+    }
+
+    #[test]
+    fn expand_key_returns_a_wiping_ml_kem_key_pair() {
+        let (kp, x_secret) = expand_key(&Seed32::from([1u8; MASTER_SEED_SIZE]));
+        assert_zeroize_on_drop(&kp);
+        assert_zeroize_on_drop(&x_secret);
+    }
+
+    #[test]
+    fn combiner_returns_a_wiping_type() {
+        use crate::aliases::{MlKemSharedSecret, X25519SharedSecret};
+        let ss = combine_shared_secrets(
+            &MlKemSharedSecret::from([1u8; 32]),
+            &X25519SharedSecret::from([2u8; 32]),
+            &X25519EphemeralShare::from([3u8; 32]),
+            &X25519EncapsulationKey::from([4u8; 32]),
+        );
+        assert_zeroize_on_drop(&ss);
     }
 }

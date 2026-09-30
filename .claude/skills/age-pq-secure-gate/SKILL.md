@@ -46,6 +46,28 @@ fn labeled_expand(...) -> Result<KdfBytes, Error>               // -> Vec<u8>
 Internally the opposite holds: PRKs, OKMs, seeds and shared secrets live in wrappers for their
 whole lifetime. `let prk: Vec<u8> = kdf.extract(...)` is the defect shape.
 
+### Surfacing a secret without a wrapper: caller-owned out-params
+
+A secret *returned* as `[u8; N]` is a plain copy nobody wipes. A *wrapper* returned instead
+would couple every downstream crate to this workspace's exact secure-gate pin — the rc.13 wave
+below shows what that costs. The shape that avoids both is an **out-param**: native types only,
+and the caller owns (and wipes) the storage.
+
+```rust
+pub fn decapsulate_into(&self, ct: &Ciphertext, out: &mut [u8; 32]) -> Result<()>
+fn decap_into(&self, enc: &[u8], out: &mut [u8; 32]) -> Result<()>   // trait, default impl
+```
+
+Callers point `out` into a wrapper: `ss.with_secret_mut(|out| sk.decapsulate_into(&ct, out))`.
+`hpke::new_sender` / `new_recipient` and the plugin all do. The returning forms (`decapsulate`,
+`encapsulate`, `decap`, `encap`) still exist unchanged and are **not** `#[deprecated]` — a
+deprecation warning is a forced change for any downstream building with `-D warnings`.
+Deprecate them only once downstream has moved.
+
+New trait methods get a **default impl** so external implementors do not break; the default
+goes through the returning form and so leaves a transient copy, which is acceptable for an
+implementor that has not opted in.
+
 ## Newtypes, not aliases
 
 **Unlike every sibling repo, this workspace uses `fixed_newtype!` / `dynamic_newtype!`
@@ -124,18 +146,33 @@ done
 |---|---|
 | `with_secret` | 13 |
 | `expose_secret` | 9 |
-| `into_inner` | 8 |
+| `with_secret_mut` | 7 |
+| `into_inner` | 6 |
 | `new_with` | 6 |
-| `with_secret_mut` | 5 |
-| `ct_eq` | 3 |
+| `ct_eq` | 4 |
 | `from_rng` | 2 |
 | `from_random` | 1 |
 
+The six `into_inner` files are all outside `kem/` and all public data or a documented public
+`String` return (bech32 recipient/identity encodings). **`kem/` has none, and a test enforces
+it** — see *Enforcement*.
+
 **Tier 3 is genuinely used here**, unlike in the sibling repos, because several dependencies
 take owned arrays by value: `x25519_dalek::StaticSecret::from`, `x448::Secret::from`,
-`libcrux_ml_kem` encapsulate and keypair generation. Where the receiving type is itself
-zeroize-aware, coverage is continuous. **Mutate on the wrapper before consuming** — `into_inner`
-leaves no wrapper to mutate through; see `kem/x25519.rs::static_secret_from_seed`.
+`libcrux_ml_kem` encapsulate and keypair generation. **Borrow, don't consume**: pass the copy
+from inside `with_secret(|s| f(*s))`, so the wrapper keeps ownership of its storage and wipes
+it on drop, rather than moving the secret out with `into_inner` first. The by-value argument is
+then the one plain copy, and it is the dependency's to own. Mutate (clamp) on the wrapper before
+that — see `kem/x25519.rs::static_secret_from_seed`.
+
+Whether the far side wipes varies, and the difference matters:
+
+| receiving type | wipes on drop? |
+|---|---|
+| `x25519_dalek::StaticSecret` | yes (`ZeroizeOnDrop`) |
+| `x448::Secret` (0.6.0) | **no** — no `Zeroize`, no `Drop`; `kem/x448.rs` is not wired into any KEM yet |
+| `libcrux_ml_kem::MlKemKeyPair` (0.0.10) | **no** — so it is split into `kem::ml_kem::WipingKeyPair`, which does |
+| libcrux keygen / encaps / decaps internals | **no**, and unreachable: stack intermediates inside libcrux |
 
 One documented Tier-2 exception: `ChaCha20Poly1305::new_from_slice` in `aead.rs`, chosen
 deliberately to avoid materializing a non-`Zeroize` key type.
@@ -193,18 +230,47 @@ grows by hand and zeroizes each abandoned allocation — not through a closure h
 
 **Upstream tracks the residual gap as secure-gate issue #133.** It cannot be closed from here.
 
+**The expanded ML-KEM private key (2400 bytes) is wiped from this side.** libcrux-ml-kem 0.0.10
+— the latest release — has no zeroize support anywhere in its source, and `libcrux-secrets` is
+about constant-time classification, not erasure. `kem::ml_kem::WipingKeyPair` holds the pair
+split by `MlKemKeyPair::into_parts` and wipes the private key through the
+`IndexMut<RangeFrom<usize>>` impl libcrux does provide, using `zeroize` (a direct dependency of
+`age-pq-hpke` for this reason). What stays out of reach, and is not to be described as covered:
+libcrux's internal stack intermediates, and stale copies the compiler may leave when the pair is
+moved (by-value return, `into_parts`). The key is re-derived on every decapsulation and
+deliberately not cached — caching would make it live as long as the identity.
+
+Other residue closed at the same time: the combiner digest is written into its wrapper with
+`finalize_into` (no temporary `GenericArray`); the HKDF-extract PRK `GenericArray` is wiped
+after copying; the file key goes into age's `FileKey` via `try_init_with_mut` (no plain
+`[u8; 16]`); and the plugin's keygen output buffer is sized up front, because `format!` grows by
+reallocation and frees each outgrown buffer unwiped.
+
+Still open, upstream: `hkdf` 0.12's `Hkdf` state and the `sha3` hasher states hold PRK- and
+seed-derived state with no zeroize support; `age::x25519::Identity` holds its scalar in a plain
+`[u8; 32]` and derives `Clone`.
+
 `age-plugin-pq` is the **only binary in this workspace**, which makes it the only crate that
 could install a zero-on-deallocate global allocator. The two libraries must not. See the
 `heap-residue` skill before considering it.
 
 ## Enforcement
 
-**None automated.** `ci.yml` mentions secure-gate only in a comment explaining a removed
-`cargo update -p` step. Nothing checks tier usage, wrapper coverage or the `derive:` tokens —
-it is caught in review only.
+**Mostly none.** `ci.yml` mentions secure-gate only in a comment explaining a removed
+`cargo update -p` step. Nothing checks tier usage in general, wrapper coverage outside `kem/`,
+or the `derive:` tokens — that is caught in review only.
 
-Saying so is the point. The compile-fail doctests in `age-pq-hpke/src/aliases.rs` are the one
-mechanical guard that exists, and they cover transposition, not exposure.
+The mechanical guards that do exist, all in `age-pq-hpke`:
+
+- **Transposition** — the `compile_fail` doctests in `src/aliases.rs`.
+- **No `into_inner()` under `src/kem/`** — `tests/no_into_inner_in_kem.rs`, a source scan with a
+  file-count floor and a self-test of its matcher. A textual scan is a lower bound.
+- **Wiping types on the decap path** — `kem::mlkem768x25519::wipe_guards` bounds the results of
+  `decapsulate_secret`, the encap path, `expand_key` and the combiner on `ZeroizeOnDrop`, so a
+  regression to a plain array does not compile.
+- **The wipe logic** — `kem::ml_kem::tests` asserts `WipingKeyPair::zeroize` clears every
+  private-key byte. That is the function `Drop` runs; wipe-on-drop itself is not observable
+  from safe code and is not claimed as tested.
 
 ## Verify
 

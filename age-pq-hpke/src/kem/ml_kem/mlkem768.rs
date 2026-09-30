@@ -5,39 +5,49 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem768::{
-    MlKem768Ciphertext, MlKem768KeyPair, MlKem768PublicKey, decapsulate, encapsulate,
+    MlKem768Ciphertext, MlKem768PublicKey, decapsulate, encapsulate,
     generate_key_pair as mlkem768_generate_key_pair,
     validate_public_key as mlkem768_validate_public_key,
 };
 use secure_gate::RevealSecret;
 
+use super::WipingKeyPair;
+
 /// ML-KEM-768 public-key size in bytes.
 pub(crate) const MLKEM768_PK_SIZE: usize = 1184;
 /// ML-KEM-768 ciphertext size in bytes.
 pub(crate) const MLKEM768_CT_SIZE: usize = 1088;
+/// ML-KEM-768 private (decapsulation) key size in bytes.
+pub(crate) const MLKEM768_SK_SIZE: usize = 2400;
+
+/// ML-KEM-768 key pair whose private key is wiped on drop.
+pub(crate) type MlKem768Keys = WipingKeyPair<MLKEM768_SK_SIZE, MLKEM768_PK_SIZE>;
 
 /// Derives an ML-KEM-768 key pair from a wrapped 64-byte (`d || z`) seed.
 ///
-/// Consumes the seed wrapper — libcrux's `generate_key_pair` takes
-/// `[u8; 64]` by value.
-pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem768KeyPair {
-    // Tier-3: libcrux generate_key_pair takes the [u8; 64] `d || z` seed by
-    // value. `into_inner` works at any length (SentinelValue, not Default).
-    mlkem768_generate_key_pair(seed.into_inner())
+/// The returned pair wipes its private key on drop — see [`WipingKeyPair`].
+pub(crate) fn keypair_from_seed(seed: &MlKemSeed64) -> MlKem768Keys {
+    // Tier-3 boundary, borrowed rather than consumed: libcrux's
+    // `generate_key_pair` takes the [u8; 64] `d || z` seed by value, so one
+    // plain copy exists as the call argument. The wrapper keeps ownership of
+    // its own storage and wipes it on drop; `into_inner` would instead have
+    // moved the seed out through a return slot first.
+    WipingKeyPair::new(seed.with_secret(|s| mlkem768_generate_key_pair(*s)))
 }
 
 /// Encapsulates to an ML-KEM-768 public key using caller-supplied randomness.
 ///
-/// Consumes the randomness wrapper (Tier-3) — libcrux's `encapsulate` takes
-/// `[u8; 32]` by value. Returns the wrapped shared secret; ciphertext bytes
-/// are public (passed to the wire) and stay as a plain array.
+/// Borrows the randomness wrapper; libcrux's `encapsulate` takes `[u8; 32]`
+/// by value (Tier-3), so the argument is a copy. Returns the wrapped shared
+/// secret; ciphertext bytes are public (passed to the wire) and stay plain.
 pub(crate) fn encapsulate_with_seed(
     pk_m: &MlKem768PublicKey1184,
-    randomness: Seed32,
+    randomness: &Seed32,
 ) -> CrateResult<([u8; MLKEM768_CT_SIZE], MlKemSharedSecret)> {
     let pk_m = pk_m.with_secret(|bytes| MlKem768PublicKey::from(*bytes));
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
-    let (ct_m, ss_m) = encapsulate(&pk_m, randomness.into_inner());
+    // The wrapper is borrowed, not consumed, and wipes its storage on drop.
+    let (ct_m, ss_m) = randomness.with_secret(|r| encapsulate(&pk_m, *r));
     let ct_m_bytes: [u8; MLKEM768_CT_SIZE] = ct_m
         .as_ref()
         .try_into()
@@ -50,7 +60,7 @@ pub(crate) fn encapsulate_with_seed(
 /// `ct_m` is borrowed (the caller's `Ciphertext` struct keeps it). Returns
 /// the wrapped shared secret.
 pub(crate) fn decapsulate_with_keypair(
-    kp: &MlKem768KeyPair,
+    kp: &MlKem768Keys,
     ct_m: &MlKem768Ciphertext1088,
 ) -> MlKemSharedSecret {
     let sk_m = kp.private_key();
@@ -92,7 +102,7 @@ mod tests {
     /// check cannot be rejecting honest keys.
     #[test]
     fn derived_public_key_passes_the_modulus_check() {
-        let kp = keypair_from_seed(MlKemSeed64::from([7u8; 64]));
+        let kp = keypair_from_seed(&MlKemSeed64::from([7u8; 64]));
         let pk_bytes: [u8; MLKEM768_PK_SIZE] = kp
             .public_key()
             .as_ref()
@@ -107,7 +117,7 @@ mod tests {
     /// 0xFFF = 4095 is greater than q - 1 = 3328.
     #[test]
     fn one_out_of_range_coefficient_fails_the_modulus_check() {
-        let kp = keypair_from_seed(MlKemSeed64::from([7u8; 64]));
+        let kp = keypair_from_seed(&MlKemSeed64::from([7u8; 64]));
         let mut pk_bytes: [u8; MLKEM768_PK_SIZE] = kp
             .public_key()
             .as_ref()
@@ -145,7 +155,7 @@ mod tests {
     #[test]
     fn a_corrupted_rho_still_passes_the_modulus_check_as_it_does_in_age() {
         const RHO_OFFSET: usize = MLKEM768_PK_SIZE - 32;
-        let kp = keypair_from_seed(MlKemSeed64::from([7u8; 64]));
+        let kp = keypair_from_seed(&MlKemSeed64::from([7u8; 64]));
         let pk_bytes: [u8; MLKEM768_PK_SIZE] = kp
             .public_key()
             .as_ref()

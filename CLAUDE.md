@@ -154,9 +154,17 @@ rc.8 would be a wire-format regression. Anything below rc.9 on `main` is wrong
 for this workspace.
 
 `secrecy` still appears in `age-pq-keys`'s source, but only as `age`'s own
-re-export: `FileKey` is `age`'s type and keeps `age`'s accessor. Neither
-`secrecy` nor `zeroize` is a direct dependency of any crate here. `zeroize`
-appears once as an `x25519-dalek` feature, not as an API this workspace calls.
+re-export: `FileKey` is `age`'s type and keeps `age`'s accessor. `secrecy` is
+not a direct dependency of any crate here.
+
+**`zeroize` is a direct dependency of `age-pq-hpke` only**, and only for what
+secure-gate cannot reach: libcrux-ml-kem has no zeroize support, so the expanded
+ML-KEM private key is wiped from this side (`kem::ml_kem::WipingKeyPair`), and
+the HKDF-extract PRK that `hkdf` hands back as a plain `GenericArray` is wiped
+after it is copied into its wrapper. It was already in the graph at 1.8.x
+through secure-gate and x25519-dalek, so it added an edge, not a crate. Do not
+reach for `secure_gate::__private::Zeroize` instead: that module is
+semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
 
 ---
 

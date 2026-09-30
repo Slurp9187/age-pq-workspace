@@ -10,6 +10,50 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.2.0-rc.4] - unreleased
 
+### age-pq-hpke
+
+- **The expanded ML-KEM-768 private key is now wiped on drop.** It is re-derived
+  from the seed on every decapsulation (2400 bytes) and was dropped unwiped,
+  because libcrux-ml-kem 0.0.10 — the latest release — implements no zeroize.
+  It is now split with `MlKemKeyPair::into_parts` into
+  `kem::ml_kem::WipingKeyPair`, which wipes the private key through libcrux's
+  own `IndexMut` impl. Same treatment for the feature-gated ML-KEM-512/1024
+  helpers. libcrux's internal stack intermediates remain out of reach.
+- **Added `DecapsulationKey::decapsulate_into`, `EncapsulationKey::encapsulate_into`,
+  and trait methods `PrivateKey::decap_into` / `PublicKey::encap_into`** (with
+  default impls). They write the shared secret into a caller-owned
+  `&mut [u8; 32]` instead of returning a plain array — native types only, so no
+  wrapper type enters the public API. **Additive; nothing existing changed
+  signature**, and the returning forms are not deprecated. `hpke::new_sender` /
+  `new_recipient` now use them, so the HPKE path never holds the shared secret
+  as a plain array.
+- No `into_inner()` on secrets under `src/kem/`: the ML-KEM seed and
+  encapsulation randomness, and the X25519/X448 scalars, are passed to their
+  by-value dependency APIs from inside `with_secret`, so the wrappers keep and
+  wipe their own storage; the combiner returns its `SharedSecret` wrapped and
+  writes the digest with `finalize_into`. The HKDF-extract PRK `GenericArray`
+  is wiped after it is copied into its wrapper.
+- `zeroize` 1.8 is now a **direct** dependency (already in the graph through
+  secure-gate and x25519-dalek; `Cargo.lock` gains one edge, no versions move).
+- New guards: `tests/no_into_inner_in_kem.rs` (source scan), compile-time
+  `ZeroizeOnDrop` bounds in `kem::mlkem768x25519::wipe_guards`, and a wipe-logic
+  test for `WipingKeyPair`.
+- `x448::Secret` 0.6.0 does not zeroize; recorded in `kem/x448.rs`, which is not
+  yet wired into any KEM.
+
+### age-pq-keys
+
+- The decrypted file key is written straight into age's `FileKey` with
+  `FileKey::try_init_with_mut`, instead of through a plain `[u8; 16]`.
+
+### age-plugin-pq
+
+- Encapsulation and decapsulation use the new `*_into` forms, so the shared
+  secret lands directly in its `SharedSecret32` wrapper.
+- The decrypted file key goes into `FileKey` via `try_init_with_mut`.
+- `keygen` sizes its output buffer (which contains the identity) up front:
+  `format!` grows by reallocation and freed each outgrown buffer unwiped.
+
 ### Docs
 
 - **CLAUDE.md gains *Verifying the question you were actually asked*.** The

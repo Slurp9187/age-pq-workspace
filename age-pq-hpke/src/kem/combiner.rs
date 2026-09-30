@@ -24,10 +24,10 @@ pub(crate) const X_WING_LABEL: &[u8] = br"\.//^\";
 /// same nominal-newtype guarantee through public types.
 ///
 /// The digest is written straight into a `SharedSecret` via `new_with`, avoiding
-/// an intermediate plaintext stack copy, and consumed with `into_inner` at the
-/// return so the wrapper's storage is zeroized on the way out. Protection ends
-/// at that call — the returned array is native per the wire-boundary rule;
-/// callers who want zeroize-on-drop wrap it via `SharedSecret::new(bytes)`.
+/// an intermediate plaintext stack copy, and returned still wrapped. This is
+/// crate-internal, so the wire-boundary rule does not apply; the public
+/// functions that surface the secret either write it into caller-owned storage
+/// (`*_into`) or copy it out at the boundary.
 ///
 /// `X_WING_LABEL` is appended as a domain separator, binding the context and
 /// preventing cross-protocol attacks.
@@ -44,24 +44,24 @@ pub(crate) fn combine_shared_secrets(
     // `ek_t`: the recipient's long-term X25519 public key, hashed in so the
     // derived secret is bound to the intended recipient.
     ek_t: &X25519EncapsulationKey,
-) -> [u8; 32] {
-    let ss = SharedSecret::new_with(|buf| {
+) -> SharedSecret {
+    SharedSecret::new_with(|buf| {
         let mut hasher = Sha3_256::new();
         hasher.update(ss_pq.expose_secret());
         hasher.update(ss_t.expose_secret());
         hasher.update(ct_t.expose_secret());
         hasher.update(ek_t.expose_secret());
         hasher.update(X_WING_LABEL);
-        buf.copy_from_slice(&hasher.finalize());
-    });
-    // Tier-3: consume the wrapper. Its storage is zeroized as the value leaves;
-    // protection ends here, which is the boundary this function returns across.
-    ss.into_inner()
+        // Digest written straight into the wrapper's storage: `finalize()`
+        // would return the shared secret in a temporary `GenericArray` first.
+        hasher.finalize_into(buf.into());
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use secure_gate::ConstantTimeEq;
 
     /// These live inside the crate rather than in `tests/` because the function
     /// is `pub(crate)`: it is an internal construction detail of the X-Wing KEM,
@@ -84,9 +84,10 @@ mod tests {
     #[test]
     fn combiner_is_deterministic() {
         let (pq, t, ct, ek) = inputs();
-        assert_eq!(
-            combine_shared_secrets(&pq, &t, &ct, &ek),
+        // `ct_eq`, not `assert_eq!`: the output is a shared secret.
+        assert!(
             combine_shared_secrets(&pq, &t, &ct, &ek)
+                .ct_eq(&combine_shared_secrets(&pq, &t, &ct, &ek))
         );
     }
 
@@ -103,24 +104,20 @@ mod tests {
         let other_ct = X25519EphemeralShare::from([9u8; 32]);
         let other_ek = X25519EncapsulationKey::from([9u8; 32]);
 
-        assert_ne!(
-            base,
-            combine_shared_secrets(&other_pq, &t, &ct, &ek),
+        assert!(
+            !base.ct_eq(&combine_shared_secrets(&other_pq, &t, &ct, &ek)),
             "ss_pq"
         );
-        assert_ne!(
-            base,
-            combine_shared_secrets(&pq, &other_t, &ct, &ek),
+        assert!(
+            !base.ct_eq(&combine_shared_secrets(&pq, &other_t, &ct, &ek)),
             "ss_t"
         );
-        assert_ne!(
-            base,
-            combine_shared_secrets(&pq, &t, &other_ct, &ek),
+        assert!(
+            !base.ct_eq(&combine_shared_secrets(&pq, &t, &other_ct, &ek)),
             "ct_t"
         );
-        assert_ne!(
-            base,
-            combine_shared_secrets(&pq, &t, &ct, &other_ek),
+        assert!(
+            !base.ct_eq(&combine_shared_secrets(&pq, &t, &ct, &other_ek)),
             "ek_t"
         );
     }
@@ -142,6 +139,6 @@ mod tests {
             &X25519EphemeralShare::from([0u8; 32]),
             &X25519EncapsulationKey::from([0u8; 32]),
         );
-        assert_ne!(a, b);
+        assert!(!a.ct_eq(&b));
     }
 }
