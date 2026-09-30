@@ -20,19 +20,18 @@ pub(crate) fn clamp_x25519_scalar(scalar: &mut [u8; CURVE_SEED_SIZE]) {
 ///
 /// Consumes the wrapper — `StaticSecret::from` takes `[u8; 32]` by value,
 /// and `x25519_dalek::StaticSecret` is itself `ZeroizeOnDrop`, so the
-/// secret bytes are zeroize-covered end-to-end. We clamp in place via
-/// `with_secret_mut` (Tier-1 mutable) on the wrapper, then consume the
-/// wrapper via `into_inner` (Tier-3) to feed `StaticSecret::from`. Clamping
-/// must precede consumption — `into_inner` yields a plain value, so there is
-/// no wrapper left to mutate through afterwards.
+/// secret bytes are zeroize-covered on both sides of the hand-off. We clamp
+/// in place via `with_secret_mut` (Tier-1 mutable) on the wrapper, then copy
+/// the clamped bytes into `StaticSecret::from` from inside `with_secret`.
+/// The wrapper drops at the end of this function and wipes its storage.
 pub(crate) fn static_secret_from_seed(seed: X25519Scalar) -> StaticSecret {
     let mut s = seed;
     s.with_secret_mut(clamp_x25519_scalar);
-    // Tier-3: x25519_dalek::StaticSecret::from takes [u8; 32] by value.
-    // `into_inner` zeroizes the wrapper's storage and hands back the plain
-    // array; `StaticSecret` is itself ZeroizeOnDrop, so the clamped scalar
-    // stays covered on the far side of the hand-off.
-    StaticSecret::from(s.into_inner())
+    // Tier-3: x25519_dalek::StaticSecret::from takes [u8; 32] by value, so the
+    // argument is a plain copy. Not `into_inner`, which would move the scalar
+    // out through a return slot first; `tests/no_into_inner_in_kem.rs` keeps it
+    // that way.
+    s.with_secret(|b| StaticSecret::from(*b))
 }
 
 /// Derives an X25519 public key from a wrapped seed.

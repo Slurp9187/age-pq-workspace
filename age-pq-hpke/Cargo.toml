@@ -47,6 +47,12 @@ hkdf = "0.12"
 sha2 = "0.10"
 
 secure-gate = { workspace = true }
+# Direct, not via secure-gate: libcrux-ml-kem 0.0.10 has no zeroize support, so
+# the expanded ML-KEM private key is wiped from this side (`ml_kem::WipingKeyPair`).
+# secure-gate re-exports `zeroize` only from its semver-exempt `__private`
+# module. Already in the graph at 1.8.x through secure-gate and x25519-dalek;
+# this adds an edge, not a crate.
+zeroize = { version = "1.8", default-features = false }
 
 [dev-dependencies]
 rand = "0.10"

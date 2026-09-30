@@ -67,6 +67,25 @@ pub trait PublicKey: Send + Sync + Any {
         &self,
         testing_randomness: Option<&[u8]>,
     ) -> CrateResult<(Vec<u8>, [u8; SHARED_SECRET_SIZE])>;
+
+    /// Like [`PublicKey::encap`], but writes the shared secret into `out` and
+    /// returns only the ciphertext.
+    ///
+    /// Still native types only: the caller owns `out` and decides how it is
+    /// wiped, so no wrapper type crosses the API. This crate's own
+    /// implementation moves the secret from its zeroize-on-drop wrapper
+    /// straight into `out`. The default exists so that adding this method
+    /// breaks no external implementor; it goes through [`PublicKey::encap`]
+    /// and therefore leaves a transient plain copy.
+    fn encap_into(
+        &self,
+        testing_randomness: Option<&[u8]>,
+        out: &mut [u8; SHARED_SECRET_SIZE],
+    ) -> CrateResult<Vec<u8>> {
+        let (enc, ss) = self.encap(testing_randomness)?;
+        *out = ss;
+        Ok(enc)
+    }
 }
 
 /// Trait implemented by X-Wing private keys.
@@ -84,6 +103,15 @@ pub trait PrivateKey: Send + Sync + Any {
     ///
     /// Native `[u8; 32]`; see [`PublicKey::encap`].
     fn decap(&self, enc: &[u8]) -> CrateResult<[u8; SHARED_SECRET_SIZE]>;
+
+    /// Like [`PrivateKey::decap`], but writes the shared secret into `out`.
+    ///
+    /// See [`PublicKey::encap_into`] for why this takes caller-owned storage
+    /// and what the default implementation does.
+    fn decap_into(&self, enc: &[u8], out: &mut [u8; SHARED_SECRET_SIZE]) -> CrateResult<()> {
+        *out = self.decap(enc)?;
+        Ok(())
+    }
 }
 
 /// HPKE-style SHAKE256 labeled derive helper.

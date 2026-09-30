@@ -26,7 +26,7 @@ mod aliases;
 use crate::aliases::{
     FileKeyBytes, IdentityEncoding, SecretBytes, SecretText, Seed32, SharedSecret32,
 };
-use secure_gate::{Case, RevealSecret, SecretLen, ToBech32, bech32_code_length};
+use secure_gate::{Case, RevealSecret, RevealSecretMut, SecretLen, ToBech32, bech32_code_length};
 
 mod hpke_pq;
 use hpke_pq::derive_key_and_nonce;
@@ -148,13 +148,13 @@ impl RecipientPluginV1 for RecipientPlugin {
         let mut errors = vec![];
 
         for (recip_idx, pk) in self.recipients.iter().enumerate() {
-            let (ct, ss) = pk
-                .encapsulate(&mut SysRng)
+            // `encapsulate_into` writes the shared secret straight into the
+            // wrapper, so it is wiped on drop at every exit and never exists as
+            // a plain [u8; 32] on this side.
+            let mut ss = SharedSecret32::from([0u8; 32]);
+            let ct = ss
+                .with_secret_mut(|out| pk.encapsulate_into(&mut SysRng, out))
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "encapsulation failed"))?;
-
-            // `encapsulate` hands back a native [u8; 32]; wrap it so the shared
-            // secret is wiped on drop rather than by hand at each exit.
-            let ss = SharedSecret32::from(ss);
             let (key, base_nonce) = ss
                 .with_secret(|s| derive_key_and_nonce(s, PQ_LABEL))
                 .map_err(|_| io::Error::new(io::ErrorKind::Other, "key derivation failed"))?;
@@ -286,10 +286,14 @@ impl IdentityPluginV1 for IdentityPlugin {
                     // `continue` paths in this loop wipes its secrets on drop. The
                     // previous shape needed a hand-written `.zeroize()` at each of
                     // the six exits and had to keep them in sync.
-                    let ss = match sk.decapsulate(&ct) {
-                        Ok(s) => SharedSecret32::from(s),
-                        Err(_) => continue,
-                    };
+                    // Decapsulated straight into the wrapper - no plain copy.
+                    let mut ss = SharedSecret32::from([0u8; 32]);
+                    if ss
+                        .with_secret_mut(|out| sk.decapsulate_into(&ct, out))
+                        .is_err()
+                    {
+                        continue;
+                    }
 
                     let (key, base_nonce) =
                         match ss.with_secret(|s| derive_key_and_nonce(s, PQ_LABEL)) {
@@ -318,11 +322,20 @@ impl IdentityPluginV1 for IdentityPlugin {
                         continue;
                     }
 
-                    let fk = match plaintext.with_secret(|p| <[u8; 16]>::try_from(p.as_slice())) {
-                        Ok(arr) => arr,
-                        Err(_) => continue,
+                    // Copied from the wrapper straight into age's own
+                    // zeroize-on-drop box; no plain [u8; 16] in between.
+                    let file_key = match FileKey::try_init_with_mut(|out| {
+                        plaintext.with_secret(|p| {
+                            if p.len() != out.len() {
+                                return Err(());
+                            }
+                            out.copy_from_slice(p);
+                            Ok(())
+                        })
+                    }) {
+                        Ok(fk) => fk,
+                        Err(()) => continue,
                     };
-                    let file_key = FileKey::new(Box::new(fk));
 
                     results.insert(file_idx, Ok(file_key));
                     continue 'files;
@@ -443,9 +456,18 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
             .into_inner(),
     );
 
-    let output_text = SecretText::new(
-        identity.with_secret(|id| format!("# created: {created}\n# public key: {recipient}\n{id}")),
-    );
+    // Sized exactly up front, then filled. `format!` grows its buffer as it
+    // writes, and each reallocation frees the previous buffer unwiped, which
+    // here would already hold part of the identity.
+    let header = format!("# created: {created}\n# public key: {recipient}\n");
+    let output_text = identity.with_secret(|id| {
+        let mut text = SecretText::new(String::with_capacity(header.len() + id.len()));
+        text.with_secret_mut(|t| {
+            t.push_str(&header);
+            t.push_str(id);
+        });
+        text
+    });
 
     if let Some(path) = output {
         if std::path::Path::new(&path).exists() {

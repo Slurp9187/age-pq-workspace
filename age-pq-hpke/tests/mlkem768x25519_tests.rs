@@ -367,3 +367,63 @@ fn test_expand_key_determinism() {
     assert_eq!(pk.pk_m().len(), 1184);
     assert_eq!(pk.pk_x().to_bytes().len(), 32);
 }
+
+// ---------------------------------------------------------------------------
+// `*_into` variants: same bytes as the returning forms, written into
+// caller-owned storage.
+// ---------------------------------------------------------------------------
+
+/// `decapsulate_into` writes exactly the secret `decapsulate` returns.
+#[test]
+fn decapsulate_into_matches_decapsulate() {
+    let mut rng = ChaCha20Rng::seed_from_u64(7);
+    let (sk, pk) = generate_keypair(&mut rng).unwrap();
+    let (ct, ss_encap) = pk.encapsulate(&mut rng).unwrap();
+
+    let mut out = [0u8; 32];
+    sk.decapsulate_into(&ct, &mut out).unwrap();
+
+    assert!(out.ct_eq(&sk.decapsulate(&ct).unwrap()));
+    assert!(out.ct_eq(&ss_encap));
+}
+
+/// The ciphertext `encapsulate_into` returns decapsulates to the secret it
+/// wrote into `out`.
+#[test]
+fn encapsulate_into_round_trips() {
+    let mut rng = ChaCha20Rng::seed_from_u64(8);
+    let (sk, pk) = generate_keypair(&mut rng).unwrap();
+
+    let mut sender = [0u8; 32];
+    let ct = pk.encapsulate_into(&mut rng, &mut sender).unwrap();
+    let mut recipient = [0u8; 32];
+    sk.decapsulate_into(&ct, &mut recipient).unwrap();
+
+    assert!(sender.ct_eq(&recipient));
+    assert!(!sender.ct_eq(&[0u8; 32]), "out was actually written");
+}
+
+/// On failure `out` is left exactly as the caller had it.
+#[test]
+fn decapsulate_into_leaves_out_untouched_on_error() {
+    let mut rng = ChaCha20Rng::seed_from_u64(9);
+    let (sk, pk) = generate_keypair(&mut rng).unwrap();
+    let (ct, _) = pk.encapsulate(&mut rng).unwrap();
+
+    // Swap in a low-order X25519 share, which decapsulation must reject.
+    let mut bytes = ct.to_bytes();
+    let low_order: [u8; 32] = [
+        0xe0, 0xeb, 0x7a, 0x7c, 0x3b, 0x41, 0xb8, 0xae, 0x16, 0x56, 0xe3, 0xfa, 0xf1, 0x9f, 0xc4,
+        0x6a, 0xda, 0x09, 0x8d, 0xeb, 0x9c, 0x32, 0xb1, 0xfd, 0x86, 0x62, 0x05, 0x16, 0x5f, 0x49,
+        0xb8, 0x00,
+    ];
+    bytes[MLKEM768X25519_CIPHERTEXT_SIZE - 32..].copy_from_slice(&low_order);
+    let bad = Ciphertext::try_from(&bytes).unwrap();
+
+    let mut out = [0xAAu8; 32];
+    assert!(matches!(
+        sk.decapsulate_into(&bad, &mut out),
+        Err(Error::X25519DiffieHellmanFailed)
+    ));
+    assert!(out.ct_eq(&[0xAAu8; 32]));
+}

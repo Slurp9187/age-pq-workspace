@@ -148,3 +148,29 @@ mod tests {
         assert!(!ss1.ct_eq(&ss2));
     }
 }
+
+/// The trait-level `*_into` methods, which `hpke::new_sender` / `new_recipient`
+/// now use, produce the same bytes as `encap` / `decap`. Deterministic
+/// randomness makes the comparison exact rather than a round trip.
+mod into_variants {
+    use age_pq_hpke::{ConstantTimeEq, MlKem768X25519, kem::Kem};
+
+    #[test]
+    fn encap_into_and_decap_into_match_the_returning_forms() {
+        let kem = MlKem768X25519;
+        let sk = kem.derive_key_pair(&[3u8; 32]).unwrap();
+        let pk = sk.public_key();
+        let randomness = [5u8; 64];
+
+        let (enc, ss) = pk.encap(Some(&randomness)).unwrap();
+        let mut ss_into = [0u8; 32];
+        let enc_into = pk.encap_into(Some(&randomness), &mut ss_into).unwrap();
+        assert_eq!(enc, enc_into, "ciphertexts are public; `==` is fine");
+        assert!(ss.ct_eq(&ss_into));
+
+        let mut decapped = [0u8; 32];
+        sk.decap_into(&enc, &mut decapped).unwrap();
+        assert!(decapped.ct_eq(&sk.decap(&enc).unwrap()));
+        assert!(decapped.ct_eq(&ss));
+    }
+}

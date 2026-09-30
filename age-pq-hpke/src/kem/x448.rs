@@ -24,13 +24,17 @@ pub(crate) fn clamp_x448_scalar(scalar: &mut [u8; X448_KEY_SIZE]) {
 /// Converts a wrapped X448 seed into a clamped secret.
 ///
 /// Consumes the wrapper — `x448::Secret::from` takes `[u8; 56]` by value.
+///
+/// Unlike dalek's `StaticSecret`, `x448::Secret` (0.6.0) implements neither
+/// `Zeroize` nor `Drop`, so the scalar it holds is **not** wiped when it drops.
+/// Nothing here can reach its bytes mutably. Recorded rather than worked
+/// around: this module is not yet wired into any hybrid KEM.
 pub(crate) fn secret_from_seed(seed: X448Scalar) -> X448Secret {
     let mut s = seed;
     s.with_secret_mut(clamp_x448_scalar);
-    // Tier-3: x448::Secret::from takes [u8; 56] by value. `into_inner` zeroizes
-    // the wrapper's storage and returns the plain array, so the clamp above has
-    // to run on the wrapper while one still exists.
-    X448Secret::from(s.into_inner())
+    // Tier-3: x448::Secret::from takes [u8; 56] by value, so the argument is a
+    // plain copy. The wrapper keeps its storage and wipes it on drop.
+    s.with_secret(|b| X448Secret::from(*b))
 }
 
 /// Derives an X448 public key from a wrapped seed.

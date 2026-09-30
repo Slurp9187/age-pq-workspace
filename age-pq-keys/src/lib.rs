@@ -488,11 +488,21 @@ impl AgeIdentity for HybridIdentity {
             Ok(f) => FileKeyBytes::new(f),
             Err(_) => return None,
         };
-        let file_key = match file_key_bytes.with_secret(|b| <[u8; 16]>::try_from(b.as_slice())) {
-            Ok(arr) => FileKey::new(Box::new(arr)),
+        // Copied from the wrapper straight into age's own zeroize-on-drop box
+        // via `try_init_with_mut`; no plain [u8; 16] exists in between.
+        let file_key = match FileKey::try_init_with_mut(|out| {
+            file_key_bytes.with_secret(|b| {
+                if b.len() != out.len() {
+                    return Err(());
+                }
+                out.copy_from_slice(b);
+                Ok(())
+            })
+        }) {
+            Ok(fk) => fk,
             // Unreachable given the body-length check above; treat a surprise as
             // malformed rather than silently skipping.
-            Err(_) => return header_failure(),
+            Err(()) => return header_failure(),
         };
         Some(Ok(file_key))
     }

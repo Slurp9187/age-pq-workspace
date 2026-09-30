@@ -9,31 +9,43 @@ use crate::aliases::{
 };
 use crate::error::{Error, Result as CrateResult};
 use libcrux_ml_kem::mlkem1024::{
-    MlKem1024Ciphertext, MlKem1024KeyPair, MlKem1024PublicKey, decapsulate, encapsulate,
+    MlKem1024Ciphertext, MlKem1024PublicKey, decapsulate, encapsulate,
     generate_key_pair as mlkem1024_generate_key_pair,
     validate_public_key as mlkem1024_validate_public_key,
 };
 use secure_gate::RevealSecret;
 
+use super::WipingKeyPair;
+
 /// ML-KEM-1024 public-key size in bytes.
 pub(crate) const MLKEM1024_PK_SIZE: usize = 1568;
 /// ML-KEM-1024 ciphertext size in bytes.
 pub(crate) const MLKEM1024_CT_SIZE: usize = 1568;
+/// ML-KEM-1024 private (decapsulation) key size in bytes.
+pub(crate) const MLKEM1024_SK_SIZE: usize = 3168;
+
+/// ML-KEM-1024 key pair whose private key is wiped on drop.
+pub(crate) type MlKem1024Keys = WipingKeyPair<MLKEM1024_SK_SIZE, MLKEM1024_PK_SIZE>;
 
 /// Derives an ML-KEM-1024 key pair from a wrapped 64-byte (`d || z`) seed.
-pub(crate) fn keypair_from_seed(seed: MlKemSeed64) -> MlKem1024KeyPair {
-    // Tier-3: seed taken by value — see mlkem768.rs.
-    mlkem1024_generate_key_pair(seed.into_inner())
+pub(crate) fn keypair_from_seed(seed: &MlKemSeed64) -> MlKem1024Keys {
+    // Tier-3 boundary, borrowed rather than consumed: libcrux's
+    // `generate_key_pair` takes the [u8; 64] `d || z` seed by value, so one
+    // plain copy exists as the call argument. The wrapper keeps ownership of
+    // its own storage and wipes it on drop; `into_inner` would instead have
+    // moved the seed out through a return slot first.
+    WipingKeyPair::new(seed.with_secret(|s| mlkem1024_generate_key_pair(*s)))
 }
 
 /// Encapsulates to an ML-KEM-1024 public key using caller-supplied randomness.
 pub(crate) fn encapsulate_with_seed(
     pk_m: &MlKem1024PublicKey1568,
-    randomness: Seed32,
+    randomness: &Seed32,
 ) -> CrateResult<([u8; MLKEM1024_CT_SIZE], MlKemSharedSecret)> {
     let pk_m = pk_m.with_secret(|bytes| MlKem1024PublicKey::from(*bytes));
     // Tier-3: libcrux encapsulate takes [u8; 32] randomness by value.
-    let (ct_m, ss_m) = encapsulate(&pk_m, randomness.into_inner());
+    // The wrapper is borrowed, not consumed, and wipes its storage on drop.
+    let (ct_m, ss_m) = randomness.with_secret(|r| encapsulate(&pk_m, *r));
     let ct_m_bytes: [u8; MLKEM1024_CT_SIZE] = ct_m
         .as_ref()
         .try_into()
@@ -43,7 +55,7 @@ pub(crate) fn encapsulate_with_seed(
 
 /// Decapsulates an ML-KEM-1024 ciphertext using a previously derived key pair.
 pub(crate) fn decapsulate_with_keypair(
-    kp: &MlKem1024KeyPair,
+    kp: &MlKem1024Keys,
     ct_m: &MlKem1024Ciphertext1568,
 ) -> MlKemSharedSecret {
     let sk_m = kp.private_key();
@@ -70,7 +82,7 @@ mod tests {
 
     #[test]
     fn derived_public_key_passes_and_a_bad_coefficient_fails() {
-        let kp = keypair_from_seed(MlKemSeed64::from([7u8; 64]));
+        let kp = keypair_from_seed(&MlKemSeed64::from([7u8; 64]));
         let mut pk_bytes: [u8; MLKEM1024_PK_SIZE] = kp
             .public_key()
             .as_ref()

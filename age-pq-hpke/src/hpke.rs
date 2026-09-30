@@ -13,7 +13,7 @@ use crate::aliases::{
     SharedSecret,
 };
 use crate::kdf::Kdf;
-use crate::kem::{PrivateKey, PublicKey};
+use crate::kem::{PrivateKey, PublicKey, SHARED_SECRET_SIZE};
 use byteorder::{BigEndian, ByteOrder};
 use secure_gate::{RevealSecret, RevealSecretMut};
 use std::result::Result;
@@ -267,10 +267,10 @@ pub fn new_sender_with_testing_randomness(
     aead: Box<dyn Aead>,
     info: &[u8],
 ) -> Result<(Vec<u8>, Sender), Error> {
-    let (enc, shared) = pk.encap(testing_randomness)?;
-    // `encap` returns a native [u8; 32] at the API boundary; re-wrap immediately
-    // so the shared secret is zeroize-covered for its whole internal lifetime.
-    let shared = SharedSecret::from(shared);
+    // `encap_into` writes the shared secret straight into wrapper storage, so
+    // it is zeroize-covered for its whole internal lifetime with no plain copy.
+    let mut shared = SharedSecret::from([0u8; SHARED_SECRET_SIZE]);
+    let enc = shared.with_secret_mut(|out| pk.encap_into(testing_randomness, out))?;
     let context = new_context(shared.expose_secret(), pk.kem().id(), kdf, aead, info)?;
     Ok((enc, Sender { context }))
 }
@@ -283,9 +283,9 @@ pub fn new_recipient(
     aead: Box<dyn Aead>,
     info: &[u8],
 ) -> Result<Recipient, Error> {
-    let shared = sk.decap(enc)?;
-    // Native [u8; 32] at the API boundary; re-wrap for the internal lifetime.
-    let shared = SharedSecret::from(shared);
+    // Written straight into wrapper storage; see `new_sender_with_testing_randomness`.
+    let mut shared = SharedSecret::from([0u8; SHARED_SECRET_SIZE]);
+    shared.with_secret_mut(|out| sk.decap_into(enc, out))?;
     let context = new_context(shared.expose_secret(), sk.kem().id(), kdf, aead, info)?;
     Ok(Recipient { context })
 }

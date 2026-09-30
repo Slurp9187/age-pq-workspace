@@ -25,6 +25,7 @@ use sha2::{Sha256, Sha384, Sha512};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::{Shake128, Shake256};
 use std::result::Result;
+use zeroize::Zeroize;
 
 /// Version label prepended to every labeled operation (`"HPKE-v1"`).
 pub(crate) const HPKE_VERSION_LABEL: &[u8; 7] = b"HPKE-v1";
@@ -183,13 +184,17 @@ macro_rules! impl_hkdf_kdf {
                 let mut prk = KdfBytes::new(vec![0u8; $size]);
                 // Tier-2: hkdf::Hkdf::extract takes &[u8] for salt and IKM. Salt
                 // is wrapped purely for audit (it's public); IKM is the secret.
-                // GenericArray PRK lifetime is one statement before bytes land
-                // in the wrapped buffer.
-                let (h, _) = Hkdf::<$hash_ty>::extract(
+                // `hkdf` returns the PRK as a plain `GenericArray`; once its bytes
+                // are in the wrapped buffer it is wiped rather than left on the
+                // stack until return. (The `Hkdf` state, discarded here, keeps
+                // HMAC state derived from the PRK and has no zeroize support in
+                // hkdf 0.12 - out of reach from this side.)
+                let (mut h, _) = Hkdf::<$hash_ty>::extract(
                     Some(salt.expose_secret()),
                     labeled_ikm.expose_secret(),
                 );
                 prk.with_secret_mut(|p| p.copy_from_slice(&h));
+                h.as_mut_slice().zeroize();
                 Ok(prk.with_secret_mut(core::mem::take))
             }
 
