@@ -8,9 +8,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0-rc.4] - unreleased
+## [0.2.0-rc.4] - Unreleased
 
 ### Docs
+
+- **The changelog skill is now a profile of the global `changelog-protocol`,
+  renamed `age-pq-changelog-protocol`.** Under the bare name it shadowed the
+  global skill it was meant to follow, and had grown into a 347-line fork of
+  it. The generic protocol and the tag mechanics now come from the global
+  `changelog-protocol` and `publish-prep` skills; the profile keeps only this
+  repository's facts, including one the old file missed: `conformance/Cargo.lock`
+  records the workspace version and has to move with a bump. CI's path moves
+  with it.
+- **The in-flight marker is `Unreleased`, matched exactly.** The checker used to
+  compare it case-insensitively, while its own messages told you to write
+  lowercase. It is now the global checker's copy, byte for byte, which accepts
+  only `Unreleased` and names the casing when that is what is wrong. This
+  section's heading is normalized; dated history is untouched.
 
 - **CLAUDE.md gains *Verifying the question you were actually asked*.** The
   file already catalogues unchecked claims; this records the harder neighbour —

@@ -57,12 +57,14 @@ verification of the adjacent question reads exactly like verification of the
 real one, and carries the confidence earned by the careful part.
 
 **The fix was already written down, in this repository, and that is the part
-worth sitting with.** `.claude/skills/changelog-protocol/SKILL.md` carries a
+worth sitting with.** The repository's changelog skill at the time carried a
 snippet captioned *"tags you have locally that the remote does not"*, which
 `comm`s `git tag -l` against `git ls-remote --tags origin` — exactly the
-comparison that settles this. It had been read during the same session. It is
+comparison that settles this. It had been read during the same session. It was
 filed under *pushing* tags, so it never surfaced while reasoning about
-*consuming* them. Knowledge indexed under the wrong problem is not available
+*consuming* them. (That snippet now lives in the global `publish-prep` skill,
+still under pushing — which is why the remote command is repeated above, where
+the mistake happens.) Knowledge indexed under the wrong problem is not available
 when you need it, which is an argument for putting the check where the mistake
 happens rather than where the topic lives.
 
@@ -484,21 +486,23 @@ is in the global `secure-gate` skill and is not repeated per repo.
 
 ## Changelog protocol
 
-Full rules and the portable checker:
-[`.claude/skills/changelog-protocol/SKILL.md`](.claude/skills/changelog-protocol/SKILL.md).
-Two invariants, enforced by CI on `main`:
+The protocol is the global `changelog-protocol` skill. This repository's facts —
+version of record, what a bump touches, the vendored checker — are its profile,
+[`.claude/skills/age-pq-changelog-protocol/SKILL.md`](.claude/skills/age-pq-changelog-protocol/SKILL.md).
+Three invariants, enforced by CI on `main`:
 
 1. **The top section matches the workspace version.** `[workspace.package]
    version` and the newest heading in the **root** `CHANGELOG.md` agree. The
    three crate files are frozen and exempt — the checker skips them, and says
    so on every run.
 2. **A version heading is dated iff that tag exists.**
-   `## [X.Y.Z] - unreleased` while in flight; the ISO date goes in when the tag
+   `## [X.Y.Z] - Unreleased` while in flight — that exact spelling, which the
+   checker matches exactly; the ISO date goes in when the tag
    is cut, and not before. (Written with a placeholder deliberately: a concrete
    version here goes stale at the next release, and did.)
 3. **A dated top section sits at its own tag's commit.** Once a tag is cut, the
    next commit opens the next version — bump the manifest and add
-   `## [<next>] - unreleased` in the same commit, or the check fails. Invariants
+   `## [<next>] - Unreleased` in the same commit, or the check fails. Invariants
    1 and 2 both pass on a post-release tree whose changelog no longer describes
    it; this is the one that notices.
 
@@ -528,7 +532,9 @@ git dates the commit, not the measurement:
 ```
 
 The `release/0.1` maintenance branch follows the same protocol but carries no CI
-check; its `0.1.0-rc.1` heading is correctly dated because `v0.1.0-rc.1` exists.
+check. Its `0.1.0-rc.1` heading is dated because `v0.1.0-rc.1` exists, and its top
+section is `[0.1.0-rc.2]`, in flight — still spelled `- unreleased`, since that
+branch was not touched when `main` adopted the exact `Unreleased` spelling.
 
 ---
 
