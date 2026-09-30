@@ -8,7 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.1.0-rc.2] - unreleased
+## [0.1.0-rc.2] - Unreleased
 
 Documentation and tooling only. **No source, dependency or wire-format change**
 — the code is byte-identical to `v0.1.0-rc.1`, and this candidate exists because
