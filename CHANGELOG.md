@@ -8,7 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0-rc.4] - Unreleased
+## [0.2.0-rc.4] - 2026-09-30
 
 ### age-pq-hpke
 
@@ -134,9 +134,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tag = "mlkem768x25519"` — an age **stanza** tag, sharing nothing with git
   but the word.
 
-  Consequently the READMEs still pin `v0.2.0-rc.3` and are correct to: that is
-  the newest tag that exists. They move when rc.4 is cut, and the checker now
-  fails the release if they do not.
+  The READMEs pinned `v0.2.0-rc.3`, the newest tag that existed, for the whole
+  of this line, and moved to `v0.2.0-rc.4` in the release commit.
+
+  **As first written, that split made every release PR fail.** The release PR
+  has to pin the tag being cut, and in `pending` that tag cannot exist yet — it
+  is cut from the merge commit — so no release could get through CI. The date
+  check had already been fixed for exactly this trap; the pin check repeated it.
+  Found by this cut, its first real use. Now a pin naming the release is
+  accepted while the changelog is dated for it, reported as awaiting the cut;
+  pinning an *undated* version still fails, which is the case the rule is for.
+  The fix is in the global checker, and the vendored copy is re-copied from it.
 
 ---
 
