@@ -19,8 +19,17 @@ import sys
 
 HEADING = re.compile(r"^##\s*\[(?P<version>[^\]]+)\]\s*-\s*(?P<marker>.+?)\s*$")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-UNRELEASED = "unreleased"
+UNRELEASED = "Unreleased"
 FROZEN = "<!-- changelog-protocol: frozen -->"
+
+# Near-miss shapes. These are NOT accepted — the separator is an ASCII hyphen and
+# the version is bracketed, deliberately, so the check stays mechanical rather
+# than tolerant of several spellings. They exist only so the diagnostic can name
+# the real cause. A heading one character from canonical reported as "no version
+# heading found" sends a reader hunting through a file that is otherwise fine,
+# and a wrong diagnosis is worse than a strict rule.
+NEAR_MISS_SEP = re.compile(r"^##\s*\[(?P<version>[^\]]+)\]\s*(?P<sep>\S+)\s+(?P<marker>.+?)\s*$")
+NEAR_MISS_BARE = re.compile(r"^##\s*v?(?P<version>\d\S*)\s*(?P<sep>\S+)\s+(?P<marker>.+?)\s*$")
 
 
 def detect_version(root: pathlib.Path) -> tuple[str, str] | tuple[None, None]:
@@ -159,6 +168,25 @@ def doc_tag_pins(root: pathlib.Path) -> list[tuple[pathlib.Path, int, str]]:
     return found
 
 
+def near_miss(path: pathlib.Path) -> tuple[int, str, str] | None:
+    """Why no canonical heading matched, when something heading-shaped is present.
+
+    Returns (line number, the offending line, what is wrong with it). Called only
+    after `top_heading` has already failed, so anything matched here is by
+    definition not canonical.
+    """
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.startswith("##"):
+            continue
+        match = NEAR_MISS_SEP.match(line)
+        if match and match.group("sep") != "-":
+            sep = match.group("sep")
+            return number, line.strip(), f"the separator is {sep!r}, not an ASCII hyphen '-'"
+        if "[" not in line and NEAR_MISS_BARE.match(line):
+            return number, line.strip(), "the version is not in [brackets]"
+    return None
+
+
 def top_heading(path: pathlib.Path) -> tuple[int, str, str] | None:
     """(line number, version, marker) of the newest version section."""
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -245,7 +273,19 @@ def main() -> int:
         checked += 1
         head = top_heading(path)
         if head is None:
-            print(f"::error file={rel}::no version heading found")
+            hint = near_miss(path)
+            if hint is None:
+                print(f"::error file={rel}::no version heading found")
+            else:
+                miss_line, text, why = hint
+                print(
+                    f"::error file={rel},line={miss_line}::heading is not canonical: {why}"
+                )
+                print(f"      found     {text}")
+                print(
+                    "      expected  ## [<version>] - YYYY-MM-DD"
+                    "   or   ## [<version>] - Unreleased"
+                )
             failures += 1
             continue
 
@@ -255,7 +295,7 @@ def main() -> int:
             print(
                 f"::error file={rel},line={line_no}::bare '## [Unreleased]' "
                 f"heading. Name the section for the version in flight: "
-                f"'## [{version}] - unreleased'."
+                f"'## [{version}] - Unreleased'."
             )
             failures += 1
             continue
@@ -271,17 +311,20 @@ def main() -> int:
 
         # Invariant 2
         dated = bool(ISO_DATE.match(marker))
-        if not dated and marker.lower() != UNRELEASED:
-            print(
-                f"::error file={rel},line={line_no}::marker {marker!r} is "
-                f"neither an ISO date nor 'unreleased'."
-            )
+        if not dated and marker != UNRELEASED:
+            if marker.lower() == UNRELEASED.lower():
+                # One canonical spelling, so this stays an exact match rather
+                # than a case-insensitive one tolerating four spellings.
+                why = f"must be spelled exactly {UNRELEASED!r}"
+            else:
+                why = f"is neither an ISO date nor {UNRELEASED!r}"
+            print(f"::error file={rel},line={line_no}::marker {marker!r} {why}.")
             failures += 1
         elif dated and not tag_exists and args.mode == "release":
             print(
                 f"::error file={rel},line={line_no}::[{version}] is dated "
                 f"{marker} but tag {expected_tag} does not exist. A date is the "
-                f"release marker: use '- unreleased' until the tag is cut."
+                f"release marker: use '- Unreleased' until the tag is cut."
             )
             failures += 1
         elif dated and not tag_exists:
@@ -317,7 +360,7 @@ def main() -> int:
                     f"::error file={rel},line={line_no}::[{version}] is released "
                     f"({expected_tag}) but HEAD is {ahead} commit(s) past it, so "
                     f"this changelog no longer describes the tree. Bump the "
-                    f"version and open '## [<next>] - unreleased' in the same "
+                    f"version and open '## [<next>] - Unreleased' in the same "
                     f"commit."
                 )
             failures += 1
@@ -325,7 +368,7 @@ def main() -> int:
             print(
                 f"::error file={rel},line={line_no}::tag {expected_tag} exists "
                 f"but [{version}] is still marked unreleased. Replace "
-                f"'- unreleased' with the release date."
+                f"'- Unreleased' with the release date."
             )
             failures += 1
         else:
