@@ -259,6 +259,9 @@ def main() -> int:
 
     failures = 0
     checked = 0
+    # Set when a checked changelog's top section is the project version, dated.
+    # That is a release in progress: on a pull request its tag cannot exist yet.
+    release_dated = False
     for path in changelogs:
         rel = path.relative_to(root) if path.is_absolute() else path
 
@@ -311,6 +314,7 @@ def main() -> int:
 
         # Invariant 2
         dated = bool(ISO_DATE.match(marker))
+        release_dated = release_dated or dated
         if not dated and marker != UNRELEASED:
             if marker.lower() == UNRELEASED.lower():
                 # One canonical spelling, so this stays an exact match rather
@@ -392,9 +396,24 @@ def main() -> int:
     pins = doc_tag_pins(root)
     if pins:
         names_release = any(tag == expected_tag for _, _, tag in pins)
+        # The release's own tag is exempt while the changelog is dated for it,
+        # for the same reason the date is: on the release pull request the tag
+        # is cut from a merge commit that does not exist yet. Without this, no
+        # release PR could pass -- release mode demands the pin name the tag,
+        # pending mode demanded the tag already exist. While the section is
+        # still undated, pinning its tag stays an error: that is the case this
+        # rule exists for.
+        def awaiting_cut(tag: str) -> bool:
+            return tag == expected_tag and release_dated and tag not in tags
+
         for path, number, tag in pins:
             rel = path.relative_to(root)
-            if tag not in tags:
+            if awaiting_cut(tag):
+                print(
+                    f"  ok  {rel}:{number}  pins {tag}  "
+                    f"(pending: {expected_tag} not cut yet)"
+                )
+            elif tag not in tags:
                 print(
                     f"::error file={rel},line={number}::pins tag {tag}, which "
                     f"does not exist. Readers cannot fetch it. Documented pins "
@@ -409,8 +428,15 @@ def main() -> int:
                 f"the same commit that dates the changelog."
             )
             failures += 1
-        elif not any(tag not in tags for _, _, tag in pins):
-            print(f"  ok  {len(pins)} documented tag pin(s), all resolvable")
+        elif not any(tag not in tags and not awaiting_cut(tag) for _, _, tag in pins):
+            waiting = sum(awaiting_cut(tag) for _, _, tag in pins)
+            if waiting:
+                print(
+                    f"  ok  {len(pins)} documented tag pin(s): {len(pins) - waiting} "
+                    f"resolvable, {waiting} awaiting the {expected_tag} cut"
+                )
+            else:
+                print(f"  ok  {len(pins)} documented tag pin(s), all resolvable")
 
     if failures:
         print(f"::error::{failures} changelog protocol violation(s)")
