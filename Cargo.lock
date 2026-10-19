@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "age-plugin-pq"
-version = "0.2.0-rc.4"
+version = "0.2.0-rc.5"
 dependencies = [
  "age-core",
  "age-plugin",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-hpke"
-version = "0.2.0-rc.4"
+version = "0.2.0-rc.5"
 dependencies = [
  "aead",
  "byteorder",
@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-keys"
-version = "0.2.0-rc.4"
+version = "0.2.0-rc.5"
 dependencies = [
  "age",
  "age-core",
@@ -1912,9 +1912,9 @@ dependencies = [
 
 [[package]]
 name = "secure-gate"
-version = "0.9.0-rc.12"
+version = "0.9.0-rc.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39effc758e162c68cf2e0c3a5df58f137d7ee161560eba4c0b2e6cad81749379"
+checksum = "74e6c70a4204d574cb3c853940dea00482a38795893c940a8e340d4f27231468"
 dependencies = [
  "base16ct 1.0.0",
  "base32ct",

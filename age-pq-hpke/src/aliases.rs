@@ -35,8 +35,7 @@ fixed_newtype!(pub Seed32, 32, "32-byte master seed for deterministic key genera
 fixed_newtype!(
     pub SharedSecret,
     32,
-    "Hybrid post-quantum/classical shared secret (32 bytes).",
-    derive: [ConstantTimeEq]
+    "Hybrid post-quantum/classical shared secret (32 bytes)."
 );
 fixed_newtype!(pub AeadKey32, 32, "ChaCha20-Poly1305 key (32 bytes).");
 fixed_newtype!(pub Nonce12, 12, "ChaCha20-Poly1305 nonce (12 bytes).");
@@ -55,14 +54,12 @@ fixed_newtype!(
 fixed_newtype!(
     pub(crate) MlKemSharedSecret,
     32,
-    "Shared secret from ML-KEM encapsulation/decapsulation — the post-quantum component fed to the combiner.",
-    derive: [ConstantTimeEq]
+    "Shared secret from ML-KEM encapsulation/decapsulation — the post-quantum component fed to the combiner."
 );
 fixed_newtype!(
     pub(crate) X25519SharedSecret,
     32,
-    "Shared secret from X25519 Diffie-Hellman — the traditional component fed to the combiner.",
-    derive: [ConstantTimeEq]
+    "Shared secret from X25519 Diffie-Hellman — the traditional component fed to the combiner."
 );
 // `ct_t` and `ek_t` in the combiner are both 32-byte X25519 public keys but play
 // different roles, and crossing them also yields a silently wrong hybrid secret.
@@ -88,8 +85,7 @@ fixed_newtype!(pub(crate) X448Scalar, 56, "Raw X448 scalar, before clamping.");
 fixed_newtype!(
     pub(crate) X448SharedSecret,
     56,
-    "Shared secret from X448 Diffie-Hellman.",
-    derive: [ConstantTimeEq]
+    "Shared secret from X448 Diffie-Hellman."
 );
 fixed_newtype!(
     pub(crate) MlKem768PublicKey1184,

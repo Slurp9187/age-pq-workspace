@@ -8,6 +8,31 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.5] - Unreleased
+
+### Changed
+
+- **secure-gate re-pinned from `=0.9.0-rc.12` to `=0.9.0-rc.13`**, in the root
+  workspace and in `conformance/Cargo.toml`, which carries its own copy. Both
+  lockfiles move `secure-gate` and nothing else from the registry; the opt-in
+  `sealed` feature that rc.13 adds is not enabled, so no new crates enter the
+  graph. This is this workspace's part of the coordinated rc.13 wave: two
+  different exact `=0.9.0-rc.*` requirements cannot resolve together, so a
+  downstream graph that also reaches secure-gate through another first-party
+  crate resolves only once every such crate names the same rc.
+
+### age-pq-hpke
+
+- **`derive: [ConstantTimeEq]` removed from the four size-literal
+  `fixed_newtype!` declarations** in `src/aliases.rs` — `SharedSecret`,
+  `MlKemSharedSecret`, `X25519SharedSecret` and `X448SharedSecret`. rc.13
+  rejects the token on those arms with `E0119: conflicting implementations`,
+  because the arm now emits `ConstantTimeEq` itself (gated on `ct-eq`, which
+  this workspace enables). No behavior changes: `ct_eq` is still implemented on
+  all four types, and the tests that call it pass unchanged.
+
+---
+
 ## [0.2.0-rc.4] - 2026-09-30
 
 ### age-pq-hpke
