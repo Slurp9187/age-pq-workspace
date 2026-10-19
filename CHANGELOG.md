@@ -31,6 +31,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   this workspace enables). No behavior changes: `ct_eq` is still implemented on
   all four types, and the tests that call it pass unchanged.
 
+### Docs
+
+- `CLAUDE.md` and the `age-pq-secure-gate` skill name `=0.9.0-rc.13` as the
+  pin. The skill's *Pending: rc.13* section is now a record of the migration,
+  and its claim that `ConstantTimeEq` was opt-in on size-literal arms at rc.12
+  is corrected: secure-gate made it automatic in rc.11, and the token was
+  accepted and inert until rc.13 rejected it.
+
 ---
 
 ## [0.2.0-rc.4] - 2026-09-30

@@ -15,7 +15,7 @@ of this workspace.**
 Workspace root `Cargo.toml`:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.12", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.13", features = ["rand", "ct-eq"] }
 ```
 
 Members opt in additively:
@@ -30,8 +30,8 @@ Members opt in additively:
 workspace uses, and per the global skill its guarantee is **no stack residue plus
 zeroization, not constant time**. Do not cite it as a timing defense for key strings.
 
-**Every rule in the global skill is read against rc.12.** See *Pending: rc.13* below — the
-next bump is not routine.
+**Every rule in the global skill is read against rc.13** (taken in `0.2.0-rc.5`; see *The rc.13
+migration* below). rc.13's opt-in `sealed` feature is not enabled.
 
 ## Boundary
 
@@ -50,7 +50,7 @@ whole lifetime. `let prk: Vec<u8> = kdf.extract(...)` is the defect shape.
 
 A secret *returned* as `[u8; N]` is a plain copy nobody wipes. A *wrapper* returned instead
 would couple every downstream crate to this workspace's exact secure-gate pin — the rc.13 wave
-below shows what that costs. The shape that avoids both is an **out-param**: native types only,
+below showed what that costs. The shape that avoids both is an **out-param**: native types only,
 and the caller owns (and wipes) the storage.
 
 ```rust
@@ -93,40 +93,33 @@ Role-splitting is deliberate where a swap would be silent: `MlKemSharedSecret` /
 fixed order, and `ct_t` / `ek_t` are separate 32-byte X25519 public keys that would otherwise
 cross.
 
-**`ConstantTimeEq` is opt-in on these arms at rc.12**, and four newtypes carry it —
-`SharedSecret`, `MlKemSharedSecret`, `X25519SharedSecret`, `X448SharedSecret`
-(`age-pq-hpke/src/aliases.rs`). Without the derive the ct_eq rule is unfollowable and the
-tempting fallback is `assert_eq!`, which is `==` on secrets *and* renders both operands with
-`Debug` on failure — which is exactly what had happened in two unit tests before these four
-opted in.
+**`ConstantTimeEq` is automatic on these arms**, gated on `ct-eq`, which this workspace enables:
+every size-literal `fixed_newtype!` here implements `ct_eq` without asking for it. The four that
+the shared-secret tests compare — `SharedSecret`, `MlKemSharedSecret`, `X25519SharedSecret`,
+`X448SharedSecret` (`age-pq-hpke/src/aliases.rs`) — rely on that. Without `ct_eq` the rule is
+unfollowable and the tempting fallback is `assert_eq!`, which is `==` on secrets *and* renders
+both operands with `Debug` on failure — which is exactly what had happened in two unit tests
+before these four gained it.
 
-## ⚠️ Pending: the rc.13 bump is a breaking migration
+## The rc.13 migration (done in `0.2.0-rc.5`)
 
 **rc.13 rejects `derive: [ConstantTimeEq]` on shaped arms** — `fixed_newtype!` with a size
-literal is a shaped arm, and all four sites above are. They fail with
-`E0119: conflicting implementations`, with no deprecation and no warning.
+literal is a shaped arm. Naming the token fails with `E0119: conflicting implementations`, with
+no deprecation and no warning. The four declarations above carried it through rc.12 (where it
+was accepted and inert) and dropped it in `0.2.0-rc.5`. Re-adding it to any one of them
+reproduces the E0119; leave it out.
 
-**Migration: delete the token at all four sites.** Nothing about the generated types changes —
-`ct_eq` is emitted automatically on shaped arms from rc.11 onward, gated on `ct-eq`.
-
-```
-age-pq-hpke/src/aliases.rs:39   SharedSecret
-age-pq-hpke/src/aliases.rs:59   MlKemSharedSecret
-age-pq-hpke/src/aliases.rs:65   X25519SharedSecret
-age-pq-hpke/src/aliases.rs:92   X448SharedSecret
-```
-
-Two things that make this worse than a normal break:
+Two things to keep in mind when adding a newtype:
 
 - **It stays required on `generic` arms**, so the rule is arm-scoped rather than global.
 - **With `ct-eq` off the offending declaration still compiles** — both impls are discarded. This
-  workspace has `ct-eq` **on**, so it will fail loudly here. A crate that had it off could bump,
-  look green, and break later.
+  workspace has `ct-eq` **on**, so it fails loudly here.
 
-**This bump cannot be taken alone.** Four first-party crates pin `=0.9.0-rc.12` exactly, and two
-different exact requirements in the same compatibility range cannot resolve — so
-`encrypted-file-vault` stops resolving until every crate moves. Plan it as one coordinated
-wave with this deletion inside it. See the global skill's *upgrade* reference.
+**A secure-gate bump cannot be taken alone.** Every first-party crate that pins secure-gate
+exactly must name the same rc, because two different exact requirements in the same
+compatibility range cannot resolve — so a downstream graph that reaches secure-gate through
+several of them (`encrypted-file-vault` did at rc.12) stops resolving until every crate moves.
+Plan each bump as one coordinated wave. See the global skill's *upgrade* reference.
 
 ## Access tiers — the inventory is the point
 
