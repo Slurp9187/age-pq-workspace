@@ -110,10 +110,10 @@ unified — the secure-gate sections below bind every crate in full.
 The workspace pin is an **exact registry version**, not a git dependency:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.13", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.15", features = ["rand", "ct-eq"] }
 ```
 
-`0.9.0-rc.13` is edition 2024, `rust-version = 1.85` — exactly this workspace's
+`0.9.0-rc.15` is edition 2024, `rust-version = 1.85` — exactly this workspace's
 floor. The `release/0.8` backport existed solely to hold MSRV 1.70 and is
 **retired** — do not send fixes there, and read the changelog when planning
 anything.
@@ -135,7 +135,7 @@ has run the CCTV vectors or D1-D5 against. Bumping is a deliberate edit.
 
 **Pre-release requirement syntax is a trap on this line.** A caret matches a
 pre-release only when the requirement itself carries one: `"0.9.0-rc"` tracks
-the line, `"=0.9.0-rc.13"` pins it, and plain `"0.9"` resolves to **nothing**,
+the line, `"=0.9.0-rc.15"` pins it, and plain `"0.9"` resolves to **nothing**,
 because there is no stable `0.9.x`.
 
 **`conformance/` carries its own copy of this pin** and inherits nothing, being
