@@ -8,6 +8,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.6] - 2026-10-20
+
+### Changed
+
+- **secure-gate re-pinned from `=0.9.0-rc.13` to `=0.9.0-rc.15`**, in the root
+  workspace and in `conformance/Cargo.toml`. Both lockfiles move `secure-gate`
+  and nothing else from the registry. rc.14 and rc.15 change only the opt-in
+  `sealed` feature, which this workspace does not enable, so no code changes and
+  no new crates enter the graph (rc.15's `guarded-block` is reachable only
+  through `sealed`). Like rc.13, this is part of a coordinated wave: a downstream
+  graph that also reaches secure-gate through another first-party crate resolves
+  only once every such crate names the same rc.
+
+### Docs
+
+- `CLAUDE.md`, the root manifest's comment and the `age-pq-secure-gate` skill
+  name `=0.9.0-rc.15` as the pin.
+
 ## [0.2.0-rc.5] - 2026-10-18
 
 ### Changed

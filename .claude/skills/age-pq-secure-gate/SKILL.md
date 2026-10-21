@@ -15,7 +15,7 @@ of this workspace.**
 Workspace root `Cargo.toml`:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.13", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.15", features = ["rand", "ct-eq"] }
 ```
 
 Members opt in additively:
@@ -30,8 +30,10 @@ Members opt in additively:
 workspace uses, and per the global skill its guarantee is **no stack residue plus
 zeroization, not constant time**. Do not cite it as a timing defense for key strings.
 
-**Every rule in the global skill is read against rc.13** (taken in `0.2.0-rc.5`; see *The rc.13
-migration* below). rc.13's opt-in `sealed` feature is not enabled.
+**Every rule in the global skill is read against rc.15** (taken in `0.2.0-rc.6`). The last
+release that changed code here was rc.13 (taken in `0.2.0-rc.5`; see *The rc.13 migration*
+below). The opt-in `sealed` feature, added in rc.13, is not enabled, and rc.14 and rc.15
+changed only `sealed`.
 
 ## Boundary
 
