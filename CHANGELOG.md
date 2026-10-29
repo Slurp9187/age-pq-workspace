@@ -35,7 +35,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to 12. Three things are held back deliberately:
   - `libcrux-ml-kem` stays at 0.0.10. 0.0.11 pins `libcrux-platform =0.0.4`,
     which fails to compile on 1.87 (it calls `__cpuid` as a safe fn), and
-    neither crate declares an MSRV for the resolver to see.
+    neither crate declares an MSRV for the resolver to see; it needs 1.94
+    (celabshq/libcrux#1646).
   - `rust-embed` (under `age`) is held at 8.11.0 in the lockfile, because
     8.12+ pulls `sha2` 0.11 and would put a second `digest` generation in the
     graph.
