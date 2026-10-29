@@ -110,11 +110,11 @@ unified — the secure-gate sections below bind every crate in full.
 The workspace pin is an **exact registry version**, not a git dependency:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.17", features = ["rand", "ct-eq"] }
 ```
 
-`0.9.0-rc.16` is edition 2024, `rust-version = 1.87` — exactly this workspace's
-floor, which it set: rc.16 raised its MSRV from 1.85 to take the RUSTSEC-2026-0385
+`0.9.0-rc.17` is edition 2024, `rust-version = 1.87` — exactly this workspace's
+floor, set by rc.16, which raised its MSRV from 1.85 to take the RUSTSEC-2026-0385
 fix in `ctutils`, so this workspace moved to 1.87 in `0.2.0-rc.7`. `ctutils` is
 reachable only through the `sealed` feature and is not in this graph
 (`cargo tree -i ctutils --workspace` matches nothing); the floor moves because
@@ -139,7 +139,7 @@ has run the CCTV vectors or D1-D5 against. Bumping is a deliberate edit.
 
 **Pre-release requirement syntax is a trap on this line.** A caret matches a
 pre-release only when the requirement itself carries one: `"0.9.0-rc"` tracks
-the line, `"=0.9.0-rc.16"` pins it, and plain `"0.9"` resolves to **nothing**,
+the line, `"=0.9.0-rc.17"` pins it, and plain `"0.9"` resolves to **nothing**,
 because there is no stable `0.9.x`.
 
 **`conformance/` carries its own copy of this pin** and inherits nothing, being
@@ -456,7 +456,10 @@ semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
   migration took it from 17 groups to 14 (`base64`, `bech32`, `rustc-hash` and
   `self_cell` resolved; `syn` 2/3 added, a proc-macro build-graph duplicate via
   `i18n-embed-fl`, not a runtime one). The `0.2.0-rc.7` recency sweep took it
-  to 12 (`strsim` and `windows-sys` resolved). Separately, `Cargo.lock` holds `nom` 7.1.3
+  to 12 (`strsim` and `windows-sys` resolved). secure-gate `0.9.0-rc.17` took it
+  back to 13: it moved to `bech32` 0.12 while `age`, `age-core` and `age-plugin`
+  stay on 0.11. We have no direct `bech32` dependency to move, so this one is
+  `age`'s to close. Separately, `Cargo.lock` holds `nom` 7.1.3
   beside `nom` 8.0.0, reachable only through the target-gated
   `crabgrind`/`bindgen` chain under `libcrux-secrets`; `cargo tree -d --target
   all` reports it, and it never compiles here. Same class of lockfile-only

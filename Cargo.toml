@@ -91,7 +91,7 @@ unused_qualifications = "warn"
 unused_lifetimes = "warn"
 
 [workspace.dependencies]
-# 0.9.0-rc.16: edition 2024, rust-version 1.87 (it raised the floor from 1.85
+# 0.9.0-rc.17: edition 2024, rust-version 1.87 (rc.16 raised the floor from 1.85
 # for RUSTSEC-2026-0385, whose patched ctutils declares 1.87; ctutils itself is
 # only reachable through the `sealed` feature, which is not enabled here). The `release/0.8` backport line
 # existed solely to hold MSRV 1.70 and is retired.
@@ -115,7 +115,7 @@ unused_lifetimes = "warn"
 #
 # Pre-release requirement syntax, which is a trap on this line: a caret matches
 # a pre-release only when the requirement itself carries one. `"0.9.0-rc"` would
-# track the line and `"=0.9.0-rc.16"` pins it — plain `"0.9"` resolves to
+# track the line and `"=0.9.0-rc.17"` pins it — plain `"0.9"` resolves to
 # NOTHING, because there is no stable 0.9.x.
 #
 # rc.13 rejects `derive: [ConstantTimeEq]` on size-literal `fixed_newtype!` arms
@@ -124,7 +124,9 @@ unused_lifetimes = "warn"
 # change as the rc.13 pin. The opt-in `sealed` feature is not enabled, so
 # rc.14 and rc.15, which change only `sealed`, move nothing here. rc.16 removed
 # `from_rng`; the four key-generation call sites now fill through `try_new_with`.
-secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq"] }
+# rc.17 moved secure-gate to `bech32` 0.12; output is byte-identical and nothing
+# we call changed, but `age` stays on 0.11, so the graph carries both.
+secure-gate = { version = "=0.9.0-rc.17", features = ["rand", "ct-eq"] }
 
 # Was `=4.4.18`: genuine MSRV-1.70 scaffolding (clap 4.5.0 moved to 1.74).
 # The floor is 1.87 now and clap 4.6 declares 1.85, so the cap is spent.

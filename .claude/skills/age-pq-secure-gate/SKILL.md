@@ -15,7 +15,7 @@ of this workspace.**
 Workspace root `Cargo.toml`:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.17", features = ["rand", "ct-eq"] }
 ```
 
 Members opt in additively:
@@ -30,7 +30,8 @@ Members opt in additively:
 workspace uses, and per the global skill its guarantee is **no stack residue plus
 zeroization, not constant time**. Do not cite it as a timing defense for key strings.
 
-**Every rule in the global skill is read against rc.16** (taken in `0.2.0-rc.7`). rc.16 is
+**Every rule in the global skill is read against rc.17** (taken in `0.2.0-rc.7`, after rc.16
+in the same release; rc.17 moved secure-gate to `bech32` 0.12 and changed nothing we call). rc.16 is
 the last release that changed code here: it removed `from_rng`, so the four key-generation
 call sites (`Seed32` and `X25519Scalar` in `age-pq-hpke`'s `kem/mlkem768x25519.rs`, `Seed32`
 in `age-plugin-pq`'s `keygen`) fill through `try_new_with(|b| rng.try_fill_bytes(b))`,

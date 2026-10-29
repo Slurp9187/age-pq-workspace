@@ -29,7 +29,7 @@ source = "git+https://github.com/str4d/rage?rev=5d33e3e51975e4e96a982ba7e30fe1c7
 dependencies = [
  "age-core",
  "base64",
- "bech32",
+ "bech32 0.11.1",
  "chacha20poly1305 0.11.0",
  "cipher 0.5.2",
  "cookie-factory",
@@ -59,7 +59,7 @@ version = "0.12.0"
 source = "git+https://github.com/str4d/rage?rev=5d33e3e51975e4e96a982ba7e30fe1c72db506fe#5d33e3e51975e4e96a982ba7e30fe1c72db506fe"
 dependencies = [
  "base64",
- "bech32",
+ "bech32 0.11.1",
  "chacha20poly1305 0.11.0",
  "cookie-factory",
  "hkdf 0.13.0",
@@ -163,6 +163,12 @@ name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
+name = "bech32"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efbd3e1070bbdf4cd88a75264e18e8a26f7cb5c6949eadf0ceb85fb159cf08f8"
 
 [[package]]
 name = "bindgen"
@@ -1726,14 +1732,14 @@ dependencies = [
 
 [[package]]
 name = "secure-gate"
-version = "0.9.0-rc.16"
+version = "0.9.0-rc.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a46f2c31a81579c9be1e5e141bc1c3662a23a4d39d0ad828bb3ddfb9921b9ee"
+checksum = "0eb6dee38c7f22d2ed83355f29744042e44fa3b18da4a16da222d1d0523b02b5"
 dependencies = [
  "base16ct",
  "base32ct",
  "base64ct",
- "bech32",
+ "bech32 0.12.0",
  "rand",
  "subtle",
  "zeroize",
