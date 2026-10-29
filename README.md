@@ -49,8 +49,8 @@ workspace and pin a single tag or revision:
 
 ```toml
 [dependencies]
-age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.6" }
-age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.6" }
+age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.7" }
+age-pq-keys = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0.2.0-rc.7" }
 ```
 
 The crates share one version and ship under one tag: `age-pq-keys` and
@@ -72,8 +72,8 @@ claim about eight non-existent "published" tags reached a downstream
 consumer's security planning. The remote is the only thing that knows what you
 can fetch.
 
-At the time of writing the current tag is `v0.2.0-rc.6` on the `0.2` line
-(MSRV 1.85, edition 2024), and that is what the example above pins.
+At the time of writing the current tag is `v0.2.0-rc.7` on the `0.2` line
+(MSRV 1.87, edition 2024), and that is what the example above pins.
 
 **Two lines exist; pick deliberately.** `0.2` is the maintained one. `0.1` is
 frozen at `v0.1.0-rc.1` and exists solely to hold MSRV 1.70 — it receives no
