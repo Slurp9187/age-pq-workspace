@@ -110,11 +110,15 @@ unified — the secure-gate sections below bind every crate in full.
 The workspace pin is an **exact registry version**, not a git dependency:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.15", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq"] }
 ```
 
-`0.9.0-rc.15` is edition 2024, `rust-version = 1.85` — exactly this workspace's
-floor. The `release/0.8` backport existed solely to hold MSRV 1.70 and is
+`0.9.0-rc.16` is edition 2024, `rust-version = 1.87` — exactly this workspace's
+floor, which it set: rc.16 raised its MSRV from 1.85 to take the RUSTSEC-2026-0385
+fix in `ctutils`, so this workspace moved to 1.87 in `0.2.0-rc.7`. `ctutils` is
+reachable only through the `sealed` feature and is not in this graph
+(`cargo tree -i ctutils --workspace` matches nothing); the floor moves because
+secure-gate declares it, not because of what we link. The `release/0.8` backport existed solely to hold MSRV 1.70 and is
 **retired** — do not send fixes there, and read the changelog when planning
 anything.
 
@@ -135,7 +139,7 @@ has run the CCTV vectors or D1-D5 against. Bumping is a deliberate edit.
 
 **Pre-release requirement syntax is a trap on this line.** A caret matches a
 pre-release only when the requirement itself carries one: `"0.9.0-rc"` tracks
-the line, `"=0.9.0-rc.15"` pins it, and plain `"0.9"` resolves to **nothing**,
+the line, `"=0.9.0-rc.16"` pins it, and plain `"0.9"` resolves to **nothing**,
 because there is no stable `0.9.x`.
 
 **`conformance/` carries its own copy of this pin** and inherits nothing, being
@@ -163,7 +167,7 @@ not a direct dependency of any crate here.
 secure-gate cannot reach: libcrux-ml-kem has no zeroize support, so the expanded
 ML-KEM private key is wiped from this side (`kem::ml_kem::WipingKeyPair`), and
 the HKDF-extract PRK that `hkdf` hands back as a plain `GenericArray` is wiped
-after it is copied into its wrapper. It was already in the graph at 1.8.x
+after it is copied into its wrapper. It was already in the graph (1.8.x then, 1.9.1 since secure-gate rc.16)
 through secure-gate and x25519-dalek, so it added an edge, not a crate. Do not
 reach for `secure_gate::__private::Zeroize` instead: that module is
 semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
@@ -291,8 +295,10 @@ semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
   Linux CI failure described above, and it was replaced; the sentence outlived
   the code by several releases and contradicted the paragraph directly above
   it.)
-- **MSRV is `1.85`** (workspace `rust-toolchain.toml`), edition **2024**, Cargo
-  `resolver = "3"`. The 1.70 line is frozen at `v0.1.0-rc.1` and the cohort bump
+- **MSRV is `1.87`** (workspace `rust-toolchain.toml`), edition **2024**, Cargo
+  `resolver = "3"`. It was `1.85` from `0.2.0-rc.1` until `0.2.0-rc.7`, which
+  raised it to take secure-gate `0.9.0-rc.16` (see the pin note above); nothing
+  else in the table below changed with it. The 1.70 line is frozen at `v0.1.0-rc.1` and the cohort bump
   (issue #2) landed in `0.2.0-rc.1`; `docs/plans/msrv-1.85-cohort-bump.md`
   records what shipped. Boundary-type decisions that constrained it:
   [`docs/design/api-boundary-types.md`](docs/design/api-boundary-types.md).

@@ -35,7 +35,7 @@
 name = "conformance"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 publish = false
 
 # NOT inherited — this package is `exclude`d from the root workspace, so
@@ -63,7 +63,7 @@ age-core = { git = "https://github.com/str4d/rage", rev = "5d33e3e51975e4e96a982
 # `[lints.rust]` table above. If you bump secure-gate in the root manifest,
 # bump it here too. It was left on `{ git, branch = "main" }` at 0.9.0-rc.9
 # when the root moved, which is exactly how that drift starts.
-secure-gate = { version = "=0.9.0-rc.15", features = ["rand", "ct-eq", "encoding-bech32", "std"] }
+secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq", "encoding-bech32", "std"] }
 sha2 = "0.10"
 
 # rage's own patch table, reproduced verbatim. rage declares `hpke = "0.14"` but

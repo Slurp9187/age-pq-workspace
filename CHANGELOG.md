@@ -8,6 +8,45 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.7] - 2026-10-29
+
+### Changed
+
+- **MSRV raised from 1.85 to 1.87**: `rust-toolchain.toml`, `rust-version` in
+  the root manifest and in `conformance/Cargo.toml`, and the three CI jobs.
+  secure-gate `0.9.0-rc.16` declares 1.87, because every `ctutils` release
+  patched for RUSTSEC-2026-0385 does. `ctutils` itself is reachable only
+  through secure-gate's `sealed` feature, which this workspace does not enable,
+  so it is not in either graph; the floor moves because secure-gate's manifest
+  requires it. `time` stays capped below 0.3.46, which needs 1.88.
+- **secure-gate re-pinned from `=0.9.0-rc.15` to `=0.9.0-rc.16`**, in the root
+  workspace and in `conformance/Cargo.toml`. rc.16 requires `zeroize` 1.9.1, so
+  both lockfiles also move `zeroize` (root from 1.8.2, conformance from 1.9.0)
+  and the root moves `zeroize_derive` 1.4.3 to 1.5.0. Nothing else changes in
+  the registry graph. Like rc.13 and rc.15, this is part of a coordinated wave:
+  a downstream graph that also reaches secure-gate through another first-party
+  crate resolves only once every such crate names the same rc.
+
+### age-pq-hpke
+
+- rc.16 removed `from_rng`. The three call sites in `kem/mlkem768x25519.rs`
+  (`Seed32` and `X25519Scalar` in randomized encapsulation, `Seed32` in
+  `DecapsulationKey::generate`) now fill through
+  `try_new_with(|b| rng.try_fill_bytes(b))`. That was `from_rng`'s whole body,
+  including the wipe on `Err`, so the bytes and the error mapping are unchanged.
+
+### age-plugin-pq
+
+- `keygen` fills its `Seed32` the same way, from `SysRng`.
+- `io::Error::new(io::ErrorKind::Other, …)` becomes `io::Error::other(…)`,
+  which 1.87's clippy requires (`io_other_error`). Same in `age-pq-keys`'s
+  `Recipient` error mapping. No behavior change.
+
+### Docs
+
+- `CLAUDE.md`, the root manifest's comments, the READMEs' MSRV lines and the
+  `age-pq-secure-gate` skill name `=0.9.0-rc.16` and MSRV 1.87.
+
 ## [0.2.0-rc.6] - 2026-10-20
 
 ### Changed

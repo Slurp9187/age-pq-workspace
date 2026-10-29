@@ -24,7 +24,7 @@ env:
 
 jobs:
   msrv:
-    name: MSRV (1.85) — workspace
+    name: MSRV (1.87) — workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
           python .claude/skills/age-pq-changelog-protocol/scripts/check_changelog.py --mode "$MODE"
       # Keep this in step with rust-toolchain.toml, which pins the same version
       # and is what every bare `cargo` in this repo actually obeys.
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.87
         with:
           components: rustfmt, clippy
       # ---- formatting and lints (issue #2) --------------------------------
@@ -336,7 +336,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.87
       # Run the vectors as their own job so a regression is legible at a glance
       # rather than buried in the workspace suite.
       - run: cargo test -p age-pq-keys --test testkit -- --nocapture
@@ -346,7 +346,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.87
         with:
           components: rustfmt, clippy
       # `conformance/` is excluded from the root workspace and has its own
