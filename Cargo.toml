@@ -134,14 +134,13 @@ clap = { version = "4", features = ["derive"] }
 # well under the old 1.70 floor. It was blanket exact-pin style, so relaxing it
 # costs nothing.
 #
-# It buys nothing yet either, and deliberately so: relaxing a requirement does
-# not re-resolve an already-locked package, so `Cargo.lock` still holds proptest
-# 1.5.0 and `cargo tree -i rand@0.8.5` still lists it beside `age` 0.11 and
-# `age-core` 0.11. Nor would updating it dedup `rand`: the first proptest off
-# `rand 0.8` is 1.7, which takes `rand 0.9` — a different duplicate, not one
-# fewer, since our own crates are on 0.10. Same for the two relaxations above:
-# the lock still holds clap 4.4.18 and tempfile 3.10.1. A future `cargo update`
-# is the first thing that exercises any of these ranges.
+# `Cargo.lock` deliberately holds proptest at 1.5.0: updating it does not dedup
+# `rand`, because the first proptest off `rand 0.8` is 1.7, which takes
+# `rand 0.9` — a different duplicate, not one fewer, since our own crates are on
+# 0.10 and `age` keeps 0.8. A bare `cargo update` walks it to 1.11, so follow
+# one with `cargo update -p proptest --precise 1.5.0`. The `0.2.0-rc.7` recency
+# sweep was the first `cargo update` to exercise the two relaxations above
+# (clap 4.4.18 -> 4.6.7, tempfile 3.10.1 -> 3.27.0).
 proptest = "1"
 
 # Was `=3.10.1`. Never MSRV scaffolding either — tempfile has declared
