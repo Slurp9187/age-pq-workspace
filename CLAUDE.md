@@ -404,12 +404,24 @@ semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
   control — and note `sha3` in particular, the crate the deferred bump is named
   for, is now pinned to 0.10 by `ml-kem` as well as by us. Measured after the
   migration, `digest` is still **single-generation at 0.10.7** across the whole
-  workspace graph, as are `sha2` (0.10.9) and `sha3` (0.10.8) — the deferral is
-  still holding, and this is the fact to re-check before anyone reopens it.
+  workspace graph, as are `sha2` (0.10.9) and `sha3` (0.10.9 since the
+  `0.2.0-rc.7` recency sweep) — the deferral is still holding, and this is the
+  fact to re-check before anyone reopens it.
+
+  **It now takes a lockfile hold to keep it single-generation.** `rust-embed`
+  (under `age`'s i18n) moved its `rust-embed-utils` to `sha2` 0.11 in 8.12.0,
+  so a bare `cargo update` pulls `sha2` 0.11, `digest` 0.11, `crypto-common`
+  0.2, `block-buffer` 0.12, `hybrid-array` 0.4 and `const-oid` 0.10 into the
+  graph. `rust-embed`, `rust-embed-impl` and `rust-embed-utils` are held at
+  8.11.0 in `Cargo.lock`. We do not depend on it directly, so there is no
+  manifest line to cap; after any `cargo update`, re-run
+  `cargo update -p rust-embed --precise 8.11.0` (then `-impl`, then `-utils`)
+  and check `grep -c '^name = "digest"' Cargo.lock` is 1.
 
   **`cargo tree -d` will always show duplicate `rand` / `rand_core`, and that is
   correct.** Re-measured after the `age` 0.12 migration with
-  `cargo tree -i rand@0.8.5 --workspace -e normal,dev`: `rand 0.8.5` still has
+  `cargo tree -i rand@0.8.8 --workspace -e normal,dev` (0.8.5 until the
+  `0.2.0-rc.7` recency sweep): `rand 0.8.8` still has
   **exactly three** consumers, `age 0.12.1`, `age-core 0.12.0` and
   `proptest 1.5.0` (a dev-dependency of `age-pq-keys`). `age` is the trait
   provider this workspace implements, so its generation is not ours to choose —
@@ -417,20 +429,24 @@ semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
   the one consumer that *is* ours, but moving it does not dedup anything: the
   first release off `rand 0.8` is proptest 1.7, and it lands on `rand 0.9` — a
   different duplicate, not one fewer. That trade is out of scope for a
-  dependency bump and is not taken.
+  dependency bump and is not taken, and the `0.2.0-rc.7` recency sweep held
+  `proptest` at 1.5.0 in `Cargo.lock` for the same reason (`cargo update -p
+  proptest --precise 1.5.0` after a bare `cargo update`, which would otherwise
+  take 1.11).
 
   `rand_core 0.5.1` still comes from `x448 0.6`. **`rand_core 0.6.4` no longer
   "comes from `crypto-common`"** — that was true on `age` 0.11 and is now badly
   understated. `cargo tree -i rand_core@0.6.4 --workspace -e normal,dev` lists
   **twelve** direct consumers: `crypto-bigint`, `crypto-common`,
-  `elliptic-curve`, `ff`, `group`, `hpke`, `kem`, `ml-kem`, `rand 0.8.5`,
+  `elliptic-curve`, `ff`, `group`, `hpke`, `kem`, `ml-kem`, `rand 0.8.8`,
   `rand_chacha 0.3.1`, `rand_xorshift` and `x25519-dalek 2.0.1`. This makes the
   paragraph above *stronger*, not weaker: moving `x25519-dalek` to 3.0 alone now
   removes one edge of twelve, so it cannot collapse the duplicate even in
   principle. Do not read the old single-consumer wording as a dedup opportunity.
 
   The criteria that *are* meaningful, all three re-measured on the migrated
-  tree: exactly one `libcrux-ml-kem` (0.0.10); **exactly one RustCrypto
+  tree: exactly one `libcrux-ml-kem` (0.0.10 — see the 0.0.11 note in
+  `age-pq-hpke/Cargo.toml` for why it does not move at 1.87); **exactly one RustCrypto
   `ml-kem` (0.2.3), which is `age` 0.12's own and is not on our KEM path** —
   `cargo tree -i ml-kem --workspace -e normal` must show `age` as its only
   consumer, never `age-pq-hpke`; and every direct declaration in the three
@@ -439,7 +455,8 @@ semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
   **Duplicate-group count is not a regression signal by itself.** The `age` 0.12
   migration took it from 17 groups to 14 (`base64`, `bech32`, `rustc-hash` and
   `self_cell` resolved; `syn` 2/3 added, a proc-macro build-graph duplicate via
-  `i18n-embed-fl`, not a runtime one). Separately, `Cargo.lock` holds `nom` 7.1.3
+  `i18n-embed-fl`, not a runtime one). The `0.2.0-rc.7` recency sweep took it
+  to 12 (`strsim` and `windows-sys` resolved). Separately, `Cargo.lock` holds `nom` 7.1.3
   beside `nom` 8.0.0, reachable only through the target-gated
   `crabgrind`/`bindgen` chain under `libcrux-secrets`; `cargo tree -d --target
   all` reports it, and it never compiles here. Same class of lockfile-only

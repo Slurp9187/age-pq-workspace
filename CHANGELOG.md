@@ -26,6 +26,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the registry graph. Like rc.13 and rc.15, this is part of a coordinated wave:
   a downstream graph that also reaches secure-gate through another first-party
   crate resolves only once every such crate names the same rc.
+- **Dependency recency sweep.** `cargo update` across both lockfiles, under
+  the 1.87 floor: `clap` 4.4.18 -> 4.6.7, `tempfile` 3.10.1 -> 3.27.0, `time`
+  0.3.40 -> 0.3.45 (still capped below 0.3.46, which needs 1.88), `thiserror`
+  2.0.21, `rand` 0.10.3, `sha3` 0.10.9, `serde` 1.0.229, and transitive
+  updates. `age-pq-hpke`'s `serde_json` dev-dependency is relaxed from
+  `=1.0.132` to `1.0` (now 1.0.154). The duplicate-group count drops from 14
+  to 12. Three things are held back deliberately:
+  - `libcrux-ml-kem` stays at 0.0.10. 0.0.11 pins `libcrux-platform =0.0.4`,
+    which fails to compile on 1.87 (it calls `__cpuid` as a safe fn), and
+    neither crate declares an MSRV for the resolver to see.
+  - `rust-embed` (under `age`) is held at 8.11.0 in the lockfile, because
+    8.12+ pulls `sha2` 0.11 and would put a second `digest` generation in the
+    graph.
+  - `proptest` stays at 1.5.0, as documented: 1.7+ swaps one `rand`
+    duplicate for another.
+- **No new `zeroize` features to enable.** Of the direct dependencies, only
+  `x25519-dalek` offers one on its current line, and it is already on.
+  `chacha20poly1305` 0.10 zeroizes its key unconditionally. `sha2`, `sha3`
+  and `chacha20poly1305` gain a `zeroize` feature only on the gen-2 majors
+  (0.11, 0.11+ and 0.11), which stay deferred: `age` 0.12 pins the gen-1 side,
+  and `sha2` 0.11.1 needs 1.88.
 
 ### age-pq-hpke
 

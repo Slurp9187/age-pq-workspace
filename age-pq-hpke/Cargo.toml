@@ -27,6 +27,12 @@ mlkem1024 = ["libcrux-ml-kem/mlkem1024"]
 # comment here blamed "older Cargo" and its tls_codec default-feature
 # resolution; that was a Cargo-1.70 rationale and is stale at 1.85. The flag
 # stays for the reason above.)
+#
+# Held at 0.0.10 under the 1.87 floor. 0.0.11 pins `libcrux-platform =0.0.4`,
+# which calls `core::arch` `__cpuid` outside an `unsafe` block and so fails to
+# compile (E0133) on 1.87, where `__cpuid` is still an unsafe fn. Neither crate
+# declares a `rust-version`, so resolver 3 cannot see it; measured in the
+# `0.2.0-rc.7` recency sweep. Re-try when the floor rises.
 libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem768", "rand"] }
 sha3 = { version = "0.10", default-features = false }
 
@@ -59,7 +65,9 @@ rand = "0.10"
 rand_chacha = "0.10"
 rand_core = "0.10"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "=1.0.132"
+# Was `=1.0.132`, a leftover of blanket exact-pin style with no recorded reason;
+# serde_json declares 1.71, well under the floor.
+serde_json = "1.0"
 
 [lints]
 workspace = true
