@@ -306,34 +306,22 @@ impl AgeRecipient for HybridRecipient {
     ) -> Result<(Vec<Stanza>, HashSet<String>), age::EncryptError> {
         let kem = MlKem768X25519;
         let pk = kem.new_public_key(&self.pub_key).map_err(|e| {
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Invalid pub key: {:?}", e),
-            ))
+            age::EncryptError::Io(std::io::Error::other(format!("Invalid pub key: {:?}", e)))
         })?;
         let kdf = new_kdf(KDF_ID).map_err(|e| {
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("KDF error: {:?}", e),
-            ))
+            age::EncryptError::Io(std::io::Error::other(format!("KDF error: {:?}", e)))
         })?;
         let aead = new_aead(AEAD_ID).map_err(|e| {
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("AEAD error: {:?}", e),
-            ))
+            age::EncryptError::Io(std::io::Error::other(format!("AEAD error: {:?}", e)))
         })?;
         let (enc, mut sender) = new_sender(pk, kdf, aead, PQ_LABEL).map_err(|e| {
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("HPKE new_sender error: {:?}", e),
-            ))
+            age::EncryptError::Io(std::io::Error::other(format!(
+                "HPKE new_sender error: {:?}",
+                e
+            )))
         })?;
         let wrapped = sender.seal(&[], file_key.expose_secret()).map_err(|e| {
-            age::EncryptError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("HPKE seal error: {:?}", e),
-            ))
+            age::EncryptError::Io(std::io::Error::other(format!("HPKE seal error: {:?}", e)))
         })?;
         let base64_enc = BASE64_STANDARD_NO_PAD.encode(enc);
         let stanza = Stanza {

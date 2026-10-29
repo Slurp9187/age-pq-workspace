@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-hpke"
-version = "0.2.0-rc.6"
+version = "0.2.0-rc.7"
 dependencies = [
  "aead 0.5.2",
  "byteorder",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-keys"
-version = "0.2.0-rc.6"
+version = "0.2.0-rc.7"
 dependencies = [
  "age",
  "age-core",
@@ -1725,9 +1725,9 @@ dependencies = [
 
 [[package]]
 name = "secure-gate"
-version = "0.9.0-rc.15"
+version = "0.9.0-rc.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a61215834c24de98e1326f8e7d471fda47419ef1369786add84de59daad7735"
+checksum = "2a46f2c31a81579c9be1e5e141bc1c3662a23a4d39d0ad828bb3ddfb9921b9ee"
 dependencies = [
  "base16ct",
  "base32ct",
@@ -2239,9 +2239,9 @@ checksum = "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272"
 
 [[package]]
 name = "zeroize"
-version = "1.9.0"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 dependencies = [
  "zeroize_derive",
 ]

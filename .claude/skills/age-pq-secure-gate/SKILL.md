@@ -15,7 +15,7 @@ of this workspace.**
 Workspace root `Cargo.toml`:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.15", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq"] }
 ```
 
 Members opt in additively:
@@ -30,10 +30,13 @@ Members opt in additively:
 workspace uses, and per the global skill its guarantee is **no stack residue plus
 zeroization, not constant time**. Do not cite it as a timing defense for key strings.
 
-**Every rule in the global skill is read against rc.15** (taken in `0.2.0-rc.6`). The last
-release that changed code here was rc.13 (taken in `0.2.0-rc.5`; see *The rc.13 migration*
-below). The opt-in `sealed` feature, added in rc.13, is not enabled, and rc.14 and rc.15
-changed only `sealed`.
+**Every rule in the global skill is read against rc.16** (taken in `0.2.0-rc.7`). rc.16 is
+the last release that changed code here: it removed `from_rng`, so the four key-generation
+call sites (`Seed32` and `X25519Scalar` in `age-pq-hpke`'s `kem/mlkem768x25519.rs`, `Seed32`
+in `age-plugin-pq`'s `keygen`) fill through `try_new_with(|b| rng.try_fill_bytes(b))`,
+which wipes the buffer on `Err` just as `from_rng` did. It also raised the MSRV to 1.87.
+Before it, rc.13 (taken in `0.2.0-rc.5`; see *The rc.13 migration* below). The opt-in `sealed`
+feature, added in rc.13, is not enabled, and rc.14 and rc.15 changed only `sealed`.
 
 ## Boundary
 
@@ -132,7 +135,7 @@ site, and Tier 3 does not show up in an `expose_secret` sweep.
 Measured usage in `*/src` (files, not occurrences):
 
 ```sh
-for m in with_secret with_secret_mut expose_secret into_inner from_random from_rng ct_eq new_with; do
+for m in with_secret with_secret_mut expose_secret into_inner from_random try_new_with ct_eq new_with; do
   printf '%-16s %s\n' "$m" "$(grep -rl "$m" --include=*.rs age-pq-hpke/src age-pq-keys/src age-plugin-pq/src | wc -l)"
 done
 ```

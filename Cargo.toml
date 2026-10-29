@@ -7,7 +7,7 @@ members = ["age-pq-hpke", "age-pq-keys", "age-plugin-pq"]
 # shipped crates. `exclude` keeps `cargo test --workspace` from reaching it and
 # gives it its own lockfile. See conformance/Cargo.toml for the measurements.
 exclude = ["conformance"]
-resolver = "3"   # MSRV 1.85 → resolver 3 (MSRV-aware selection). Requires Cargo 1.84+.
+resolver = "3"   # MSRV 1.87 → resolver 3 (MSRV-aware selection). Requires Cargo 1.84+.
 
 # Shared package metadata (inherited by every member)
 [workspace.package]
@@ -21,9 +21,9 @@ publish = false
 # single git tag over the whole workspace, and a consumer pinning
 # `tag = "v0.2.0-rc.1"` gets all three at once. Per-crate numbers would give
 # that tag three answers to "which version is this?".
-version = "0.2.0-rc.6"
+version = "0.2.0-rc.7"
 
-rust-version = "1.85"
+rust-version = "1.87"
 edition = "2024"
 # Confirmed against the LICENSE-MIT / LICENSE-APACHE files in the repository
 # root and in each crate, not assumed: dual MIT / Apache-2.0, at the user's
@@ -62,7 +62,7 @@ panic = "unwind"
 [profile.bench]
 debug = true    # keep symbols for flamegraphs / profiling
 
-# Shared workspace lint tables need Cargo 1.74+, which the 1.85 floor now clears.
+# Shared workspace lint tables need Cargo 1.74+, which the 1.87 floor clears.
 #
 # These are inert unless each member opts in with `[lints] workspace = true` —
 # the mistake the pre-1.70 version of these tables made, which is why all three
@@ -91,7 +91,9 @@ unused_qualifications = "warn"
 unused_lifetimes = "warn"
 
 [workspace.dependencies]
-# 0.9.0-rc.15: edition 2024, rust-version 1.85. The `release/0.8` backport line
+# 0.9.0-rc.16: edition 2024, rust-version 1.87 (it raised the floor from 1.85
+# for RUSTSEC-2026-0385, whose patched ctutils declares 1.87; ctutils itself is
+# only reachable through the `sealed` feature, which is not enabled here). The `release/0.8` backport line
 # existed solely to hold MSRV 1.70 and is retired.
 #
 # REGISTRY, EXACT-PINNED, and both halves are deliberate.
@@ -113,18 +115,19 @@ unused_lifetimes = "warn"
 #
 # Pre-release requirement syntax, which is a trap on this line: a caret matches
 # a pre-release only when the requirement itself carries one. `"0.9.0-rc"` would
-# track the line and `"=0.9.0-rc.15"` pins it — plain `"0.9"` resolves to
+# track the line and `"=0.9.0-rc.16"` pins it — plain `"0.9"` resolves to
 # NOTHING, because there is no stable 0.9.x.
 #
 # rc.13 rejects `derive: [ConstantTimeEq]` on size-literal `fixed_newtype!` arms
 # (E0119), because those arms now emit `ct_eq` on their own; the four such
 # declarations in `age-pq-hpke/src/aliases.rs` dropped the token in the same
 # change as the rc.13 pin. The opt-in `sealed` feature is not enabled, so
-# rc.14 and rc.15, which change only `sealed`, move nothing here.
-secure-gate = { version = "=0.9.0-rc.15", features = ["rand", "ct-eq"] }
+# rc.14 and rc.15, which change only `sealed`, move nothing here. rc.16 removed
+# `from_rng`; the four key-generation call sites now fill through `try_new_with`.
+secure-gate = { version = "=0.9.0-rc.16", features = ["rand", "ct-eq"] }
 
 # Was `=4.4.18`: genuine MSRV-1.70 scaffolding (clap 4.5.0 moved to 1.74).
-# The floor is 1.85 now and clap 4.6 declares exactly 1.85, so the cap is spent.
+# The floor is 1.87 now and clap 4.6 declares 1.85, so the cap is spent.
 clap = { version = "4", features = ["derive"] }
 
 # Was `=1.5.0`. Never MSRV scaffolding — 1.5, 1.6 and 1.7 all declare <= 1.66,
@@ -146,7 +149,7 @@ proptest = "1"
 tempfile = "3"
 
 # The one cap that OUTLIVES the 1.70 line, so it stays: time 0.3.46+ requires
-# rustc 1.88, above this workspace's 1.85 floor. Verified against the crates.io
+# rustc 1.88, above this workspace's 1.87 floor. Verified against the crates.io
 # index rather than assumed — 0.3.41 declares 1.67.1, 0.3.42 declares 1.81,
 # 0.3.45 declares 1.83, and 0.3.46 through 0.3.49 declare 1.88.
 #

@@ -30,7 +30,7 @@ age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0
 
 ### Requirements
 
-- Rust 1.85 or newer (MSRV; edition 2024). The MSRV-1.70 line is frozen at the
+- Rust 1.87 or newer (MSRV; edition 2024). The MSRV-1.70 line is frozen at the
   `v0.1.0-rc.1` tag.
 
 ### Secure Aliases (optional)

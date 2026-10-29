@@ -224,8 +224,10 @@ impl EncapsulationKey {
         &self,
         rng: &mut R,
     ) -> CrateResult<(Ciphertext, SharedSecret)> {
-        let ml_rand = Seed32::from_rng(rng).map_err(|_| Error::RandomnessError)?;
-        let ephemeral = X25519Scalar::from_rng(rng).map_err(|_| Error::RandomnessError)?;
+        let ml_rand =
+            Seed32::try_new_with(|b| rng.try_fill_bytes(b)).map_err(|_| Error::RandomnessError)?;
+        let ephemeral = X25519Scalar::try_new_with(|b| rng.try_fill_bytes(b))
+            .map_err(|_| Error::RandomnessError)?;
         self.encapsulate_inner(ml_rand, ephemeral)
     }
 
@@ -379,7 +381,7 @@ impl DecapsulationKey {
     /// Generates a fresh decapsulation key from a CSPRNG.
     pub fn generate<R: TryRng + TryCryptoRng>(rng: &mut R) -> Self {
         Self {
-            seed: Seed32::from_rng(rng)
+            seed: Seed32::try_new_with(|b| rng.try_fill_bytes(b))
                 .expect("Failed to generate random bytes for decapsulation key seed"),
         }
     }

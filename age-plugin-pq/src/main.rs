@@ -17,6 +17,7 @@ use age_pq_hpke::kem::mlkem768x25519::{Ciphertext, DecapsulationKey, Encapsulati
 use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
 use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce, aead::Aead};
 use clap::{CommandFactory, Parser};
+use rand::TryRng;
 use rand::rngs::SysRng;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -154,10 +155,10 @@ impl RecipientPluginV1 for RecipientPlugin {
             let mut ss = SharedSecret32::from([0u8; 32]);
             let ct = ss
                 .with_secret_mut(|out| pk.encapsulate_into(&mut SysRng, out))
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "encapsulation failed"))?;
+                .map_err(|_| io::Error::other("encapsulation failed"))?;
             let (key, base_nonce) = ss
                 .with_secret(|s| derive_key_and_nonce(s, PQ_LABEL))
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "key derivation failed"))?;
+                .map_err(|_| io::Error::other("key derivation failed"))?;
 
             // Feed the key into the cipher via `new_from_slice`; `Key::from(..)`
             // would materialise a non-Zeroize `GenericArray` binding holding the
@@ -165,7 +166,7 @@ impl RecipientPluginV1 for RecipientPlugin {
             // zeroize-on-drop state, and `key` wipes itself when it drops.
             let aead = key
                 .with_secret(|k| ChaCha20Poly1305::new_from_slice(k))
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "invalid AEAD key"))?;
+                .map_err(|_| io::Error::other("invalid AEAD key"))?;
             drop(key);
             drop(ss);
             let ct_b64 = STANDARD_NO_PAD.encode(ct.to_bytes());
@@ -421,25 +422,25 @@ fn main() -> io::Result<()> {
 }
 
 fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
-    // `from_rng` fills the wrapper's own storage straight from the CSPRNG, so the
+    // `try_new_with` fills the wrapper's own storage straight from the CSPRNG, so the
     // seed never exists as an unprotected buffer. It is wiped on drop, including
     // on the `?`-driven early returns below.
-    let seed = Seed32::from_rng(&mut SysRng)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    let seed = Seed32::try_new_with(|b| SysRng.try_fill_bytes(b))
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     let sk = seed.with_secret(DecapsulationKey::from_seed);
     let pk = sk
         .encapsulation_key()
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "keygen failed"))?;
+        .map_err(|_| io::Error::other("keygen failed"))?;
 
     let created = OffsetDateTime::now_utc()
         .format(&Rfc3339)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        .map_err(io::Error::other)?;
 
     let recipient = pk
         .to_bytes()
         .try_to_bech32_sized::<RECIPIENT_CODE_LENGTH>(RECIPIENT_BECH32_HRP, Case::Lower)
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "failed to encode recipient"))?
+        .map_err(|_| io::Error::other("failed to encode recipient"))?
         .into_inner();
 
     let identity_hrp = if native {
@@ -452,7 +453,7 @@ fn keygen(output: Option<String>, native: bool) -> io::Result<()> {
     // error carries no payload - the input is the private key.
     let identity = IdentityEncoding::new(
         seed.try_to_bech32(identity_hrp, Case::Upper)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "failed to encode identity"))?
+            .map_err(|_| io::Error::other("failed to encode identity"))?
             .into_inner(),
     );
 
@@ -535,7 +536,7 @@ fn convert_native_identities() -> io::Result<()> {
 
             let plugin_identity = IdentityEncoding::new(
                 seed.try_to_bech32(IDENTITY_BECH32_HRP, Case::Upper)
-                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "failed to encode identity"))?
+                    .map_err(|_| io::Error::other("failed to encode identity"))?
                     .into_inner(),
             );
             plugin_identity.with_secret(|s| println!("{s}"));
