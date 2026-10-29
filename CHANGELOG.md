@@ -26,6 +26,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the registry graph. Like rc.13 and rc.15, this is part of a coordinated wave:
   a downstream graph that also reaches secure-gate through another first-party
   crate resolves only once every such crate names the same rc.
+- **secure-gate re-pinned again, to `=0.9.0-rc.17`**, which replaces rc.16 as
+  the 0.9.0 candidate (same MSRV, 1.87). It moves secure-gate to `bech32` 0.12
+  with byte-identical output. We have no direct `bech32` dependency, but `age`,
+  `age-core` and `age-plugin` stay on 0.11, so both lockfiles now carry
+  `bech32` 0.11 and 0.12 (duplicate groups 12 -> 13). Nothing else moves.
 - **Dependency recency sweep.** `cargo update` across both lockfiles, under
   the 1.87 floor: `clap` 4.4.18 -> 4.6.7, `tempfile` 3.10.1 -> 3.27.0, `time`
   0.3.40 -> 0.3.45 (still capped below 0.3.46, which needs 1.88), `thiserror`
