@@ -38,7 +38,9 @@ mlkem1024 = ["libcrux-ml-kem/mlkem1024"]
 # a libcrux-ml-kem release pins a fixed libcrux-platform, or when the floor
 # reaches 1.94.
 libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem768", "rand"] }
-sha3 = { version = "0.10", default-features = false }
+# `zeroize` (new in 0.10.9) wipes the Keccak state on drop; it absorbs the
+# X-Wing combiner input and the SHAKE KDF's secrets.
+sha3 = { version = "0.10.9", default-features = false, features = ["zeroize"] }
 
 x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize", "static_secrets"] }
 x448 = "0.6.0"
@@ -51,6 +53,18 @@ thiserror = "2.0"
 # was removed along with `OsRng` itself).
 rand = "0.10"
 chacha20poly1305 = "0.10"
+# Feature-only dependencies: nothing in `src/` names these crates. They exist to
+# turn on `zeroize` where no dependency forwards it, and Cargo's feature
+# unification applies it to every build that links this crate.
+# - poly1305: chacha20poly1305 0.10 enables `zeroize` on chacha20 but not on
+#   poly1305, so the one-time MAC key (r, s) and accumulator survived drop.
+# - chacha20 0.10: rand 0.10's ChaCha RNG core (`std_rng` / `thread_rng`,
+#   also pulled by libcrux-ml-kem through rand). We draw from `SysRng`, but
+#   the core is compiled in and anything using `rand::rng()` keeps state there.
+# Keep their majors in step with chacha20poly1305 and rand, or the feature
+# lands on a version nothing else uses and wipes nothing.
+poly1305 = { version = "0.8", default-features = false, features = ["zeroize"] }
+chacha20 = { version = "0.10", default-features = false, features = ["zeroize"] }
 aead = { version = "0.5", default-features = false }
 byteorder = "1.5"
 hkdf = "0.12"

@@ -77,9 +77,11 @@ version = "0.2.0-rc.7"
 dependencies = [
  "aead 0.5.2",
  "byteorder",
+ "chacha20 0.10.2",
  "chacha20poly1305 0.10.1",
  "hkdf 0.12.4",
  "libcrux-ml-kem",
+ "poly1305 0.8.0",
  "rand",
  "secure-gate",
  "sha2 0.10.9",
@@ -273,6 +275,7 @@ dependencies = [
  "cipher 0.5.2",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -1429,6 +1432,7 @@ dependencies = [
  "cpufeatures 0.2.17",
  "opaque-debug",
  "universal-hash 0.5.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -1830,6 +1834,7 @@ checksum = "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874"
 dependencies = [
  "digest 0.10.7",
  "keccak 0.1.6",
+ "zeroize",
 ]
 
 [[package]]

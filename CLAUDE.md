@@ -172,6 +172,17 @@ through secure-gate and x25519-dalek, so it added an edge, not a crate. Do not
 reach for `secure_gate::__private::Zeroize` instead: that module is
 semver-exempt. `zeroize` also appears as an `x25519-dalek` feature.
 
+**`age-pq-hpke` also carries two feature-only dependencies, `poly1305` and
+`chacha20`**, which nothing in `src/` names: they turn on `zeroize` where no
+dependency forwards it (`chacha20poly1305` 0.10 does not forward it to
+`poly1305`, and `rand` 0.10 never does for its ChaCha core). `sha3` takes the
+feature directly from 0.10.9. Do not remove them as unused, and move their
+majors with `chacha20poly1305` and `rand`, or the feature lands on a version
+nothing links. To audit, compare every resolved package's available `zeroize`
+features with its enabled ones in `cargo metadata`; a direct-dependency check
+missed all three. The ones left off belong to `age`'s own recipients; the
+`0.2.0-rc.7` changelog lists them.
+
 ---
 
 ## Build rules — non-negotiable, workspace-wide
