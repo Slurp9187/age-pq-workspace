@@ -47,12 +47,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     graph.
   - `proptest` stays at 1.5.0, as documented: 1.7+ swaps one `rand`
     duplicate for another.
-- **No new `zeroize` features to enable.** Of the direct dependencies, only
-  `x25519-dalek` offers one on its current line, and it is already on.
-  `chacha20poly1305` 0.10 zeroizes its key unconditionally. `sha2`, `sha3`
-  and `chacha20poly1305` gain a `zeroize` feature only on the gen-2 majors
-  (0.11, 0.11+ and 0.11), which stay deferred: `age` 0.12 pins the gen-1 side,
-  and `sha2` 0.11.1 needs 1.88.
+- **`zeroize` turned on wherever our secret paths offer it.** Audited from the
+  resolved graph (`cargo metadata`, every package's features against what is
+  enabled), not from direct dependencies alone, which missed three:
+  - `sha3` 0.10.9 (new in that patch release): the Keccak state behind the
+    X-Wing combiner and the SHAKE KDF. The requirement is now `0.10.9`.
+  - `poly1305` 0.8: `chacha20poly1305` 0.10 forwards `zeroize` to `chacha20`
+    but not to `poly1305`, so the one-time MAC key and accumulator were not
+    wiped. Turned on through a feature-only dependency in `age-pq-hpke`.
+  - `chacha20` 0.10: `rand` 0.10's ChaCha RNG core, also pulled by
+    libcrux-ml-kem. We draw from `SysRng`, but the core is compiled in. Also
+    feature-only.
+  Already on: `x25519-dalek`, `curve25519-dalek`, `chacha20` 0.9, `cipher`,
+  `generic-array`. Left off, deliberately: `aes`, `aes-gcm`, `ctr`, `ghash`,
+  `polyval`, `ml-kem`, `hybrid-array` and `salsa20`, reachable only through
+  `age`'s own scrypt and `mlkem768p256tag` recipients, which our code never
+  calls; turning them on would mean declaring `age`'s internal crates at its
+  versions. `sha2`, `hkdf`/`hmac` and `aead` offer no `zeroize` on their 0.10/0.12/0.5
+  lines; `sha2` gains one in 0.11 (gen-2, deferred: `age` 0.12 pins gen-1, and
+  0.11.1 needs 1.88).
 
 ### age-pq-hpke
 
