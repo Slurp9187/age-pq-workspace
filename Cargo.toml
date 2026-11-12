@@ -21,7 +21,7 @@ publish = false
 # single git tag over the whole workspace, and a consumer pinning
 # `tag = "v0.2.0-rc.1"` gets all three at once. Per-crate numbers would give
 # that tag three answers to "which version is this?".
-version = "0.2.0-rc.7"
+version = "0.2.0-rc.8"
 
 rust-version = "1.87"
 edition = "2024"
@@ -126,7 +126,9 @@ unused_lifetimes = "warn"
 # `from_rng`; the four key-generation call sites now fill through `try_new_with`.
 # rc.17 moved secure-gate to `bech32` 0.12; output is byte-identical and nothing
 # we call changed, but `age` stays on 0.11, so the graph carries both.
-secure-gate = { version = "=0.9.0-rc.17", features = ["rand", "ct-eq"] }
+# rc.18 made the bech32 checksum types private; we pass the code length as a
+# number (`bech32_code_length`, the `_sized` methods), which stays public.
+secure-gate = { version = "=0.9.0-rc.18", features = ["rand", "ct-eq"] }
 
 # Was `=4.4.18`: genuine MSRV-1.70 scaffolding (clap 4.5.0 moved to 1.74).
 # The floor is 1.87 now and clap 4.6 declares 1.85, so the cap is spent.
