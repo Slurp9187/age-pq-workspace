@@ -12,11 +12,15 @@ of this workspace.**
 
 ## Dependency
 
-Workspace root `Cargo.toml`:
+The pin lives in the workspace root `Cargo.toml` on `main`, and **that file is the only place
+this skill takes the version from** — read it there rather than from here:
 
 ```toml
-secure-gate = { version = "=0.9.0-rc.17", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=<current rc>", features = ["rand", "ct-eq"] }
 ```
+
+The shape is what this skill records: an exact `=` registry pin with `rand` and `ct-eq`.
+`conformance/Cargo.toml` carries its own copy, which every bump must move too.
 
 Members opt in additively:
 
@@ -30,14 +34,20 @@ Members opt in additively:
 workspace uses, and per the global skill its guarantee is **no stack residue plus
 zeroization, not constant time**. Do not cite it as a timing defense for key strings.
 
-**Every rule in the global skill is read against rc.17** (taken in `0.2.0-rc.7`, after rc.16
-in the same release; rc.17 moved secure-gate to `bech32` 0.12 and changed nothing we call). rc.16 is
-the last release that changed code here: it removed `from_rng`, so the four key-generation
-call sites (`Seed32` and `X25519Scalar` in `age-pq-hpke`'s `kem/mlkem768x25519.rs`, `Seed32`
-in `age-plugin-pq`'s `keygen`) fill through `try_new_with(|b| rng.try_fill_bytes(b))`,
-which wipes the buffer on `Err` just as `from_rng` did. It also raised the MSRV to 1.87.
-Before it, rc.13 (taken in `0.2.0-rc.5`; see *The rc.13 migration* below). The opt-in `sealed`
-feature, added in rc.13, is not enabled, and rc.14 and rc.15 changed only `sealed`.
+**Every rule in the global skill is read against the pinned version.** What each secure-gate
+bump changed for this workspace, and which release took it, is in the root `CHANGELOG.md`;
+this file is not updated per bump. Two facts outlast any one bump:
+
+- **Key generation fills through `try_new_with(|b| rng.try_fill_bytes(b))`**, which wipes the
+  buffer on `Err`. `from_rng` was removed in rc.16. The call sites are `Seed32` and
+  `X25519Scalar` in `age-pq-hpke`'s `kem/mlkem768x25519.rs`, and `Seed32` in `age-plugin-pq`'s
+  `keygen`.
+- **Bech32 code lengths are passed as numbers** through `bech32_code_length` and the `_sized`
+  methods. The `Bech32Sized`/`Bech32mSized`/`Bech32Standard`/`Bech32mStandard` types are private
+  since rc.18, and nothing here names them.
+
+The opt-in `sealed` feature (added in rc.13) is not enabled. The rc.13 migration, the last bump
+that forced a change to the newtype declarations, is described below.
 
 ## Boundary
 

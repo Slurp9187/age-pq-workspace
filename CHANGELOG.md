@@ -8,6 +8,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.8] - Unreleased
+
+### Changed
+
+- **secure-gate re-pinned from `=0.9.0-rc.17` to `=0.9.0-rc.18`**, the last
+  candidate before 0.9.0, in the root workspace and in `conformance/Cargo.toml`.
+  No code change. rc.18 makes secure-gate's bech32 checksum types private; this
+  workspace never named them, since it passes the code length as a number through
+  `bech32_code_length` and the `_sized` methods, which stay public, and encoded
+  output is unchanged. rc.18's other changes (`traits::revealed_secrets` renamed,
+  serde `derive` no longer enabled, serde floor 1.0.95, a wipe fix in the hex,
+  Base32 and Base64url decoders) touch nothing used here.
+
 ## [0.2.0-rc.7] - 2026-10-29
 
 ### Changed
