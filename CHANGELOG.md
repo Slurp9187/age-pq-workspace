@@ -20,6 +20,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   output is unchanged. rc.18's other changes (`traits::revealed_secrets` renamed,
   serde `derive` no longer enabled, serde floor 1.0.95, a wipe fix in the hex,
   Base32 and Base64url decoders) touch nothing used here.
+- **secure-gate re-pinned again, to `=0.9.0-rc.19`**, folded into this release
+  after the cut. No code change, and the MSRV stays 1.87. rc.19 adds only
+  `sealed_dynamic_newtype!`, behind the `sealed` feature this workspace does not
+  enable, plus documentation and wider CI.
 
 ## [0.2.0-rc.7] - 2026-10-29
 
