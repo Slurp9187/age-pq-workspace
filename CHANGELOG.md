@@ -8,11 +8,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0-rc.9] - Unreleased
+## [0.2.0-rc.9] - 2026-11-14
 
-### Removed
+### age-pq-hpke
 
-- **`age-pq-hpke` no longer re-exports secure-gate traits**: `age_pq_hpke::ConstantTimeEq`,
+- **No longer re-exports secure-gate traits** (removed): `age_pq_hpke::ConstantTimeEq`,
   `age_pq_hpke::RevealSecret` and `age_pq_hpke::SecretLen`. Import them from
   `secure_gate` directly. Re-exporting them tied every consumer's secure-gate
   version to this crate's, so a sibling crate could not move to a new secure-gate
