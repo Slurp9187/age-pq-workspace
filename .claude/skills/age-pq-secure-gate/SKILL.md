@@ -16,10 +16,11 @@ The pin lives in the workspace root `Cargo.toml` on `main`, and **that file is t
 this skill takes the version from** — read it there rather than from here:
 
 ```toml
-secure-gate = { version = "=<current version>", features = ["rand", "ct-eq"] }
+secure-gate = { version = "0.9", features = ["rand", "ct-eq"] }
 ```
 
-The shape is what this skill records: an exact `=` registry pin with `rand` and `ct-eq`.
+The shape is what this skill records: a registry caret on the stable line (`"0.9"`, not an
+exact `=` pin, since 0.9.0) with `rand` and `ct-eq`.
 `conformance/Cargo.toml` carries its own copy, which every bump must move too.
 
 Members opt in additively:
@@ -131,11 +132,12 @@ Two things to keep in mind when adding a newtype:
 - **With `ct-eq` off the offending declaration still compiles** — both impls are discarded. This
   workspace has `ct-eq` **on**, so it fails loudly here.
 
-**A secure-gate bump cannot be taken alone.** Every first-party crate that pins secure-gate
-exactly must name the same rc, because two different exact requirements in the same
+**On the rc line, a secure-gate bump could not be taken alone.** Every first-party crate that
+pinned secure-gate exactly had to name the same rc, because two different exact requirements in the same
 compatibility range cannot resolve — so a downstream graph that reaches secure-gate through
 several of them (`encrypted-file-vault` did at rc.12) stops resolving until every crate moves.
-Plan each bump as one coordinated wave. See the global skill's *upgrade* reference.
+Carets on stable 0.9 remove that for patch releases; a new minor still needs one coordinated
+wave. See the global skill's *upgrade* reference.
 
 ## Access tiers — the inventory is the point
 

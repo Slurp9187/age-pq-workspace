@@ -96,7 +96,7 @@ unused_lifetimes = "warn"
 # only reachable through the `sealed` feature, which is not enabled here). The `release/0.8` backport line
 # existed solely to hold MSRV 1.70 and is retired.
 #
-# REGISTRY, EXACT-PINNED, and both halves are deliberate.
+# REGISTRY, CARET `"0.9"`, and both halves are deliberate.
 #
 # Was `{ git = "...", branch = "main" }`, which is wrong for a public repo
 # cutting tags. A branch pin puts the whole guarantee in `Cargo.lock`: the lock
@@ -109,15 +109,11 @@ unused_lifetimes = "warn"
 # silently stopped tracking upstream (see the rename note in CLAUDE.md); a
 # registry version is an immutable, published, auditable fact instead.
 #
-# `=` rather than a range: a range would let a `cargo update` walk onto a
-# version nobody here has run the CCTV vectors or D1-D5 against. That held for
-# the moving 0.9.0-rc line and still holds now that 0.9 is stable. Bumping is a
-# deliberate edit of this line.
-#
-# Pre-release requirement syntax, which was a trap while the line was rc-only:
-# a caret matches a pre-release only when the requirement itself carries one.
-# Until 0.9.0 existed, plain `"0.9"` resolved to nothing; now it resolves to
-# stable 0.9.x and never to an rc.
+# A caret, not `=`: 0.9 is stable and follows semver, so 0.9.x patches are
+# taken. `Cargo.lock` records the version this tree was tested against. The
+# exact `=0.9.0-rc.N` pins were for the pre-release line, which moved with
+# breaking changes. A caret never matches a pre-release unless the requirement
+# itself names one, so `"0.9"` cannot walk onto a 0.9.x rc.
 #
 # rc.13 rejects `derive: [ConstantTimeEq]` on size-literal `fixed_newtype!` arms
 # (E0119), because those arms now emit `ct_eq` on their own; the four such
@@ -131,7 +127,8 @@ unused_lifetimes = "warn"
 # number (`bech32_code_length`, the `_sized` methods), which stays public.
 # rc.19 added only `sealed_dynamic_newtype!` under `sealed`, plus docs and CI.
 # 0.9.0, the first stable release, has rc.19's API; it changed docs and tests only.
-secure-gate = { version = "=0.9.0", features = ["rand", "ct-eq"] }
+# From 0.9.0 the requirement is a caret.
+secure-gate = { version = "0.9", features = ["rand", "ct-eq"] }
 
 # Was `=4.4.18`: genuine MSRV-1.70 scaffolding (clap 4.5.0 moved to 1.74).
 # The floor is 1.87 now and clap 4.6 declares 1.85, so the cap is spent.
