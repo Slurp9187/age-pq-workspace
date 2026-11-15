@@ -8,6 +8,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0-rc.9] - Unreleased
+
+### Removed
+
+- **`age-pq-hpke` no longer re-exports secure-gate traits**: `age_pq_hpke::ConstantTimeEq`,
+  `age_pq_hpke::RevealSecret` and `age_pq_hpke::SecretLen`. Import them from
+  `secure_gate` directly. Re-exporting them tied every consumer's secure-gate
+  version to this crate's, so a sibling crate could not move to a new secure-gate
+  until this one did. `age-pq-keys` and `age-plugin-pq` already imported them
+  from `secure_gate`. The newtype aliases (`Seed32` and the rest) are still
+  exported; they are this crate's types.
+
 ## [0.2.0-rc.8] - 2026-11-13
 
 ### Changed

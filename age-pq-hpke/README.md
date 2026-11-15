@@ -36,7 +36,8 @@ age-pq-hpke = { git = "https://github.com/Slurp9187/age-pq-workspace", tag = "v0
 ### Secure Aliases (optional)
 
 ```rust
-use age_pq_hpke::{Seed32, RevealSecret};
+use age_pq_hpke::Seed32;
+use secure_gate::RevealSecret;
 
 let seed = Seed32::from_random();
 let first_byte = seed.with_secret(|bytes| bytes[0]);
@@ -46,7 +47,8 @@ assert!(first_byte <= 255);
 ### KEM
 
 ```rust
-use age_pq_hpke::{ConstantTimeEq, MlKem768X25519, kem::Kem};
+use age_pq_hpke::{MlKem768X25519, kem::Kem};
+use secure_gate::ConstantTimeEq;
 
 let kem = MlKem768X25519;
 let sk = kem.generate_key().unwrap();

@@ -1,5 +1,6 @@
 mod tests {
-    use age_pq_hpke::{ConstantTimeEq, Error, MlKem768X25519, kem::Kem};
+    use age_pq_hpke::{Error, MlKem768X25519, kem::Kem};
+    use secure_gate::ConstantTimeEq;
 
     #[test]
     fn test_mlkem768_properties() {
@@ -153,7 +154,8 @@ mod tests {
 /// now use, produce the same bytes as `encap` / `decap`. Deterministic
 /// randomness makes the comparison exact rather than a round trip.
 mod into_variants {
-    use age_pq_hpke::{ConstantTimeEq, MlKem768X25519, kem::Kem};
+    use age_pq_hpke::{MlKem768X25519, kem::Kem};
+    use secure_gate::ConstantTimeEq;
 
     #[test]
     fn encap_into_and_decap_into_match_the_returning_forms() {

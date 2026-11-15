@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-hpke"
-version = "0.2.0-rc.8"
+version = "0.2.0-rc.9"
 dependencies = [
  "aead 0.5.2",
  "byteorder",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "age-pq-keys"
-version = "0.2.0-rc.8"
+version = "0.2.0-rc.9"
 dependencies = [
  "age",
  "age-core",

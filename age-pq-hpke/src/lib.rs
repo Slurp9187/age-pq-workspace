@@ -57,7 +57,8 @@
 //! ## Usage
 //!
 //! ```rust
-//! use age_pq_hpke::{MlKem768X25519, kem::Kem, RevealSecret, ConstantTimeEq};
+//! use age_pq_hpke::{MlKem768X25519, kem::Kem};
+//! use secure_gate::ConstantTimeEq;
 //!
 //! let kem = MlKem768X25519;
 //! let sk = kem.generate_key().unwrap();
@@ -95,6 +96,5 @@ pub use kdf::{HkdfSha256, HkdfSha384, HkdfSha512, Kdf, Shake128Kdf, Shake256Kdf,
 pub use kem::{Kem, PrivateKey, PublicKey};
 
 pub use kem::MlKem768X25519;
-pub use secure_gate::{ConstantTimeEq, RevealSecret, SecretLen};
 
 pub use hpke::compute_nonce;
