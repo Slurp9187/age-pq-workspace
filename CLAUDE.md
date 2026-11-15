@@ -112,10 +112,10 @@ version itself is in the root `Cargo.toml` and nowhere in this file, so a bump
 does not edit it; `CHANGELOG.md` records what each bump changed:
 
 ```toml
-secure-gate = { version = "=<current rc>", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=<current version>", features = ["rand", "ct-eq"] }
 ```
 
-The pinned rc must not declare a `rust-version` above this workspace's floor.
+The pinned version must not declare a `rust-version` above this workspace's floor.
 The floor is 1.87 because of rc.16, which raised secure-gate's MSRV from 1.85 to take the RUSTSEC-2026-0385
 fix in `ctutils`, so this workspace moved to 1.87 in `0.2.0-rc.7`. `ctutils` is
 reachable only through the `sealed` feature and is not in this graph
@@ -135,14 +135,16 @@ in-flight commit. This workspace has already watched a downstream consumer be
 burned by a pin that silently stopped tracking upstream (the rename trap, below).
 A registry version is immutable, published and checksummed instead.
 
-`=` rather than a range is also deliberate: the 0.9.0-rc line is pre-release and
-still moving, and a range would let `cargo update` walk onto an rc that nobody
-has run the CCTV vectors or D1-D5 against. Bumping is a deliberate edit.
+`=` rather than a range is also deliberate: a range would let `cargo update`
+walk onto a version that nobody has run the CCTV vectors or D1-D5 against. That
+was the reason while the 0.9.0-rc line was moving, and it still holds now that
+0.9 is stable. Bumping is a deliberate edit.
 
-**Pre-release requirement syntax is a trap on this line.** A caret matches a
-pre-release only when the requirement itself carries one: `"0.9.0-rc"` tracks
-the line, `"=0.9.0-rc.N"` pins it, and plain `"0.9"` resolves to **nothing**,
-because there is no stable `0.9.x`.
+**Pre-release requirement syntax was a trap while the line was rc-only.** A
+caret matches a pre-release only when the requirement itself carries one, so
+until `0.9.0` existed plain `"0.9"` resolved to **nothing**. It now resolves to
+stable `0.9.x` and never to an rc; pinning a candidate still takes
+`"=0.9.0-rc.N"` spelled out.
 
 **`conformance/` carries its own copy of this pin** and inherits nothing, being
 excluded from the workspace. It sat on `{ git, branch = "main" }` at
