@@ -16,7 +16,7 @@ The pin lives in the workspace root `Cargo.toml` on `main`, and **that file is t
 this skill takes the version from** — read it there rather than from here:
 
 ```toml
-secure-gate = { version = "=<current rc>", features = ["rand", "ct-eq"] }
+secure-gate = { version = "=<current version>", features = ["rand", "ct-eq"] }
 ```
 
 The shape is what this skill records: an exact `=` registry pin with `rand` and `ct-eq`.

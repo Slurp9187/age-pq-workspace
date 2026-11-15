@@ -24,6 +24,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   after the cut. No code change, and the MSRV stays 1.87. rc.19 adds only
   `sealed_dynamic_newtype!`, behind the `sealed` feature this workspace does not
   enable, plus documentation and wider CI.
+- **secure-gate re-pinned to `=0.9.0`**, its first stable release, also folded
+  into this release after the cut. No code change, and the MSRV stays 1.87.
+  0.9.0 has the same API as rc.19; its changes are documentation (the `sealed`
+  module's Windows dump claims) and tests. The pin stays exact. This workspace
+  remains a release candidate.
 
 ## [0.2.0-rc.7] - 2026-10-29
 
