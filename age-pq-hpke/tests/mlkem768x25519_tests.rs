@@ -5,9 +5,10 @@ use age_pq_hpke::kem::mlkem768x25519::{
     MLKEM768X25519_ENCAPSULATION_KEY_SIZE, generate_keypair,
 };
 
-use age_pq_hpke::{ConstantTimeEq, Error};
+use age_pq_hpke::Error;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{Rng, SeedableRng};
+use secure_gate::ConstantTimeEq;
 
 #[test]
 fn test_generate_keypair() {
