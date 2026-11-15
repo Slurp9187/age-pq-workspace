@@ -27,8 +27,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **secure-gate re-pinned to `=0.9.0`**, its first stable release, also folded
   into this release after the cut. No code change, and the MSRV stays 1.87.
   0.9.0 has the same API as rc.19; its changes are documentation (the `sealed`
-  module's Windows dump claims) and tests. The pin stays exact. This workspace
-  remains a release candidate.
+  module's Windows dump claims) and tests. This workspace remains a release
+  candidate.
+- **The secure-gate requirement is now the caret `"0.9"`** rather than an exact
+  pin, in the root workspace and in `conformance/Cargo.toml`, so 0.9.x patches
+  are taken. `Cargo.lock` still holds 0.9.0. The exact pins were for the
+  pre-release line.
 
 ## [0.2.0-rc.7] - 2026-10-29
 

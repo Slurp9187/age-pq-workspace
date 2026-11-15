@@ -107,15 +107,15 @@ unified — the secure-gate sections below bind every crate in full.
 | `age-pq-keys` | `secure-gate = { workspace = true }` |
 | `age-plugin-pq` | `secure-gate = { workspace = true }` |
 
-The workspace pin is an **exact registry version**, not a git dependency. The
-version itself is in the root `Cargo.toml` and nowhere in this file, so a bump
-does not edit it; `CHANGELOG.md` records what each bump changed:
+The workspace requirement is a **registry caret** on the stable line, not a git
+dependency. It is in the root `Cargo.toml`; `Cargo.lock` holds the exact version
+tested, and `CHANGELOG.md` records what each bump changed:
 
 ```toml
-secure-gate = { version = "=<current version>", features = ["rand", "ct-eq"] }
+secure-gate = { version = "0.9", features = ["rand", "ct-eq"] }
 ```
 
-The pinned version must not declare a `rust-version` above this workspace's floor.
+The locked version must not declare a `rust-version` above this workspace's floor.
 The floor is 1.87 because of rc.16, which raised secure-gate's MSRV from 1.85 to take the RUSTSEC-2026-0385
 fix in `ctutils`, so this workspace moved to 1.87 in `0.2.0-rc.7`. `ctutils` is
 reachable only through the `sealed` feature and is not in this graph
@@ -135,21 +135,20 @@ in-flight commit. This workspace has already watched a downstream consumer be
 burned by a pin that silently stopped tracking upstream (the rename trap, below).
 A registry version is immutable, published and checksummed instead.
 
-`=` rather than a range is also deliberate: a range would let `cargo update`
-walk onto a version that nobody has run the CCTV vectors or D1-D5 against. That
-was the reason while the 0.9.0-rc line was moving, and it still holds now that
-0.9 is stable. Bumping is a deliberate edit.
+**A caret, not `=`, since `0.9.0`.** The exact `=0.9.0-rc.N` pins belonged to
+the pre-release line, which broke API between candidates. 0.9 is stable and
+follows semver, so the requirement takes 0.9.x patches; do not re-pin it
+exactly. A new minor (0.10) is a deliberate edit of the requirement.
 
-**Pre-release requirement syntax was a trap while the line was rc-only.** A
-caret matches a pre-release only when the requirement itself carries one, so
-until `0.9.0` existed plain `"0.9"` resolved to **nothing**. It now resolves to
-stable `0.9.x` and never to an rc; pinning a candidate still takes
+**Pre-release requirement syntax.** A caret matches a pre-release only when the
+requirement itself carries one, so `"0.9"` never resolves to a 0.9.x rc, and
+before `0.9.0` existed it resolved to **nothing**. Pinning a candidate takes
 `"=0.9.0-rc.N"` spelled out.
 
 **`conformance/` carries its own copy of this pin** and inherits nothing, being
 excluded from the workspace. It sat on `{ git, branch = "main" }` at
 `0.9.0-rc.9` while the root had moved on — the same hand-maintained-duplicate
-hazard as its `[lints.rust]` table. If you bump secure-gate here, bump it there.
+hazard as its `[lints.rust]` table. If you change the requirement here, change it there.
 
 Note that the base workspace pin enables no encoding feature; `age-pq-keys` and
 `age-plugin-pq` add `features = ["encoding-bech32", "std"]` on top, which is
